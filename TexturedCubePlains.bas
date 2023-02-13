@@ -28,10 +28,16 @@ _Title "Textured Cube Plains"
 '          Some other clever genius thought of the triangle knee concept, but I think I explain it better in code.
 '          It is thus easy to draw perspective correct textures in software.
 '
-
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
+Dim Cube_max_X As Integer
+Dim Cube_max_Z As Integer
+
+' MODIFY THESE if you want.
 Size_Screen_X = 640
 Size_Screen_Y = 480
+Cube_max_X = 30 'columns of cubes in the X direction
+Cube_max_Z = 24 'rows of cubes in the Z direction
+
 Screen _NewImage(Size_Screen_X, Size_Screen_Y, 32)
 _DontBlend
 
@@ -126,7 +132,6 @@ Fog_far = 32.0
 Fog_rate = 1 / (Fog_far - Fog_near)
 
 Fog_color = _RGB32(183, 194, 216)
-'Fog_color = _RGB32(55, 39, 17)
 Fog_R = _Red(Fog_color)
 Fog_G = _Green(Fog_color)
 Fog_B = _Blue(Fog_color)
@@ -158,7 +163,6 @@ For row = 0 To T1_height_AND
         'PSet (col, row), dvalue
     Next col
 Next row
-'Sleep 2
 
 Dim vertexA As vertex8
 Dim vertexB As vertex8
@@ -171,17 +175,10 @@ MY_PIXEL_ZOOM = 1
 ' Load the cube
 ' Load what is called a mesh from data statements.
 ' (x0,y0,z0) (x1,y1,z1) (x2,y2,z2) (u0,v0) (u1,v1) (u2,v2)
-
-Dim Cube_max_X As Integer
-Dim Cube_max_Z As Integer
 Dim Cube_X
 Dim Cube_Z
-
-Cube_max_X = 30
-Cube_max_Z = 24
 Cube_X = 1
 Cube_Z = 1
-
 
 Dim Cube_Count As Integer
 Cube_Count = Cube_max_X * Cube_max_Z
@@ -196,8 +193,8 @@ Dim mesh(Mesh_Last_Element) As triangle
 Dim cube As Integer
 Dim tri_num As Integer
 Dim A As Integer
-
 Dim Rand1 As Single
+
 A = 0
 For cube = 1 To Cube_Count
     Restore MESHCUBE
@@ -352,8 +349,8 @@ Dim spinAngleDegX As Single
 Dim start_ms As Double
 Dim finish_ms As Double
 
-spinAngleDegZ = 0
-spinAngleDegX = 15.0 ' stare somewhat at the ground
+spinAngleDegZ = 0.0
+spinAngleDegX = 0.0
 
 ' stuff
 Dim adjust As Single
@@ -507,7 +504,6 @@ Do
             vertexC.w = pointProj2.w 'depth
             vertexC.u = mesh(A).u2 * pointProj2.w
             vertexC.v = mesh(A).v2 * pointProj2.w
-
 
             ' Directional light 1-17-2023
             'dotProdLightDir = tri_normal.x * vLightDir.x + tri_normal.y * vLightDir.y + tri_normal.z * vLightDir.z
