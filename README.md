@@ -1,5 +1,5 @@
 ## Language
- This collrction of BASIC programs is written for the QB64 compiler.
+ This collection of BASIC programs is written for the QB64 compiler.
  https://github.com/QB64-Phoenix-Edition/
 ## Description
  How were 3D triangles drawn by the first PC graphics accelerators in 1997? This was my deep dive into understanding the software algorithms involved in drawing triangles line by line. This is a software simulation only approach.
@@ -8,6 +8,8 @@
 ## Screenshots
  ![Textured Cube Plains](https://user-images.githubusercontent.com/96515734/219141104-2c77c587-f4d6-4f52-baaa-d302638e0d97.PNG)
  ![Vertex Color Cube](https://user-images.githubusercontent.com/96515734/219141230-6d9a9d36-ec02-4c5a-94eb-a01773a02b5b.PNG)
+ ![Dither Color Cube](https://user-images.githubusercontent.com/96515734/219270641-b560848f-5ef0-429c-9c9c-6191e8ac88a9.png)
+ 
 ## Approach
  QBASIC was used because of the very quick edit-compile-test iterations. I wanted this exploration to be fun.
  
