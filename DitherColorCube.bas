@@ -323,15 +323,13 @@ clip_max_y = _Height - 10.0
 clip_min_x = 0.0 + 20.0
 clip_max_x = _Width - 20.0
 
-
-
 ' This is so that the cube object animates by rotating
 Dim spinAngleDegZ As Single
 Dim spinAngleDegX As Single
 spinAngleDegZ = 0.0
 spinAngleDegX = 0.0
 
-' Code execution time
+' code execution time
 Dim start_ms As Double
 Dim finish_ms As Double
 

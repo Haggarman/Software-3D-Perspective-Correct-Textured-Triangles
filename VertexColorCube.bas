@@ -162,19 +162,12 @@ For row = 0 To T1_height_AND
     Next col
 Next row
 
-Dim vertexA As vertex8
-Dim vertexB As vertex8
-Dim vertexC As vertex8
 
 
-Dim Shared MY_PIXEL_ZOOM As Integer
-MY_PIXEL_ZOOM = 1
 
 ' Load the cube
 ' Load what is called a mesh from data statements.
 ' (x0,y0,z0) (x1,y1,z1) (x2,y2,z2) (u0,v0) (u1,v1) (u2,v2)
-
-
 Dim Triangles_In_A_Cube
 Triangles_In_A_Cube = 12
 
@@ -272,6 +265,7 @@ Dim vCameraPsn As vec3d ' location of camera in world space
 vCameraPsn.x = 0.0
 vCameraPsn.y = 0.0
 vCameraPsn.z = -6.0
+
 Dim cameraRay As vec3d
 Dim dotProductCam As Single
 
@@ -279,12 +273,11 @@ Dim dotProductCam As Single
 Dim fYaw As Single ' FPS Camera rotation in XZ plane
 Dim matCameraRot(3, 3) As Single
 
-Dim vCameraZero As vec3d 'Home angle orientation is facing down the Z line.
-vCameraZero.x = 0.0: vCameraZero.y = 0.0: vCameraZero.z = 1.0
+Dim vCameraHome As vec3d 'Home angle orientation is facing down the Z line.
+vCameraHome.x = 0.0: vCameraHome.y = 0.0: vCameraHome.z = 1.0
 
 Dim vCameraUp As vec3d
 vCameraUp.x = 0.0: vCameraUp.y = 1.0: vCameraUp.z = 0.0
-
 
 Dim vLookDir As vec3d
 Dim vTarget As vec3d
@@ -305,14 +298,17 @@ LightDiffuseVal = 0.3
 ' Screen Scaling
 Dim halfWidth As Single
 Dim halfHeight As Single
-
 halfWidth = _Width / 2
 halfHeight = _Height / 2
 
+' Triangle Vertex List
 Dim SX0 As Single, SY0 As Single
 Dim SX1 As Single, SY1 As Single
 Dim SX2 As Single, SY2 As Single
 
+Dim vertexA As vertex8
+Dim vertexB As vertex8
+Dim vertexC As vertex8
 
 ' Screen clipping
 clip_min_y = 0.0 + 10.0
@@ -321,28 +317,23 @@ clip_max_y = _Height - 10.0
 clip_min_x = 0.0 + 20.0
 clip_max_x = _Width - 20.0
 
-T1_Filter_Selection = 1
-
 ' This is so that the cube object animates by rotating
 Dim spinAngleDegZ As Single
 Dim spinAngleDegX As Single
+spinAngleDegZ = 0.0
+spinAngleDegX = 0.0
 
 ' code execution time
 Dim start_ms As Double
 Dim finish_ms As Double
 
-spinAngleDegZ = 0.0
-spinAngleDegX = 0.0
-
-' stuff
-Dim adjust As Single
-
+' Main loop stuff
 Dim KeyNow As String
 Dim ExitCode As Integer
 Dim Animate_Spin As Integer
 
-Dim L As _Unsigned Long
 ' Clear Z-Buffer
+Dim L As _Unsigned Long
 For L = 0 To Screen_Z_Buffer_MaxElement
     Screen_Z_Buffer(L) = 3.402823E+38 ' https://qb64phoenix.com/qb64wiki/index.php/Variable_Types
 Next L
@@ -350,6 +341,7 @@ Next L
 main:
 ExitCode = 0
 Animate_Spin = -1
+T1_Filter_Selection = 1
 Do
     If Animate_Spin Then
         spinAngleDegZ = spinAngleDegZ + (0.980)
@@ -378,20 +370,12 @@ Do
 
 
     ' Create "Point At" Matrix for camera
-    '  vec3d vUp = { 0,1,0 };
-    '  vec3d vTarget = { 0,0,1 };
-    '  mat4x4 matCameraRot = Matrix_MakeRotationY(fYaw);
-    '  vLookDir = Matrix_MultiplyVector(matCameraRot, vTarget);
-    '  vTarget = Vector_Add(vCamera, vLookDir);
-    '  mat4x4 matCamera = Matrix_PointAt(vCamera, vTarget, vUp);
     Matrix4_MakeRotation_Y fYaw, matCameraRot()
-    Multiply_Vector3_Matrix4 vCameraZero, matCameraRot(), vLookDir
+    Multiply_Vector3_Matrix4 vCameraHome, matCameraRot(), vLookDir
     Vector3_Add vCameraPsn, vLookDir, vTarget
     Matrix4_PointAt vCameraPsn, vTarget, vCameraUp, matCamera()
 
-    ' // Make view matrix from camera
-    '    mat4x4 matView = Matrix_QuickInverse(matCamera);
-    'Matrix4_MakeIdentity matView()
+    ' Make view matrix from Camera
     Matrix4_QuickInverse matCamera(), matView()
 
     ' Clear Screen
@@ -402,10 +386,9 @@ Do
     'For L = 0 To Screen_Z_Buffer_MaxElement
     'Screen_Z_Buffer(L) = 3.402823E+38 'https://qb64phoenix.com/qb64wiki/index.php/Variable_Types
     'Next L
-    'Erase Screen_Z_Buffer 'this is a qbasic only optimization. it sets the value to zero. it saves 10 ms.
+    ' Erase Screen_Z_Buffer
+    ' This is a qbasic only optimization. it sets the value to zero. it saves 10 ms.
     ReDim Screen_Z_Buffer(Screen_Z_Buffer_MaxElement)
-
-    adjust = 0.004
 
     'Draw Triangles
     For A = 0 To Mesh_Last_Element
@@ -489,13 +472,7 @@ Do
             vertexC.v = mesh(A).v2 * pointProj2.w
 
             ' Directional light 1-17-2023
-            'dotProdLightDir = tri_normal.x * vLightDir.x + tri_normal.y * vLightDir.y + tri_normal.z * vLightDir.z
             dotProdLightDir = Vector3_DotProduct!(tri_normal, vLightDir)
-
-            'If A < 20 Then
-            'Locate 5 + A, 2
-            'Print A, dotProdLightDir
-            'End If
             If dotProdLightDir < 0.0 Then dotProdLightDir = 0.0
 
             ' Color each vertex instead
@@ -524,9 +501,9 @@ Do
             TexturedVtxColorTriangle vertexA, vertexB, vertexC
 
             ' Wireframe triangle
-            'LINE (SX0, SY0)-(SX1, SY1), 7
-            'LINE (SX1, SY1)-(SX2, SY2), 7
-            'LINE (SX2, SY2)-(SX0, SY0), 7
+            'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
+            'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
+            'Line (SX2, SY2)-(SX0, SY0), _RGB(128, 128, 128)
         End If
 
         Lbl_SkipA:
@@ -585,12 +562,12 @@ Do
     End If
 
     If _KeyDown(19712) Then
-        'right arrow
+        ' Right arrow
         fYaw = fYaw - 1.8
     End If
 
     If _KeyDown(19200) Then
-        'left arrow
+        ' Left arrow
         fYaw = fYaw + 1.8
     End If
 
@@ -598,12 +575,12 @@ Do
     Vector3_Mul vLookDir, 0.2, vMove_Player_Forward
 
     If _KeyDown(18432) Then
-        'up arrow
+        ' Up arrow
         Vector3_Add vCameraPsn, vMove_Player_Forward, vCameraPsn
     End If
 
     If _KeyDown(20480) Then
-        'down arrow
+        ' Down arrow
         Vector3_Delta vCameraPsn, vMove_Player_Forward, vCameraPsn
     End If
 
@@ -724,7 +701,6 @@ Data &HFFb3938b,&HFFb59181,&HFFa5857c,&HFFb59895,&HFFb3938b,&HFFb09a96,&HFFb3938
 '
 ' v
 
-
 ' x0,y0,z0, x1,y1,z1, x2,y2,z2
 ' u0,v0, u1,v1, u2,v2
 
@@ -759,15 +735,7 @@ Data 0,16,0,0,16,0
 Data 0,1,0,1,1,1,1,1,0
 Data 0,16,16,0,16,16
 
-
-'u0,v0, u1,v1, u2,v2
-
 ' BOTTOM
-'Data 1,0,1,0,0,1,0,0,0
-'Data 15.5,47.5,0.5,47.5,0.5,32.5
-'Data 1,0,1,0,0,0,1,0,0
-'Data 15.5,47.5,0.5,32.5,15.5,32.5
-
 Data 1,0,1,0,0,1,0,0,0
 Data 0,48,0,32,16,32
 Data 1,0,1,0,0,0,1,0,0
@@ -1213,7 +1181,6 @@ Function RGB_Fog& (zz As Single, RGB_color As _Unsigned Long)
         b0 = _Blue32(RGB_color)
 
         RGB_Fog& = _RGB32((Fog_R - r0) * fog_scale + r0, (Fog_G - g0) * fog_scale + g0, (Fog_B - b0) * fog_scale + b0)
-        'RGB_Fog& = _RGB32(r0 * (1.0 - fog_scale) + Fog_R * fog_scale, g0 * (1.0 - fog_scale) + Fog_G * fog_scale, b0 * (1.0 - fog_scale) + Fog_B * fog_scale)
     End If
 End Function
 
@@ -1270,7 +1237,6 @@ Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long)
     b2 = _Blue32(RGB_Mod) + 1
 
     RGB_Modulate& = _RGB32(_SHR(r1 * r2, 8), _SHR(g1 * g2, 8), _SHR(b1 * b2, 8))
-    'RGB_Modulate& = _RGB32(r1 * r2 / 255, g1 * g2 / 255, b1 * b2 / 255)
 End Function
 
 
