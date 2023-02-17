@@ -165,10 +165,10 @@ Next row
 
 ' Bayer Ordered Dither Matrix
 Dim Shared Dither4(3, 3) As Integer
-Dither4(0, 0) = 1: Dither4(1, 0) = 5: Dither4(2, 0) = 2: Dither4(3, 0) = 5
-Dither4(0, 1) = 6: Dither4(1, 1) = 3: Dither4(2, 1) = 7: Dither4(3, 1) = 4
-Dither4(0, 2) = 2: Dither4(1, 2) = 5: Dither4(2, 2) = 1: Dither4(3, 2) = 5
-Dither4(0, 3) = 7: Dither4(1, 3) = 4: Dither4(2, 3) = 6: Dither4(3, 3) = 3
+Dither4(0, 0) = 1: Dither4(1, 0) = 5: Dither4(2, 0) = 2: Dither4(3, 0) = 6
+Dither4(0, 1) = 7: Dither4(1, 1) = 3: Dither4(2, 1) = 8: Dither4(3, 1) = 4
+Dither4(0, 2) = 2: Dither4(1, 2) = 6: Dither4(2, 2) = 1: Dither4(3, 2) = 5
+Dither4(0, 3) = 8: Dither4(1, 3) = 4: Dither4(2, 3) = 7: Dither4(3, 3) = 3
 
 
 ' Load the cube
