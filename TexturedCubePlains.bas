@@ -331,11 +331,11 @@ Dim vertexB As vertex8
 Dim vertexC As vertex8
 
 ' Screen clipping
-clip_min_y = 0.0 + 10.0
-clip_max_y = _Height - 10.0
+clip_min_y = 10
+clip_max_y = _Height - 10
 
-clip_min_x = 0.0 + 20.0
-clip_max_x = _Width - 20.0
+clip_min_x = 20
+clip_max_x = _Width - 20
 
 ' This is so that the cube object animates by rotating
 Dim spinAngleDegZ As Single
@@ -461,6 +461,12 @@ Do
             ProjectMatrixVector4 pointView0, matProj(), pointProj0
             ProjectMatrixVector4 pointView1, matProj(), pointProj1
             ProjectMatrixVector4 pointView2, matProj(), pointProj2
+
+            ' Early scissor reject
+            If pointProj0.x > 1.0 And pointProj1.x > 1.0 And pointProj2.x > 1.0 Then GoTo Lbl_SkipA
+            If pointProj0.x < -1.0 And pointProj1.x < -1.0 And pointProj2.x < -1.0 Then GoTo Lbl_SkipA
+            If pointProj0.y > 1.0 And pointProj1.y > 1.0 And pointProj2.y > 1.0 Then GoTo Lbl_SkipA
+            If pointProj0.y < -1.0 And pointProj1.y < -1.0 And pointProj2.y < -1.0 Then GoTo Lbl_SkipA
 
             ' Slide to center, then Scale into viewport
             SX0 = (pointProj0.x + 1) * halfWidth
@@ -898,7 +904,6 @@ Sub Matrix4_PointAt (psn As vec3d, target As vec3d, up As vec3d, m( 3 , 3) As Si
     m(3, 0) = psn.x: m(3, 1) = psn.y: m(3, 2) = psn.z: m(3, 3) = 1.0
 
 End Sub
-
 
 Sub Matrix4_QuickInverse (m( 3 , 3) As Single, q( 3 , 3) As Single)
     q(0, 0) = m(0, 0): q(0, 1) = m(1, 0): q(0, 2) = m(2, 0): q(0, 3) = 0.0
@@ -1422,7 +1427,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
         ' Horizontal Scanline
         delta_x = Abs(leg_x2 - leg_x1)
         ' Avoid div/0, this gets tiring.
-        If delta_x >= (1 / 256) Then
+        If delta_x >= (1 / 2048) Then
             ' Calculate step, start, and end values.
             ' Drawing left to right, as in incrementing from a lower to higher memory address, is usually fastest.
             If leg_x1 < leg_x2 Then
