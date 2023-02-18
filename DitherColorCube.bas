@@ -114,11 +114,11 @@ matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
 matProj(3, 3) = 0.0
 
 ' Viewing area clipping
-Dim Shared clip_min_y As Single, clip_max_y As Single
-Dim Shared clip_min_x As Single, clip_max_x As Single
-clip_min_y = 0.0
+Dim Shared clip_min_y As Long, clip_max_y As Long
+Dim Shared clip_min_x As Long, clip_max_x As Long
+clip_min_y = 0
 clip_max_y = _Height
-clip_min_x = 0.0
+clip_min_x = 0
 clip_max_x = _Width
 
 ' Fog
@@ -396,7 +396,7 @@ Do
     ' This is a qbasic only optimization. it sets the value to zero. it saves 10 ms.
     ReDim Screen_Z_Buffer(Screen_Z_Buffer_MaxElement)
 
-    'Draw Triangles
+    ' Draw Triangles
     For A = 0 To Mesh_Last_Element
         point0.x = mesh(A).x0
         point0.y = mesh(A).y0
@@ -1250,7 +1250,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     If draw_min_y < clip_min_y Then draw_min_y = clip_min_y
     draw_max_y = _Ceil(C.y) - 1
     If draw_max_y > clip_max_y Then draw_max_y = clip_max_y
-    If (draw_max_y - draw_min_y) < 1 Then Exit Sub
+    If (draw_max_y - draw_min_y) < 0 Then Exit Sub
 
     ' Determine the deltas (lengths)
     ' delta 2 is from A to C (the full triangle height)
