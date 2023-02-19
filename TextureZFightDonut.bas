@@ -129,7 +129,7 @@ clip_min_x = 0
 clip_max_x = _Width
 
 ' Fog
-Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate
+Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate As Single
 Dim Shared Fog_color As Long
 Dim Shared Fog_R As Long, Fog_G As Long, Fog_B As Long
 Fog_near = 5.0
@@ -1053,6 +1053,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     Static draw_max_x As Integer
     Static zbuf_index As _Unsigned Long ' Z-Buffer
     Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
+    Static pixel_value As _Unsigned Long ' The ARGB value to write to screen
 
     ' Stepping along the X direction
     Static delta_x As Single
@@ -1064,20 +1065,17 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     Static tex_w As Single, tex_u As Single, tex_v As Single
     Static tex_r As Single, tex_g As Single, tex_b As Single
 
-    row = draw_min_y
-    Static pixel_value As _Unsigned Long
-
+    ' Screen Memory Pointers
     Static screen_mem_info As _MEM
-    Static screen_address As _Offset
-
-    Static screen_row_base As _Offset
     Static screen_next_row_step As _Offset
-
-
+    Static screen_row_base As _Offset ' Calculated every row
+    Static screen_address As _Offset ' Calculated at every starting column
     screen_mem_info = _MemImage(0)
     screen_next_row_step = 4 * Size_Screen_X
-    screen_row_base = screen_mem_info.OFFSET + row * screen_next_row_step
 
+    ' Row Loop from top to bottom
+    row = draw_min_y
+    screen_row_base = screen_mem_info.OFFSET + row * screen_next_row_step
     While row <= draw_max_y
 
         If row = draw_middle_y Then
@@ -1183,6 +1181,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             screen_address = screen_row_base + 4 * col
             zbuf_index = row * Size_Screen_X + col
             While col < draw_max_x
+            
                 tex_z = 1 / tex_w
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
                     Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
@@ -1278,7 +1277,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                     _MemPut screen_mem_info, screen_address, pixel_value
                     'PSet (col, row), pixel_value
 
-                End If
+                End If 'tex_z
                 zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
                 tex_u = tex_u + tex_u_step
