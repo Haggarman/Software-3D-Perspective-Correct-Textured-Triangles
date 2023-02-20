@@ -28,15 +28,20 @@ _Title "Dither Color Cube"
 '          Some other clever genius thought of the triangle knee concept, but I think I explain it better in code.
 '          It is thus easy to draw perspective correct textures in software.
 '
+Dim Shared DISP_IMAGE As Long
+Dim Shared WORK_IMAGE As Long
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
 Dim Cube_Count As Integer
 
 ' MODIFY THESE if you want.
-Size_Screen_X = 640
-Size_Screen_Y = 480
+Size_Screen_X = 320 'render size
+Size_Screen_Y = 240
 Cube_Count = 3
 
-Screen _NewImage(Size_Screen_X, Size_Screen_Y, 32)
+DISP_IMAGE = _NewImage(640, 480, 32)
+Screen DISP_IMAGE
+
+WORK_IMAGE = _NewImage(Size_Screen_X, Size_Screen_Y, 32)
 _DontBlend
 
 Dim Shared Screen_Z_Buffer_MaxElement As Long
@@ -117,9 +122,9 @@ matProj(3, 3) = 0.0
 Dim Shared clip_min_y As Long, clip_max_y As Long
 Dim Shared clip_min_x As Long, clip_max_x As Long
 clip_min_y = 0
-clip_max_y = _Height
+clip_max_y = Size_Screen_Y - 1
 clip_min_x = 0
-clip_max_x = _Width
+clip_max_x = Size_Screen_X - 1
 
 ' Fog
 Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate
@@ -298,14 +303,14 @@ vLightDir.z = -5.0
 Vector3_Normalize vLightDir
 Dim Shared dotProdLightDir As Single
 Dim Shared LightDiffuseVal As Single
-LightDiffuseVal = 0.3
+LightDiffuseVal = 0.6
 
 
 ' Screen Scaling
 Dim halfWidth As Single
 Dim halfHeight As Single
-halfWidth = _Width / 2
-halfHeight = _Height / 2
+halfWidth = Size_Screen_X / 2
+halfHeight = Size_Screen_Y / 2
 
 ' Triangle Vertex List
 Dim SX0 As Single, SY0 As Single
@@ -315,13 +320,6 @@ Dim SX2 As Single, SY2 As Single
 Dim vertexA As vertex8
 Dim vertexB As vertex8
 Dim vertexC As vertex8
-
-' Screen clipping
-clip_min_y = 0.0 + 10.0
-clip_max_y = _Height - 10.0
-
-clip_min_x = 0.0 + 20.0
-clip_max_x = _Width - 20.0
 
 ' This is so that the cube object animates by rotating
 Dim spinAngleDegZ As Single
@@ -384,8 +382,10 @@ Do
     ' Make view matrix from Camera
     Matrix4_QuickInverse matCamera(), matView()
 
-    ' Clear Screen
     start_ms = Timer(.001)
+
+    ' Clear Screen
+    _Dest WORK_IMAGE
     Cls , Fog_color
 
     ' Clear Z-Buffer
@@ -483,25 +483,25 @@ Do
 
             ' Color each vertex brightly.
             ' Using modulation function for bright primary colors.
-            vertexA.r = 255
+            vertexA.r = 240
             vertexA.g = 0
             vertexA.b = 0
 
             If A And 1 Then
                 vertexB.r = 64
-                vertexB.g = 255
+                vertexB.g = 240
                 vertexB.b = 0
 
                 vertexC.r = 0
                 vertexC.g = 0
-                vertexC.b = 255
+                vertexC.b = 240
             Else
                 vertexB.r = 0
                 vertexB.g = 0
-                vertexB.b = 255
+                vertexB.b = 240
 
                 vertexC.r = 64
-                vertexC.g = 255
+                vertexC.g = 240
                 vertexC.b = 0
             End If
 
@@ -518,6 +518,8 @@ Do
 
     finish_ms = Timer(.001)
 
+    _PutImage , WORK_IMAGE, DISP_IMAGE
+    _Dest DISP_IMAGE
     Locate 1, 1
     Color _RGB32(177, 227, 255)
     Print Using "render time #.###"; finish_ms - start_ms
