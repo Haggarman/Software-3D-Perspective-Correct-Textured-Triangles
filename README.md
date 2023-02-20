@@ -20,7 +20,17 @@
  I believe it would be much easier to translate this BASIC code to C-lang or Python, than it was for me to catch onto the nuances from other's example C++ code that was using STL std::list, templates and pointer tricks.
  
  No dropping to assembly or using pokes!
+## Triangles
+### Vertex
+ The triangles are specified by vertexes A, B, and C. They are sorted by the triangle drawing subroutine so that A is always on top and C is always on the bottom. That still leaves two categories where the knee at B faces left or right. The triangle drawing subroutine also adjusts for this so that pixels are drawn from left to right.
+ ![TrianglesABC](https://user-images.githubusercontent.com/96515734/220204499-62aaed3c-f1fe-4c07-9c64-1c61564219e7.PNG)
+### DDA
+ The DDA (Digital Difference Analyzer) algorithm is used to simultaneously step on whole number Y increments from point A to point C on the major edge, and from point A to point B on the minor edge. The start value of Y at point A is pre-stepped ahead to the next highest integer pixel row using the ceiling function.
  
+ To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same amount. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region.
+### Knee B
+ When the Minor Edge DDAs reach vertexBy, the start values and steps are recalculated to be from point B to point C. Note that this case also handles a flat-topped triangle where vertexBy = vertexAy.
+
 ## Texture Filters
 ### Texture Magnification
  The following texel filters are selectable in the examples that showcase them:
@@ -76,3 +86,9 @@ ID | Name | Description
 
  So it ends up being 3 area multiplications per color component. For RGB, that is just 9 total multiplications.
 
+## Fog (Depth Cueing)
+ Fog is calculated at the end of the pixel blending process. Fog is usually intended to have objects blend into a background color with increasing distance from the viewer.
+ 
+ It is implemented here as a gradient, where the input color values blend linearly into the fog color for Z values between the fog_near and fog_far variables. If the input Z value is closer than the fog_near value, the input color values are passed through unchanged. At the fog_far Z value and beyond, the input color is replaced with the fog color but yet the Z-Buffer is still updated and the screen pixel is still drawn.
+ 
+ I could not arrive at a rational reason why fog tables existed, so just the gradient is implemented here for simplicity sake. For different batches of triangles with different visual rendering requirements, the depths fog_near and fog_far could be adjusted accordingly.
