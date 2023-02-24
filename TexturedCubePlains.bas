@@ -5,6 +5,7 @@ _Title "Textured Cube Plains"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  2/23/2023 - Texture wrapping options
 '  2/12/2023 - Release to the World
 '  2/10/2023 - Camera View Space, move with Arrow keys.
 '  2/07/2023 - Swapped the N64 3-point diagonal direction.
@@ -46,7 +47,7 @@ Screen_Z_Buffer_MaxElement = Size_Screen_X * Size_Screen_Y - 1
 Dim Shared Screen_Z_Buffer(Screen_Z_Buffer_MaxElement) As Single
 
 ' Z Fight has to do with overdrawing on top of the same coplanar surface.
-' If it is negative, a newer pixel at the same exact Z will always overdraw the older one.
+' If it is positive, a newer pixel at the same exact Z will always overdraw the older one.
 Dim Shared Z_Fight_Bias
 Z_Fight_Bias = -0.001953125 / 32.0
 
@@ -80,6 +81,8 @@ Type triangle
     v1 As Single
     u2 As Single
     v2 As Single
+    texture As _Unsigned Long
+    options As _Unsigned Long
 End Type
 
 Type vertex8
@@ -119,12 +122,12 @@ matProj(3, 3) = 0.0
 Dim Shared clip_min_y As Long, clip_max_y As Long
 Dim Shared clip_min_x As Long, clip_max_x As Long
 clip_min_y = 0
-clip_max_y = _Height
+clip_max_y = Size_Screen_Y - 1
 clip_min_x = 0
-clip_max_x = _Width
+clip_max_x = Size_Screen_X 'not (-1) because rounding rule drops one pixel on right
 
 ' Fog
-Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate
+Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate As Single
 Dim Shared Fog_color As Long
 Dim Shared Fog_R As Long, Fog_G As Long, Fog_B As Long
 Fog_near = 13.0
@@ -143,14 +146,17 @@ Restore Texture1Data
 Dim Shared T1_width As Integer, T1_height As Integer
 Dim Shared T1_width_AND As Integer, T1_height_AND As Integer
 Dim Shared T1_Filter_Selection As Integer
+Dim Shared T1_options As _Unsigned Long
+Dim Shared T1_option_clamp_width As _Unsigned Long
+Dim Shared T1_option_clamp_height As _Unsigned Long
+T1_option_clamp_width = 1 'constant
+T1_option_clamp_height = 2 'constant
 
 ' Later optimization in ReadTexel requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
-T1_width = 16
-T1_height = 64
+T1_width = 16: T1_width_AND = T1_width - 1
+T1_height = 64: T1_height_AND = T1_height - 1
 
-T1_width_AND = T1_width - 1
-T1_height_AND = T1_height - 1
 Dim Shared Texture1(T1_width_AND, T1_height_AND) As _Unsigned Long
 
 Dim dvalue As _Unsigned Long
@@ -163,9 +169,6 @@ For row = 0 To T1_height_AND
         'PSet (col, row), dvalue
     Next col
 Next row
-
-
-
 
 ' Load the cube
 ' Load what is called a mesh from data statements.
@@ -221,7 +224,10 @@ For cube = 1 To Cube_Count
         Read mesh(A).v1
         Read mesh(A).u2
         Read mesh(A).v2
-
+        
+        Read mesh(A).texture
+        Read mesh(A).options
+        
         mesh(A).x0 = mesh(A).x0 + (Cube_X - (Cube_max_X + 2) * 0.5)
         mesh(A).x1 = mesh(A).x1 + (Cube_X - (Cube_max_X + 2) * 0.5)
         mesh(A).x2 = mesh(A).x2 + (Cube_X - (Cube_max_X + 2) * 0.5)
@@ -318,8 +324,8 @@ LightDiffuseVal = 0.3
 ' Screen Scaling
 Dim halfWidth As Single
 Dim halfHeight As Single
-halfWidth = _Width / 2
-halfHeight = _Height / 2
+halfWidth = Size_Screen_X / 2
+halfHeight = Size_Screen_Y / 2
 
 ' Triangle Vertex List
 Dim SX0 As Single, SY0 As Single
@@ -332,10 +338,10 @@ Dim vertexC As vertex8
 
 ' Screen clipping
 clip_min_y = 10
-clip_max_y = _Height - 10
+clip_max_y = Size_Screen_Y - 10
 
 clip_min_x = 20
-clip_max_x = _Width - 20
+clip_max_x = Size_Screen_X - 20
 
 ' This is so that the cube object animates by rotating
 Dim spinAngleDegZ As Single
@@ -398,8 +404,9 @@ Do
     ' Make view matrix from Camera
     Matrix4_QuickInverse matCamera(), matView()
 
-    ' Clear Screen
     start_ms = Timer(.001)
+
+    ' Clear Screen
     Cls , Fog_color
 
     ' Clear Z-Buffer
@@ -501,6 +508,8 @@ Do
             dotProdLightDir = Vector3_DotProduct!(tri_normal, vLightDir)
             If dotProdLightDir < 0.0 Then dotProdLightDir = 0.0
 
+            ' 2-23-2023
+            T1_options = mesh(A).options
             TexturedVtxColorTriangle vertexA, vertexB, vertexC
 
             ' Wireframe triangle
@@ -706,43 +715,58 @@ Data &HFFb3938b,&HFFb59181,&HFFa5857c,&HFFb59895,&HFFb3938b,&HFFb09a96,&HFFb3938
 
 ' x0,y0,z0, x1,y1,z1, x2,y2,z2
 ' u0,v0, u1,v1, u2,v2
+' texture_index, texture_options
+' .0 = T1_option_clamp_width
+' .1 = T1_option_clamp_height
 
 MESHCUBE:
 ' SOUTH
 Data 0,0,0,0,1,0,1,1,0
 Data 0,32,0,16,16,16
+Data 0,0
 Data 0,0,0,1,1,0,1,0,0
 Data 0,32,16,16,16,32
+Data 0,0
 
 ' EAST
 Data 1,0,0,1,1,0,1,1,1
 Data 0,32,0,16,16,16
+Data 0,0
 Data 1,0,0,1,1,1,1,0,1
 Data 0,32,16,16,16,32
+Data 0,0
 
 ' NORTH
 Data 1,0,1,1,1,1,0,1,1
 Data 0,32,0,16,16,16
+Data 0,0
 Data 1,0,1,0,1,1,0,0,1
 Data 0,32,16,16,16,32
+Data 0,0
 
 ' WEST
 Data 0,0,1,0,1,1,0,1,0
 Data 0,32,0,16,16,16
+Data 0,0
 Data 0,0,1,0,1,0,0,0,0
 Data 0,32,16,16,16,32
+Data 0,0
 
 ' TOP
 Data 0,1,0,0,1,1,1,1,1
 Data 0,16,0,0,16,0
+Data 0,3
 Data 0,1,0,1,1,1,1,1,0
 Data 0,16,16,0,16,16
+Data 0,3
 
 ' BOTTOM
 Data 1,0,1,0,0,1,0,0,0
 Data 0,48,0,32,16,32
+Data 0,3
 Data 1,0,1,0,0,0,1,0,0
 Data 0,48,16,32,16,48
+Data 0,3
 
 
 ' Multiply a 3D vector into a 4x4 matrix and output another 3D vector
@@ -992,17 +1016,45 @@ Function ReadTexel3Point& (ccol As Single, rrow As Single)
     cm5 = ccol - 0.5
     rm5 = rrow - 0.5
 
-    ' Tile the texture if out of bounds
-    cc = Fix(cm5) And T1_width_AND
-    cc1 = (cc + 1) And T1_width_AND
-    rr = Fix(rm5) And T1_height_AND
-    rr1 = (rr + 1) And T1_height_AND
+    If T1_options And T1_option_clamp_width Then
+        ' clamp
+        If cm5 < 0.0 Then cm5 = 0.0
+        If cm5 >= T1_width_AND Then
+            ' 15.0 and up
+            cc = T1_width_AND
+            cc1 = T1_width_AND
+        Else
+            ' 0 1 2 .. 13 14.999
+            cc = Int(cm5)
+            cc1 = cc + 1
+        End If
+    Else
+        ' tile the texture
+        cc = Int(cm5) And T1_width_AND
+        cc1 = (cc + 1) And T1_width_AND
+    End If
+
+    If T1_options And T1_option_clamp_height Then
+        ' clamp
+        If rm5 < 0.0 Then rm5 = 0.0
+        If rm5 >= T1_height_AND Then
+            rr = T1_height_AND
+            rr1 = T1_height_AND
+        Else
+            rr = Int(rm5)
+            rr1 = rr + 1
+        End If
+    Else
+        ' tile
+        rr = Int(rm5) And T1_height_AND
+        rr1 = (rr + 1) And T1_height_AND
+    End If
 
     uv_0_0 = Texture1(cc, rr)
     uv_1_1 = Texture1(cc1, rr1)
 
-    Frac_cc1 = cm5 - Fix(cm5)
-    Frac_rr1 = rm5 - Fix(rm5)
+    Frac_cc1 = cm5 - Int(cm5)
+    Frac_rr1 = rm5 - Int(rm5)
 
     If Frac_cc1 > Frac_rr1 Then
         ' top-right
@@ -1059,19 +1111,47 @@ Function ReadTexelBiLinear& (ccol As Single, rrow As Single)
     cm5 = ccol - 0.5
     rm5 = rrow - 0.5
 
-    ' Decided just to tile the texture if out of bounds
-    cc = Fix(cm5) And T1_width_AND
-    rr = Fix(rm5) And T1_height_AND
-    cc1 = (cc + 1) And T1_width_AND
-    rr1 = (rr + 1) And T1_height_AND
+    If T1_options And T1_option_clamp_width Then
+        ' clamp
+        If cm5 < 0.0 Then cm5 = 0.0
+        If cm5 >= T1_width_AND Then
+            ' 15.0 and up
+            cc = T1_width_AND
+            cc1 = T1_width_AND
+        Else
+            ' 0 1 2 .. 13 14.999
+            cc = Int(cm5)
+            cc1 = cc + 1
+        End If
+    Else
+        ' tile the texture
+        cc = Int(cm5) And T1_width_AND
+        cc1 = (cc + 1) And T1_width_AND
+    End If
+
+    If T1_options And T1_option_clamp_height Then
+        ' clamp
+        If rm5 < 0.0 Then rm5 = 0.0
+        If rm5 >= T1_height_AND Then
+            rr = T1_height_AND
+            rr1 = T1_height_AND
+        Else
+            rr = Int(rm5)
+            rr1 = rr + 1
+        End If
+    Else
+        ' tile
+        rr = Int(rm5) And T1_height_AND
+        rr1 = (rr + 1) And T1_height_AND
+    End If
 
     uv_0_0 = Texture1(cc, rr)
     uv_1_0 = Texture1(cc1, rr)
     uv_0_1 = Texture1(cc, rr1)
     uv_1_1 = Texture1(cc1, rr1)
 
-    Frac_cc1 = cm5 - Fix(cm5)
-    Frac_rr1 = rm5 - Fix(rm5)
+    Frac_cc1 = cm5 - Int(cm5)
+    Frac_rr1 = rm5 - Int(rm5)
     Frac_cc = 1.0 - Frac_cc1
     Frac_rr = 1.0 - Frac_rr1
 
@@ -1119,18 +1199,46 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
     Dim rm5 As Single
 
     cm5 = ccol - 0.5
-    'Frac_cc1 = cm5 - Fix(cm5)
-    Frac_cc1_FIX8 = (cm5 - Fix(cm5)) * 128
-
     rm5 = rrow - 0.5
-    'Frac_rr1 = rm5 - Fix(rm5)
-    Frac_rr1_FIX8 = (rm5 - Fix(rm5)) * 128
 
-    ' Decided just to tile the texture if out of bounds
-    cc = Fix(cm5) And T1_width_AND
-    cc1 = (cc + 1) And T1_width_AND
-    rr = Fix(rm5) And T1_height_AND
-    rr1 = (rr + 1) And T1_height_AND
+    If T1_options And T1_option_clamp_width Then
+        ' clamp
+        If cm5 < 0.0 Then cm5 = 0.0
+        If cm5 >= T1_width_AND Then
+            ' 15.0 and up
+            cc = T1_width_AND
+            cc1 = T1_width_AND
+        Else
+            ' 0 1 2 .. 13 14.999
+            cc = Int(cm5)
+            cc1 = cc + 1
+        End If
+    Else
+        ' tile the texture
+        cc = Int(cm5) And T1_width_AND
+        cc1 = (cc + 1) And T1_width_AND
+    End If
+
+    If T1_options And T1_option_clamp_height Then
+        ' clamp
+        If rm5 < 0.0 Then rm5 = 0.0
+        If rm5 >= T1_height_AND Then
+            rr = T1_height_AND
+            rr1 = T1_height_AND
+        Else
+            rr = Int(rm5)
+            rr1 = rr + 1
+        End If
+    Else
+        ' tile
+        rr = Int(rm5) And T1_height_AND
+        rr1 = (rr + 1) And T1_height_AND
+    End If
+
+    'Frac_cc1 = cm5 - Int(cm5)
+    Frac_cc1_FIX8 = (cm5 - Int(cm5)) * 128
+    'Frac_rr1 = rm5 - Int(rm5)
+    Frac_rr1_FIX8 = (rm5 - Int(rm5)) * 128
 
     ' cache
     this_cache = _SHL(rr, 16) Or cc

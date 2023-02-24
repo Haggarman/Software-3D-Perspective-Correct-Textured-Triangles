@@ -9,6 +9,7 @@ _Title "Texture Z Fight Donut"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  2/23/2023 - Texture wrapping options
 '  2/18/2023 - Utilize all reasonable and known methods to speed up the inner pixel X drawing loop.
 '  2/12/2023 - Release to the World
 '  2/10/2023 - Camera View Space, move with Arrow keys.
@@ -35,15 +36,21 @@ _Title "Texture Z Fight Donut"
 '
 
 $Checking:Off
+Dim Shared DISP_IMAGE As Long
+Dim Shared WORK_IMAGE As Long
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
 Dim Cube_Count As Integer
 
 ' MODIFY THESE if you want.
-Size_Screen_X = 640
-Size_Screen_Y = 480
+Size_Screen_X = 1024 / 2 'render size
+Size_Screen_Y = 768 / 2
 Cube_Count = 29
 
-Screen _NewImage(Size_Screen_X, Size_Screen_Y, 32)
+DISP_IMAGE = _NewImage(1024, 768, 32)
+Screen DISP_IMAGE
+_DisplayOrder _Software
+
+WORK_IMAGE = _NewImage(Size_Screen_X, Size_Screen_Y, 32)
 _DontBlend
 
 Dim Shared Screen_Z_Buffer_MaxElement As Long
@@ -85,6 +92,8 @@ Type triangle
     v1 As Single
     u2 As Single
     v2 As Single
+    texture As _Unsigned Long
+    options As _Unsigned Long
 End Type
 
 Type vertex8
@@ -124,9 +133,9 @@ matProj(3, 3) = 0.0
 Dim Shared clip_min_y As Long, clip_max_y As Long
 Dim Shared clip_min_x As Long, clip_max_x As Long
 clip_min_y = 0
-clip_max_y = _Height
+clip_max_y = Size_Screen_Y - 1
 clip_min_x = 0
-clip_max_x = _Width
+clip_max_x = Size_Screen_X 'not (-1) because rounding rule drops one pixel on right
 
 ' Fog
 Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate As Single
@@ -148,14 +157,17 @@ Restore Texture1Data
 Dim Shared T1_width As Integer, T1_height As Integer
 Dim Shared T1_width_AND As Integer, T1_height_AND As Integer
 Dim Shared T1_Filter_Selection As Integer
+Dim Shared T1_options As _Unsigned Long
+Dim Shared T1_option_clamp_width As _Unsigned Long
+Dim Shared T1_option_clamp_height As _Unsigned Long
+T1_option_clamp_width = 1 'constant
+T1_option_clamp_height = 2 'constant
 
 ' Later optimization in ReadTexel requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
-T1_width = 16
-T1_height = 64
+T1_width = 16: T1_width_AND = T1_width - 1
+T1_height = 64: T1_height_AND = T1_height - 1
 
-T1_width_AND = T1_width - 1
-T1_height_AND = T1_height - 1
 Dim Shared Texture1(T1_width_AND, T1_height_AND) As _Unsigned Long
 
 Dim dvalue As _Unsigned Long
@@ -182,9 +194,9 @@ Dim mesh(Mesh_Last_Element) As triangle
 
 Dim cube As Integer
 Dim tri_num As Integer
-Dim A As Integer
 
 Dim offset As Single
+Dim A As Integer
 
 A = 0
 For cube = 1 To Cube_Count
@@ -209,6 +221,9 @@ For cube = 1 To Cube_Count
         Read mesh(A).v1
         Read mesh(A).u2
         Read mesh(A).v2
+
+        Read mesh(A).texture
+        Read mesh(A).options
 
         offset = cube * 8 * Atn(1) / Cube_Count
 
@@ -304,8 +319,8 @@ LightDiffuseVal = 0.3
 ' Screen Scaling
 Dim halfWidth As Single
 Dim halfHeight As Single
-halfWidth = _Width / 2
-halfHeight = _Height / 2
+halfWidth = Size_Screen_X / 2
+halfHeight = Size_Screen_Y / 2
 
 ' Triangle Vertex List
 Dim SX0 As Single, SY0 As Single
@@ -317,11 +332,11 @@ Dim vertexB As vertex8
 Dim vertexC As vertex8
 
 ' Screen clipping
-clip_min_y = 0.0 + 10.0
-clip_max_y = _Height - 10.0
+clip_min_y = 10
+clip_max_y = Size_Screen_Y - 10
 
-clip_min_x = 0.0 + 20.0
-clip_max_x = _Width - 20.0
+clip_min_x = 20
+clip_max_x = Size_Screen_X - 20
 
 ' This is so that the cube object animates by rotating
 Dim spinAngleDegZ As Single
@@ -387,9 +402,10 @@ Do
     Matrix4_QuickInverse matCamera(), matView()
 
     Triangles_Drawn = 0
+    start_ms = Timer(.001)
 
     ' Clear Screen
-    start_ms = Timer(.001)
+    _Dest WORK_IMAGE
     Cls , Fog_color
 
     ' Clear Z-Buffer
@@ -491,6 +507,8 @@ Do
             dotProdLightDir = Vector3_DotProduct!(tri_normal, vLightDir)
             If dotProdLightDir < 0.0 Then dotProdLightDir = 0.0
 
+            ' 2-23-2023
+            T1_options = mesh(A).options
             TexturedVtxColorTriangle vertexA, vertexB, vertexC
 
             ' Wireframe triangle
@@ -505,6 +523,8 @@ Do
 
     finish_ms = Timer(.001)
 
+    _PutImage , WORK_IMAGE, DISP_IMAGE
+    _Dest DISP_IMAGE
     Locate 1, 1
     Color _RGB32(177, 227, 255)
     Print Using "render time #.###"; finish_ms - start_ms
@@ -686,51 +706,61 @@ Data &HFFb3938b,&HFFb59181,&HFFa5857c,&HFFb59895,&HFFb3938b,&HFFb09a96,&HFFb3938
 
 ' x0,y0,z0, x1,y1,z1, x2,y2,z2
 ' u0,v0, u1,v1, u2,v2
+' texture_index, texture_options
+' .0 = T1_option_clamp_width
+' .1 = T1_option_clamp_height
 
 MESHCUBE:
 ' TOP
 Data 0,1,0,0,1,1,1,1,1
 Data 0,16,0,0,16,0
+Data 0,3
 Data 0,1,0,1,1,1,1,1,0
 Data 0,16,16,0,16,16
+Data 0,3
 
 ' BOTTOM
 Data 1,0,1,0,0,1,0,0,0
 Data 0,48,0,32,16,32
+Data 0,3
 Data 1,0,1,0,0,0,1,0,0
 Data 0,48,16,32,16,48
-
+Data 0,3
 
 ' SOUTH
 Data 0,0,0,0,1,0,1,1,0
 Data 0,32,0,16,16,16
+Data 0,0
 Data 0,0,0,1,1,0,1,0,0
 Data 0,32,16,16,16,32
+Data 0,0
 
 ' EAST
 Data 1,0,0,1,1,0,1,1,1
 Data 0,32,0,16,16,16
+Data 0,0
 Data 1,0,0,1,1,1,1,0,1
 Data 0,32,16,16,16,32
+Data 0,0
 
 ' NORTH
 Data 1,0,1,1,1,1,0,1,1
 Data 0,32,0,16,16,16
+Data 0,0
 Data 1,0,1,0,1,1,0,0,1
 Data 0,32,16,16,16,32
+Data 0,0
 
 ' WEST
 Data 0,0,1,0,1,1,0,1,0
 Data 0,32,0,16,16,16
+Data 0,0
 Data 0,0,1,0,1,0,0,0,0
 Data 0,32,16,16,16,32
+Data 0,0
 
 
-' BOTTOM
-Data 1,0,1,0,0,1,0,0,0
-Data 0,48,0,32,16,32
-Data 1,0,1,0,0,0,1,0,0
-Data 0,48,16,32,16,48
+
 
 
 ' Multiply a 3D vector into a 4x4 matrix and output another 3D vector
@@ -1070,7 +1100,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     Static screen_next_row_step As _Offset
     Static screen_row_base As _Offset ' Calculated every row
     Static screen_address As _Offset ' Calculated at every starting column
-    screen_mem_info = _MemImage(0)
+    screen_mem_info = _MemImage(WORK_IMAGE)
     screen_next_row_step = 4 * Size_Screen_X
 
     ' Row Loop from top to bottom
@@ -1201,9 +1231,9 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                     Static Area_11 As Single
                     Static Area_2f As Single
 
-                    Static uv_0_0 As Long
-                    Static uv_1_1 As Long
-                    Static uv_f As Long
+                    Static uv_0_0 As _Unsigned Long
+                    Static uv_1_1 As _Unsigned Long
+                    Static uv_f As _Unsigned Long
 
                     Static r0 As Integer
                     Static g0 As Integer
@@ -1216,17 +1246,46 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                     cm5 = (tex_u * tex_z) - 0.5
                     rm5 = (tex_v * tex_z) - 0.5
 
-                    ' Tile the texture if out of bounds
-                    cc = Fix(cm5) And T1_width_AND
-                    cc1 = (cc + 1) And T1_width_AND
-                    rr = Fix(rm5) And T1_height_AND
-                    rr1 = (rr + 1) And T1_height_AND
+                    If T1_options And T1_option_clamp_width Then
+                        ' clamp
+                        If cm5 < 0.0 Then cm5 = 0.0
+                        If cm5 >= T1_width_AND Then
+                            '15.0 and up
+                            cc = T1_width_AND
+                            cc1 = T1_width_AND
+                        Else
+                            '0 1 2 .. 13 14.999
+                            cc = Int(cm5)
+                            cc1 = cc + 1
+                        End If
+                    Else
+                        ' tile the texture
+                        cc = Int(cm5) And T1_width_AND
+                        cc1 = (cc + 1) And T1_width_AND
+                    End If
+
+                    If T1_options And T1_option_clamp_height Then
+                        ' clamp
+                        If rm5 < 0.0 Then rm5 = 0.0
+                        If rm5 >= T1_height_AND Then
+                            '15.0 and up
+                            rr = T1_height_AND
+                            rr1 = T1_height_AND
+                        Else
+                            rr = Int(rm5)
+                            rr1 = rr + 1
+                        End If
+                    Else
+                        ' tile
+                        rr = Int(rm5) And T1_height_AND
+                        rr1 = (rr + 1) And T1_height_AND
+                    End If
 
                     uv_0_0 = Texture1(cc, rr)
                     uv_1_1 = Texture1(cc1, rr1)
 
-                    Frac_cc1 = cm5 - Fix(cm5)
-                    Frac_rr1 = rm5 - Fix(rm5)
+                    Frac_cc1 = cm5 - Int(cm5)
+                    Frac_rr1 = rm5 - Int(rm5)
 
                     If Frac_cc1 > Frac_rr1 Then
                         ' top-right
