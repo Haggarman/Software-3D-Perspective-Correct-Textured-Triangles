@@ -365,6 +365,7 @@ For L = 0 To Screen_Z_Buffer_MaxElement
 Next L
 
 main:
+$Checking:Off
 ExitCode = 0
 Animate_Spin = 0
 T1_Filter_Selection = 1

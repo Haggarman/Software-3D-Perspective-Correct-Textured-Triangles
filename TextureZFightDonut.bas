@@ -34,7 +34,6 @@ _Title "Texture Z Fight Donut"
 '          Some other clever genius thought of the triangle knee concept, but I think I explain it better in code.
 '          It is thus easy to draw perspective correct textures in software.
 '
-
 $Checking:Off
 Dim Shared DISP_IMAGE As Long
 Dim Shared WORK_IMAGE As Long
@@ -1211,7 +1210,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             screen_address = screen_row_base + 4 * col
             zbuf_index = row * Size_Screen_X + col
             While col < draw_max_x
-            
+
                 tex_z = 1 / tex_w
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
                     Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias

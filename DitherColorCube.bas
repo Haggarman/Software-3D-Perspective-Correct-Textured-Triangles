@@ -35,11 +35,11 @@ Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
 Dim Cube_Count As Integer
 
 ' MODIFY THESE if you want.
-Size_Screen_X = 320 'render size
-Size_Screen_Y = 240
+Size_Screen_X = 800 / 2 'render size
+Size_Screen_Y = 600 / 2
 Cube_Count = 3
 
-DISP_IMAGE = _NewImage(640, 480, 32)
+DISP_IMAGE = _NewImage(800, 600, 32)
 Screen DISP_IMAGE
 
 WORK_IMAGE = _NewImage(Size_Screen_X, Size_Screen_Y, 32)
@@ -220,10 +220,10 @@ For cube = 1 To Cube_Count
         Read mesh(A).v1
         Read mesh(A).u2
         Read mesh(A).v2
-        
+
         Read mesh(A).texture
         Read mesh(A).options
-        
+
         offset = cube * 8 * Atn(1) / Cube_Count
 
         mesh(A).z0 = mesh(A).z0 + 2 * Sin(offset)
@@ -352,6 +352,7 @@ For L = 0 To Screen_Z_Buffer_MaxElement
 Next L
 
 main:
+$Checking:Off
 ExitCode = 0
 Animate_Spin = -1
 T1_Filter_Selection = 2
