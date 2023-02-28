@@ -5,6 +5,7 @@ _Title "Textured Cube Plains"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  2/27/2023 - Frustum near clipping
 '  2/23/2023 - Texture wrapping options
 '  2/12/2023 - Release to the World
 '  2/10/2023 - Camera View Space, move with Arrow keys.
@@ -96,15 +97,22 @@ Type vertex8
     b As Single
 End Type
 
+Type vertex_attribute5
+    u As Single
+    v As Single
+    r As Single
+    g As Single
+    b As Single
+End Type
 
 ' Projection Matrix
-Dim Frustum_Near As Single
+Dim Shared Frustum_Near As Single
 Dim Frustum_Far As Single
 Dim Frustum_FOV_deg As Single
 Dim Frustum_Aspect_Ratio As Single
 Dim Frustum_FOV_ratio As Single
 
-Frustum_Near = 0.1
+Frustum_Near = 0.5
 Frustum_Far = 1000.0
 Frustum_FOV_deg = 60.0
 Frustum_Aspect_Ratio = _Height / _Width
@@ -273,11 +281,19 @@ Dim matView(3, 3) As Single
 Dim pointView0 As vec3d
 Dim pointView1 As vec3d
 Dim pointView2 As vec3d
+Dim pointView3 As vec3d ' extra clipped tri
+
+' Near frustum clipping 2-27-2023
+Dim Shared vattb0 As vertex_attribute5
+Dim Shared vattb1 As vertex_attribute5
+Dim Shared vattb2 As vertex_attribute5
+Dim Shared vattb3 As vertex_attribute5
 
 ' Projection
 Dim pointProj0 As vec4d ' added w
 Dim pointProj1 As vec4d
 Dim pointProj2 As vec4d
+Dim pointProj3 As vec4d ' extra clipped tri
 
 ' Surface Normal Calculation
 ' Part 2
@@ -317,8 +333,8 @@ vLightDir.y = 10.0 '+Y is now up
 vLightDir.z = -5.0
 Vector3_Normalize vLightDir
 Dim Shared dotProdLightDir As Single
-Dim Shared LightDiffuseVal As Single
-LightDiffuseVal = 0.3
+Dim Shared LightAmbientVal As Single
+LightAmbientVal = 0.3
 
 
 ' Screen Scaling
@@ -331,6 +347,7 @@ halfHeight = Size_Screen_Y / 2
 Dim SX0 As Single, SY0 As Single
 Dim SX1 As Single, SY1 As Single
 Dim SX2 As Single, SY2 As Single
+Dim SX3 As Single, SY3 As Single
 
 Dim vertexA As vertex8
 Dim vertexB As vertex8
@@ -357,6 +374,7 @@ Dim finish_ms As Double
 Dim KeyNow As String
 Dim ExitCode As Integer
 Dim Animate_Spin As Integer
+Dim triCount As Integer
 
 ' Clear Z-Buffer
 Dim L As _Unsigned Long
@@ -461,9 +479,17 @@ Do
             Multiply_Vector3_Matrix4 pointTrans2, matView(), pointView2
 
             ' Skip if any Z is too close
-            If (pointView0.z < Frustum_Near) Or (pointView1.z < Frustum_Near) Or (pointView2.z < Frustum_Near) Then
-                GoTo Lbl_SkipA
-            End If
+            'If (pointView0.z < Frustum_Near) Or (pointView1.z < Frustum_Near) Or (pointView2.z < Frustum_Near) Then
+            '    GoTo Lbl_SkipA
+            'End If
+
+            ' Load up attribute lists here because NearClip may reorder vertices
+            vattb0.u = mesh(A).u0: vattb0.v = mesh(A).v0
+            vattb1.u = mesh(A).u1: vattb1.v = mesh(A).v1
+            vattb2.u = mesh(A).u2: vattb2.v = mesh(A).v2
+
+            NearClip pointView0, pointView1, pointView2, pointView3, vattb0, vattb1, vattb2, vattb3, triCount
+            If triCount = 0 Then GoTo Lbl_SkipA
 
             ' Project triangles from 3D -----------------> 2D
             ProjectMatrixVector4 pointView0, matProj(), pointProj0
@@ -490,20 +516,20 @@ Do
             vertexA.x = SX0
             vertexA.y = SY0
             vertexA.w = pointProj0.w 'depth
-            vertexA.u = mesh(A).u0 * pointProj0.w
-            vertexA.v = mesh(A).v0 * pointProj0.w
+            vertexA.u = vattb0.u * pointProj0.w
+            vertexA.v = vattb0.v * pointProj0.w
 
             vertexB.x = SX1
             vertexB.y = SY1
             vertexB.w = pointProj1.w 'depth
-            vertexB.u = mesh(A).u1 * pointProj1.w
-            vertexB.v = mesh(A).v1 * pointProj1.w
+            vertexB.u = vattb1.u * pointProj1.w
+            vertexB.v = vattb1.v * pointProj1.w
 
             vertexC.x = SX2
             vertexC.y = SY2
             vertexC.w = pointProj2.w 'depth
-            vertexC.u = mesh(A).u2 * pointProj2.w
-            vertexC.v = mesh(A).v2 * pointProj2.w
+            vertexC.u = vattb2.u * pointProj2.w
+            vertexC.v = vattb2.v * pointProj2.w
 
             ' Directional light 1-17-2023
             dotProdLightDir = Vector3_DotProduct!(tri_normal, vLightDir)
@@ -517,6 +543,38 @@ Do
             'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
             'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
             'Line (SX2, SY2)-(SX0, SY0), _RGB(128, 128, 128)
+
+            If triCount = 1 Then GoTo Lbl_SkipA
+
+            ProjectMatrixVector4 pointView3, matProj(), pointProj3
+            SX3 = (pointProj3.x + 1) * halfWidth
+            SY3 = (pointProj3.y + 1) * halfHeight
+
+            ' Reload Vertex List for Textured triangle
+            vertexA.x = SX0
+            vertexA.y = SY0
+            vertexA.w = pointProj0.w 'depth
+            vertexA.u = vattb0.u * pointProj0.w
+            vertexA.v = vattb0.v * pointProj0.w
+
+            vertexB.x = SX2
+            vertexB.y = SY2
+            vertexB.w = pointProj2.w 'depth
+            vertexB.u = vattb2.u * pointProj2.w
+            vertexB.v = vattb2.v * pointProj2.w
+
+            vertexC.x = SX3
+            vertexC.y = SY3
+            vertexC.w = pointProj3.w 'depth
+            vertexC.u = vattb3.u * pointProj3.w
+            vertexC.v = vattb3.v * pointProj3.w
+
+            TexturedVtxColorTriangle vertexA, vertexB, vertexC
+
+            ' Wireframe triangle
+            'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
+            'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
+            'Line (SX3, SY3)-(SX0, SY0), _RGB(128, 128, 128)
         End If
 
         Lbl_SkipA:
@@ -562,7 +620,7 @@ Do
             If T1_Filter_Selection > 3 Then T1_Filter_Selection = 0
         ElseIf KeyNow = "S" Then
             Animate_Spin = Not Animate_Spin
-        ElseIf KeyNow = "=" Then
+        ElseIf KeyNow = "=" Or KeyNow = "+" Then
             Z_Fight_Bias = Z_Fight_Bias * 2.0
         ElseIf KeyNow = "-" Then
             Z_Fight_Bias = Z_Fight_Bias / 2.0
@@ -768,6 +826,228 @@ Data 0,3
 Data 1,0,1,0,0,0,1,0,0
 Data 0,48,16,32,16,48
 Data 0,3
+
+Sub NearClip (A As vec3d, B As vec3d, C As vec3d, D As vec3d, TA As vertex_attribute5, TB As vertex_attribute5, TC As vertex_attribute5, TD As vertex_attribute5, result As Integer)
+    ' result:
+    ' 0 = do not draw
+    ' 1 = only draw ABCA
+    ' 2 = draw both ABCA and ACDA
+
+    Static d_A_near_z As Single
+    Static d_B_near_z As Single
+    Static d_C_near_z As Single
+    Static clip_score As _Unsigned Integer
+    Static ratio1 As Single
+    Static ratio2 As Single
+
+    d_A_near_z = A.z - Frustum_Near
+    d_B_near_z = B.z - Frustum_Near
+    d_C_near_z = C.z - Frustum_Near
+
+    clip_score = 0
+    If d_A_near_z < 0.0 Then clip_score = clip_score Or 1
+    If d_B_near_z < 0.0 Then clip_score = clip_score Or 2
+    If d_C_near_z < 0.0 Then clip_score = clip_score Or 4
+
+    'Print clip_score;
+
+    Select Case clip_score
+        Case &B000
+            'Print "no clip"
+            result = 1
+
+
+        Case &B001
+            'Print "A is out"
+            result = 2
+
+            ' swap so that drawing order is always ABCA and ACDA
+            D = A
+            A = B
+            B = C
+            C = D
+            TD = TA
+            TA = TB
+            TB = TC
+            TC = TD
+            ' after swap, C is now out. D derived from C.
+
+            ' new D to A
+            ratio1 = (A.z - Frustum_Near) / (A.z - C.z)
+            D.x = (C.x - A.x) * ratio1 + A.x
+            D.y = (C.y - A.y) * ratio1 + A.y
+            D.z = Frustum_Near
+            TD.u = (TC.u - TA.u) * ratio1 + TA.u
+            TD.v = (TC.v - TA.v) * ratio1 + TA.v
+            TD.r = (TC.r - TA.r) * ratio1 + TA.r
+            TD.g = (TC.g - TA.g) * ratio1 + TA.g
+            TD.b = (TC.b - TA.b) * ratio1 + TA.b
+
+            ' B to new C
+            ratio2 = (B.z - Frustum_Near) / (B.z - C.z)
+            C.x = (C.x - B.x) * ratio2 + B.x
+            C.y = (C.y - B.y) * ratio2 + B.y
+            C.z = Frustum_Near
+            TC.u = (TC.u - TB.u) * ratio2 + TB.u
+            TC.v = (TC.v - TB.v) * ratio2 + TB.v
+            TC.r = (TC.r - TB.r) * ratio2 + TB.r
+            TC.g = (TC.g - TB.g) * ratio2 + TB.g
+            TC.b = (TC.b - TB.b) * ratio2 + TB.b
+
+
+        Case &B010
+            'Print "B is out"
+            result = 2
+
+            ' swap so that drawing order is always ABCA and ACDA
+            D = A
+            A = C
+            C = B
+            B = D
+            TD = TA
+            TA = TC
+            TC = TB
+            TB = TD
+            ' after swap, C is now out. D derived from C.
+
+            ' new D to A
+            ratio1 = (A.z - Frustum_Near) / (A.z - C.z)
+            D.x = (C.x - A.x) * ratio1 + A.x
+            D.y = (C.y - A.y) * ratio1 + A.y
+            D.z = Frustum_Near
+            TD.u = (TC.u - TA.u) * ratio1 + TA.u
+            TD.v = (TC.v - TA.v) * ratio1 + TA.v
+            TD.r = (TC.r - TA.r) * ratio1 + TA.r
+            TD.g = (TC.g - TA.g) * ratio1 + TA.g
+            TD.b = (TC.b - TA.b) * ratio1 + TA.b
+
+            ' B to new C
+            ratio2 = (B.z - Frustum_Near) / (B.z - C.z)
+            C.x = (C.x - B.x) * ratio2 + B.x
+            C.y = (C.y - B.y) * ratio2 + B.y
+            C.z = Frustum_Near
+            TC.u = (TC.u - TB.u) * ratio2 + TB.u
+            TC.v = (TC.v - TB.v) * ratio2 + TB.v
+            TC.r = (TC.r - TB.r) * ratio2 + TB.r
+            TC.g = (TC.g - TB.g) * ratio2 + TB.g
+            TC.b = (TC.b - TB.b) * ratio2 + TB.b
+
+
+        Case &B011
+            'Print "C is in"
+            result = 1
+
+            ' new B to C
+            ratio1 = d_C_near_z / (C.z - B.z)
+            B.x = (B.x - C.x) * ratio1 + C.x
+            B.y = (B.y - C.y) * ratio1 + C.y
+            B.z = Frustum_Near
+            TB.u = (TB.u - TC.u) * ratio1 + TC.u
+            TB.v = (TB.v - TC.v) * ratio1 + TC.v
+            TB.r = (TB.r - TC.r) * ratio1 + TC.r
+            TB.g = (TB.g - TC.g) * ratio1 + TC.g
+            TB.b = (TB.b - TC.b) * ratio1 + TC.b
+
+            ' C to new A
+            ratio2 = d_C_near_z / (C.z - A.z)
+            A.x = (A.x - C.x) * ratio2 + C.x
+            A.y = (A.y - C.y) * ratio2 + C.y
+            A.z = Frustum_Near
+            TA.u = (TA.u - TC.u) * ratio2 + TC.u
+            TA.v = (TA.v - TC.v) * ratio2 + TC.v
+            TA.r = (TA.r - TC.r) * ratio2 + TC.r
+            TA.g = (TA.g - TC.g) * ratio2 + TC.g
+            TA.b = (TA.b - TC.b) * ratio2 + TC.b
+
+
+        Case &B100
+            'Print "C is out"
+            result = 2
+
+            ' new D to A
+            ratio1 = d_A_near_z / (A.z - C.z)
+            D.x = (C.x - A.x) * ratio1 + A.x
+            D.y = (C.y - A.y) * ratio1 + A.y
+            D.z = Frustum_Near
+            TD.u = (TC.u - TA.u) * ratio1 + TA.u
+            TD.v = (TC.v - TA.v) * ratio1 + TA.v
+            TD.r = (TC.r - TA.r) * ratio1 + TA.r
+            TD.g = (TC.g - TA.g) * ratio1 + TA.g
+            TD.b = (TC.b - TA.b) * ratio1 + TA.b
+
+            ' B to new C
+            ratio2 = d_B_near_z / (B.z - C.z)
+            C.x = (C.x - B.x) * ratio2 + B.x
+            C.y = (C.y - B.y) * ratio2 + B.y
+            C.z = Frustum_Near
+            TC.u = (TC.u - TB.u) * ratio2 + TB.u
+            TC.v = (TC.v - TB.v) * ratio2 + TB.v
+            TC.r = (TC.r - TB.r) * ratio2 + TB.r
+            TC.g = (TC.g - TB.g) * ratio2 + TB.g
+            TC.b = (TC.b - TB.b) * ratio2 + TB.b
+
+
+        Case &B101
+            'Print "B is in"
+            result = 1
+
+            ' new A to B
+            ratio1 = d_B_near_z / (B.z - A.z)
+            A.x = (A.x - B.x) * ratio1 + B.x
+            A.y = (A.y - B.y) * ratio1 + B.y
+            A.z = Frustum_Near
+            TA.u = (TA.u - TB.u) * ratio1 + TB.u
+            TA.v = (TA.v - TB.v) * ratio1 + TB.v
+            TA.r = (TA.r - TB.r) * ratio1 + TB.r
+            TA.g = (TA.g - TB.g) * ratio1 + TB.g
+            TA.b = (TA.b - TB.b) * ratio1 + TB.b
+
+            ' B to new C
+            ratio2 = d_B_near_z / (B.z - C.z)
+            C.x = (C.x - B.x) * ratio2 + B.x
+            C.y = (C.y - B.y) * ratio2 + B.y
+            C.z = Frustum_Near
+            TC.u = (TC.u - TB.u) * ratio2 + TB.u
+            TC.v = (TC.v - TB.v) * ratio2 + TB.v
+            TC.r = (TC.r - TB.r) * ratio2 + TB.r
+            TC.g = (TC.g - TB.g) * ratio2 + TB.g
+            TC.b = (TC.b - TB.b) * ratio2 + TB.b
+
+
+        Case &B110
+            'Print "A is in"
+            result = 1
+
+            ' A to new B
+            ratio1 = d_A_near_z / (A.z - B.z)
+            B.x = (B.x - A.x) * ratio1 + A.x
+            B.y = (B.y - A.y) * ratio1 + A.y
+            B.z = Frustum_Near
+            TB.u = (TB.u - TA.u) * ratio1 + TA.u
+            TB.v = (TB.v - TA.v) * ratio1 + TA.v
+            TB.r = (TB.r - TA.r) * ratio1 + TA.r
+            TB.g = (TB.g - TA.g) * ratio1 + TA.g
+            TB.b = (TB.b - TA.b) * ratio1 + TA.b
+
+            ' new C to A
+            ratio2 = d_A_near_z / (A.z - C.z)
+            C.x = (C.x - A.x) * ratio2 + A.x
+            C.y = (C.y - A.y) * ratio2 + A.y
+            C.z = Frustum_Near
+            TC.u = (TC.u - TA.u) * ratio2 + TA.u
+            TC.v = (TC.v - TA.v) * ratio2 + TA.v
+            TC.r = (TC.r - TA.r) * ratio2 + TA.r
+            TC.g = (TC.g - TA.g) * ratio2 + TA.g
+            TC.b = (TC.b - TA.b) * ratio2 + TA.b
+
+
+        Case &B111
+            'Print "discard"
+            result = 0
+
+    End Select
+
+End Sub
 
 
 ' Multiply a 3D vector into a 4x4 matrix and output another 3D vector
@@ -1306,8 +1586,7 @@ Function RGB_Lit& (directional As Single, RGB_color As _Unsigned Long)
     g0 = _Green32(RGB_color)
     b0 = _Blue32(RGB_color)
 
-    'scale = directional * (1.0 - LightDiffuseVal) + LightDiffuseVal
-    scale = directional + LightDiffuseVal 'oversaturate the bright colors
+    scale = directional + LightAmbientVal 'oversaturate the bright colors
 
     RGB_Lit& = _RGB32(scale * r0, scale * g0, scale * b0) 'values over 255 are just clamped to 255
 End Function
@@ -1596,6 +1875,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             ' Draw the Horizontal Scanline
             zbuf_index = row * Size_Screen_X + col
             While col < draw_max_x
+
                 tex_z = 1 / tex_w
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
                     Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
