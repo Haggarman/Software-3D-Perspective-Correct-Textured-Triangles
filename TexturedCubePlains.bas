@@ -5,6 +5,7 @@ _Title "Textured Cube Plains"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  2/28/2023 - Improved near frustum clipping
 '  2/27/2023 - Frustum near clipping
 '  2/23/2023 - Texture wrapping options
 '  2/12/2023 - Release to the World
@@ -192,7 +193,7 @@ Cube_Count = Cube_max_X * Cube_max_Z
 Dim Triangles_In_A_Cube
 Triangles_In_A_Cube = 12
 
-Dim Shared Mesh_Last_Element
+Dim Shared Mesh_Last_Element As Integer
 Mesh_Last_Element = Cube_Count * Triangles_In_A_Cube - 1
 Dim mesh(Mesh_Last_Element) As triangle
 
@@ -232,10 +233,10 @@ For cube = 1 To Cube_Count
         Read mesh(A).v1
         Read mesh(A).u2
         Read mesh(A).v2
-        
+
         Read mesh(A).texture
         Read mesh(A).options
-        
+
         mesh(A).x0 = mesh(A).x0 + (Cube_X - (Cube_max_X + 2) * 0.5)
         mesh(A).x1 = mesh(A).x1 + (Cube_X - (Cube_max_X + 2) * 0.5)
         mesh(A).x2 = mesh(A).x2 + (Cube_X - (Cube_max_X + 2) * 0.5)
@@ -478,39 +479,48 @@ Do
             Multiply_Vector3_Matrix4 pointTrans1, matView(), pointView1
             Multiply_Vector3_Matrix4 pointTrans2, matView(), pointView2
 
-            ' Skip if any Z is too close
-            'If (pointView0.z < Frustum_Near) Or (pointView1.z < Frustum_Near) Or (pointView2.z < Frustum_Near) Then
-            '    GoTo Lbl_SkipA
-            'End If
-
-            ' Load up attribute lists here because NearClip may reorder vertices
+            ' Load up attribute lists here because NearClip will interpolate those too.
             vattb0.u = mesh(A).u0: vattb0.v = mesh(A).v0
             vattb1.u = mesh(A).u1: vattb1.v = mesh(A).v1
             vattb2.u = mesh(A).u2: vattb2.v = mesh(A).v2
 
-            NearClip pointView0, pointView1, pointView2, pointView3, vattb0, vattb1, vattb2, vattb3, triCount
-            If triCount = 0 Then GoTo Lbl_SkipA
+            ' Clip if any Z is too close. Assumption is that near clip is uncommon.
+            ' If there is a lot of near clipping going on, please remove this precheck and just always call NearClip.
+            If (pointView0.z < Frustum_Near) Or (pointView1.z < Frustum_Near) Or (pointView2.z < Frustum_Near) Then
+                NearClip pointView0, pointView1, pointView2, pointView3, vattb0, vattb1, vattb2, vattb3, triCount
+                If triCount = 0 Then GoTo Lbl_SkipTriAll
+            Else
+                triCount = 1
+            End If
 
             ' Project triangles from 3D -----------------> 2D
             ProjectMatrixVector4 pointView0, matProj(), pointProj0
             ProjectMatrixVector4 pointView1, matProj(), pointProj1
             ProjectMatrixVector4 pointView2, matProj(), pointProj2
 
-            ' Early scissor reject
-            If pointProj0.x > 1.0 And pointProj1.x > 1.0 And pointProj2.x > 1.0 Then GoTo Lbl_SkipA
-            If pointProj0.x < -1.0 And pointProj1.x < -1.0 And pointProj2.x < -1.0 Then GoTo Lbl_SkipA
-            If pointProj0.y > 1.0 And pointProj1.y > 1.0 And pointProj2.y > 1.0 Then GoTo Lbl_SkipA
-            If pointProj0.y < -1.0 And pointProj1.y < -1.0 And pointProj2.y < -1.0 Then GoTo Lbl_SkipA
+            ' Directional light 1-17-2023
+            dotProdLightDir = Vector3_DotProduct!(tri_normal, vLightDir)
+            If dotProdLightDir < 0.0 Then dotProdLightDir = 0.0
+
+            ' 2-23-2023
+            T1_options = mesh(A).options
 
             ' Slide to center, then Scale into viewport
             SX0 = (pointProj0.x + 1) * halfWidth
             SY0 = (pointProj0.y + 1) * halfHeight
 
-            SX1 = (pointProj1.x + 1) * halfWidth
-            SY1 = (pointProj1.y + 1) * halfHeight
-
             SX2 = (pointProj2.x + 1) * halfWidth
             SY2 = (pointProj2.y + 1) * halfHeight
+
+            ' Early scissor reject
+            If (pointProj0.x > 1.0) And (pointProj1.x > 1.0) And (pointProj2.x > 1.0) Then GoTo Lbl_Skip012
+            If (pointProj0.x < -1.0) And (pointProj1.x < -1.0) And (pointProj2.x < -1.0) Then GoTo Lbl_Skip012
+            If (pointProj0.y > 1.0) And (pointProj1.y > 1.0) And (pointProj2.y > 1.0) Then GoTo Lbl_Skip012
+            If (pointProj0.y < -1.0) And (pointProj1.y < -1.0) And (pointProj2.y < -1.0) Then GoTo Lbl_Skip012
+
+            ' This is unique to triangle 012
+            SX1 = (pointProj1.x + 1) * halfWidth
+            SY1 = (pointProj1.y + 1) * halfHeight
 
             ' Load Vertex List for Textured triangle
             vertexA.x = SX0
@@ -531,12 +541,6 @@ Do
             vertexC.u = vattb2.u * pointProj2.w
             vertexC.v = vattb2.v * pointProj2.w
 
-            ' Directional light 1-17-2023
-            dotProdLightDir = Vector3_DotProduct!(tri_normal, vLightDir)
-            If dotProdLightDir < 0.0 Then dotProdLightDir = 0.0
-
-            ' 2-23-2023
-            T1_options = mesh(A).options
             TexturedVtxColorTriangle vertexA, vertexB, vertexC
 
             ' Wireframe triangle
@@ -544,40 +548,49 @@ Do
             'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
             'Line (SX2, SY2)-(SX0, SY0), _RGB(128, 128, 128)
 
-            If triCount = 1 Then GoTo Lbl_SkipA
+            Lbl_Skip012:
+            If triCount = 2 Then
 
-            ProjectMatrixVector4 pointView3, matProj(), pointProj3
-            SX3 = (pointProj3.x + 1) * halfWidth
-            SY3 = (pointProj3.y + 1) * halfHeight
+                ProjectMatrixVector4 pointView3, matProj(), pointProj3
 
-            ' Reload Vertex List for Textured triangle
-            vertexA.x = SX0
-            vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
-            vertexA.u = vattb0.u * pointProj0.w
-            vertexA.v = vattb0.v * pointProj0.w
+                ' Late scissor reject
+                If (pointProj0.x > 1.0) And (pointProj2.x > 1.0) And (pointProj3.x > 1.0) Then GoTo Lbl_SkipTriAll
+                If (pointProj0.x < -1.0) And (pointProj2.x < -1.0) And (pointProj3.x < -1.0) Then GoTo Lbl_SkipTriAll
+                If (pointProj0.y > 1.0) And (pointProj2.y > 1.0) And (pointProj3.y > 1.0) Then GoTo Lbl_SkipTriAll
+                If (pointProj0.y < -1.0) And (pointProj2.y < -1.0) And (pointProj3.y < -1.0) Then GoTo Lbl_SkipTriAll
 
-            vertexB.x = SX2
-            vertexB.y = SY2
-            vertexB.w = pointProj2.w 'depth
-            vertexB.u = vattb2.u * pointProj2.w
-            vertexB.v = vattb2.v * pointProj2.w
+                ' Slide to center, then Scale into viewport
+                SX3 = (pointProj3.x + 1) * halfWidth
+                SY3 = (pointProj3.y + 1) * halfHeight
 
-            vertexC.x = SX3
-            vertexC.y = SY3
-            vertexC.w = pointProj3.w 'depth
-            vertexC.u = vattb3.u * pointProj3.w
-            vertexC.v = vattb3.v * pointProj3.w
+                ' Reload Vertex List for Textured triangle
+                vertexA.x = SX0
+                vertexA.y = SY0
+                vertexA.w = pointProj0.w 'depth
+                vertexA.u = vattb0.u * pointProj0.w
+                vertexA.v = vattb0.v * pointProj0.w
 
-            TexturedVtxColorTriangle vertexA, vertexB, vertexC
+                vertexB.x = SX2
+                vertexB.y = SY2
+                vertexB.w = pointProj2.w 'depth
+                vertexB.u = vattb2.u * pointProj2.w
+                vertexB.v = vattb2.v * pointProj2.w
 
-            ' Wireframe triangle
-            'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
-            'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
-            'Line (SX3, SY3)-(SX0, SY0), _RGB(128, 128, 128)
+                vertexC.x = SX3
+                vertexC.y = SY3
+                vertexC.w = pointProj3.w 'depth
+                vertexC.u = vattb3.u * pointProj3.w
+                vertexC.v = vattb3.v * pointProj3.w
+
+                TexturedVtxColorTriangle vertexA, vertexB, vertexC
+
+                ' Wireframe triangle
+                'Line (SX0, SY0)-(SX2, SY2), _RGB(128, 128, 128)
+                'Line (SX2, SY2)-(SX3, SY3), _RGB(128, 128, 128)
+                'Line (SX3, SY3)-(SX0, SY0), _RGB(128, 128, 128)
+            End If
+            Lbl_SkipTriAll:
         End If
-
-        Lbl_SkipA:
     Next A
 
     finish_ms = Timer(.001)
@@ -861,76 +874,58 @@ Sub NearClip (A As vec3d, B As vec3d, C As vec3d, D As vec3d, TA As vertex_attri
             'Print "A is out"
             result = 2
 
-            ' swap so that drawing order is always ABCA and ACDA
-            D = A
-            A = B
-            B = C
-            C = D
-            TD = TA
-            TA = TB
-            TB = TC
-            TC = TD
-            ' after swap, C is now out. D derived from C.
-
-            ' new D to A
-            ratio1 = (A.z - Frustum_Near) / (A.z - C.z)
-            D.x = (C.x - A.x) * ratio1 + A.x
-            D.y = (C.y - A.y) * ratio1 + A.y
+            ' C to new D (using C to A)
+            ratio1 = d_C_near_z / (C.z - A.z)
+            D.x = (A.x - C.x) * ratio1 + C.x
+            D.y = (A.y - C.y) * ratio1 + C.y
             D.z = Frustum_Near
-            TD.u = (TC.u - TA.u) * ratio1 + TA.u
-            TD.v = (TC.v - TA.v) * ratio1 + TA.v
-            TD.r = (TC.r - TA.r) * ratio1 + TA.r
-            TD.g = (TC.g - TA.g) * ratio1 + TA.g
-            TD.b = (TC.b - TA.b) * ratio1 + TA.b
+            TD.u = (TA.u - TC.u) * ratio1 + TC.u
+            TD.v = (TA.v - TC.v) * ratio1 + TC.v
+            TD.r = (TA.r - TC.r) * ratio1 + TC.r
+            TD.g = (TA.g - TC.g) * ratio1 + TC.g
+            TD.b = (TA.b - TC.b) * ratio1 + TC.b
 
-            ' B to new C
-            ratio2 = (B.z - Frustum_Near) / (B.z - C.z)
-            C.x = (C.x - B.x) * ratio2 + B.x
-            C.y = (C.y - B.y) * ratio2 + B.y
-            C.z = Frustum_Near
-            TC.u = (TC.u - TB.u) * ratio2 + TB.u
-            TC.v = (TC.v - TB.v) * ratio2 + TB.v
-            TC.r = (TC.r - TB.r) * ratio2 + TB.r
-            TC.g = (TC.g - TB.g) * ratio2 + TB.g
-            TC.b = (TC.b - TB.b) * ratio2 + TB.b
+            ' new A to B, going backward from B
+            ratio2 = d_B_near_z / (B.z - A.z)
+            A.x = (A.x - B.x) * ratio2 + B.x
+            A.y = (A.y - B.y) * ratio2 + B.y
+            A.z = Frustum_Near
+            TA.u = (TA.u - TB.u) * ratio2 + TB.u
+            TA.v = (TA.v - TB.v) * ratio2 + TB.v
+            TA.r = (TA.r - TB.r) * ratio2 + TB.r
+            TA.g = (TA.g - TB.g) * ratio2 + TB.g
+            TA.b = (TA.b - TB.b) * ratio2 + TB.b
 
 
         Case &B010
             'Print "B is out"
             result = 2
 
-            ' swap so that drawing order is always ABCA and ACDA
-            D = A
-            A = C
-            C = B
-            B = D
-            TD = TA
-            TA = TC
-            TC = TB
-            TB = TD
-            ' after swap, C is now out. D derived from C.
+            ' the oddball case
+            D = C
+            TD = TC
 
-            ' new D to A
-            ratio1 = (A.z - Frustum_Near) / (A.z - C.z)
-            D.x = (C.x - A.x) * ratio1 + A.x
-            D.y = (C.y - A.y) * ratio1 + A.y
-            D.z = Frustum_Near
-            TD.u = (TC.u - TA.u) * ratio1 + TA.u
-            TD.v = (TC.v - TA.v) * ratio1 + TA.v
-            TD.r = (TC.r - TA.r) * ratio1 + TA.r
-            TD.g = (TC.g - TA.g) * ratio1 + TA.g
-            TD.b = (TC.b - TA.b) * ratio1 + TA.b
-
-            ' B to new C
-            ratio2 = (B.z - Frustum_Near) / (B.z - C.z)
-            C.x = (C.x - B.x) * ratio2 + B.x
-            C.y = (C.y - B.y) * ratio2 + B.y
+            ' old B to new C, going backward from C to B
+            ratio1 = d_C_near_z / (C.z - B.z)
+            C.x = (B.x - C.x) * ratio1 + C.x
+            C.y = (B.y - C.y) * ratio1 + C.y
             C.z = Frustum_Near
-            TC.u = (TC.u - TB.u) * ratio2 + TB.u
-            TC.v = (TC.v - TB.v) * ratio2 + TB.v
-            TC.r = (TC.r - TB.r) * ratio2 + TB.r
-            TC.g = (TC.g - TB.g) * ratio2 + TB.g
-            TC.b = (TC.b - TB.b) * ratio2 + TB.b
+            TC.u = (TB.u - TC.u) * ratio1 + TC.u
+            TC.v = (TB.v - TC.v) * ratio1 + TC.v
+            TC.r = (TB.r - TC.r) * ratio1 + TC.r
+            TC.g = (TB.g - TC.g) * ratio1 + TC.g
+            TC.b = (TB.b - TC.b) * ratio1 + TC.b
+
+            ' A to new B, going forward from A
+            ratio2 = d_A_near_z / (A.z - B.z)
+            B.x = (B.x - A.x) * ratio2 + A.x
+            B.y = (B.y - A.y) * ratio2 + A.y
+            B.z = Frustum_Near
+            TB.u = (TB.u - TA.u) * ratio2 + TA.u
+            TB.v = (TB.v - TA.v) * ratio2 + TA.v
+            TB.r = (TB.r - TA.r) * ratio2 + TA.r
+            TB.g = (TB.g - TA.g) * ratio2 + TA.g
+            TB.b = (TB.b - TA.b) * ratio2 + TA.b
 
 
         Case &B011
