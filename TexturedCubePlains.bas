@@ -1,10 +1,19 @@
 Option _Explicit
 _Title "Textured Cube Plains"
 ' 2023 Haggarman
-' Draw a few perspective correct textured cubes in 3D.
+' Plane of rectangles to test fill rate and near frustum clipping.
+' Adjust the field of view with + or - keys.
+' Move inside the rectangles and/or enlarge the FOV to really see the clipping action.
+'
+' A few things to note:
+'  Triangles Drawn Display: The first number is mesh triangles actually drawn. The second is new triangles added because of clipping.
+'  Performance: Excessive overdraw of surfaces is intentional. This was to see that fill rate needs to be improved (and it can be).
+'  Stretched Texture: To be able to repeat tiles efficiently, T1 will need to be broken up into individual textures.
+'
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  3/04/2023 - Bugfix for wide triangles (make col a Long)
 '  2/28/2023 - Improved near frustum clipping
 '  2/27/2023 - Frustum near clipping
 '  2/23/2023 - Texture wrapping options
@@ -38,8 +47,8 @@ Dim Cube_max_Z As Integer
 ' MODIFY THESE if you want.
 Size_Screen_X = 640
 Size_Screen_Y = 480
-Cube_max_X = 30 'columns of cubes in the X direction
-Cube_max_Z = 24 'rows of cubes in the Z direction
+Cube_max_X = 18 'columns of rectangles in the X direction
+Cube_max_Z = 2 'rows of rectangles in the Z direction
 
 Screen _NewImage(Size_Screen_X, Size_Screen_Y, 32)
 _DontBlend
@@ -51,7 +60,7 @@ Dim Shared Screen_Z_Buffer(Screen_Z_Buffer_MaxElement) As Single
 ' Z Fight has to do with overdrawing on top of the same coplanar surface.
 ' If it is positive, a newer pixel at the same exact Z will always overdraw the older one.
 Dim Shared Z_Fight_Bias
-Z_Fight_Bias = -0.001953125 / 32.0
+Z_Fight_Bias = -0.001953125 / 4.0
 
 Type vec3d
     x As Single
@@ -108,10 +117,10 @@ End Type
 
 ' Projection Matrix
 Dim Shared Frustum_Near As Single
-Dim Frustum_Far As Single
-Dim Frustum_FOV_deg As Single
-Dim Frustum_Aspect_Ratio As Single
-Dim Frustum_FOV_ratio As Single
+Dim Shared Frustum_Far As Single
+Dim Shared Frustum_FOV_deg As Single
+Dim Shared Frustum_Aspect_Ratio As Single
+Dim Shared Frustum_FOV_ratio As Single
 
 Frustum_Near = 0.5
 Frustum_Far = 1000.0
@@ -119,7 +128,7 @@ Frustum_FOV_deg = 60.0
 Frustum_Aspect_Ratio = _Height / _Width
 Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
 
-Dim matProj(3, 3) As Single
+Dim Shared matProj(3, 3) As Single
 matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
 matProj(1, 1) = Frustum_FOV_ratio
 matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
@@ -212,7 +221,7 @@ For cube = 1 To Cube_Count
     End If
     If Cube_Z > Cube_max_Z Then Cube_Z = 1
 
-    Rand1 = Rnd * .4 + Cube_Z * 0.024
+    Rand1 = Rnd * .4 + Cube_Z * 0.054 'these magic numbers are just to look visually interesting
 
     For tri_num = 0 To Triangles_In_A_Cube - 1
         Read mesh(A).x0
@@ -245,9 +254,9 @@ For cube = 1 To Cube_Count
         mesh(A).y1 = mesh(A).y1 - 2 + Rand1
         mesh(A).y2 = mesh(A).y2 - 2 + Rand1
 
-        mesh(A).z0 = mesh(A).z0 + .9 + 1 * Cube_Z
-        mesh(A).z1 = mesh(A).z1 + .9 + 1 * Cube_Z
-        mesh(A).z2 = mesh(A).z2 + .9 + 1 * Cube_Z
+        mesh(A).z0 = mesh(A).z0 * 10 + .9 + 10 * Cube_Z
+        mesh(A).z1 = mesh(A).z1 * 10 + .9 + 10 * Cube_Z
+        mesh(A).z2 = mesh(A).z2 * 10 + .9 + 10 * Cube_Z
 
         A = A + 1
     Next tri_num
@@ -375,7 +384,9 @@ Dim finish_ms As Double
 Dim KeyNow As String
 Dim ExitCode As Integer
 Dim Animate_Spin As Integer
+Dim Triangles_Drawn As Long
 Dim triCount As Integer
+Dim New_Triangles_Drawn As Long 'because of clipping
 
 ' Clear Z-Buffer
 Dim L As _Unsigned Long
@@ -388,6 +399,7 @@ $Checking:Off
 ExitCode = 0
 Animate_Spin = 0
 T1_Filter_Selection = 1
+fYaw = 0
 Do
     If Animate_Spin Then
         spinAngleDegZ = spinAngleDegZ + (0.980)
@@ -424,6 +436,8 @@ Do
     ' Make view matrix from Camera
     Matrix4_QuickInverse matCamera(), matView()
 
+    Triangles_Drawn = 0
+    New_Triangles_Drawn = 0
     start_ms = Timer(.001)
 
     ' Clear Screen
@@ -547,6 +561,7 @@ Do
             'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
             'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
             'Line (SX2, SY2)-(SX0, SY0), _RGB(128, 128, 128)
+            Triangles_Drawn = Triangles_Drawn + 1
 
             Lbl_Skip012:
             If triCount = 2 Then
@@ -588,6 +603,8 @@ Do
                 'Line (SX0, SY0)-(SX2, SY2), _RGB(128, 128, 128)
                 'Line (SX2, SY2)-(SX3, SY3), _RGB(128, 128, 128)
                 'Line (SX3, SY3)-(SX0, SY0), _RGB(128, 128, 128)
+                New_Triangles_Drawn = New_Triangles_Drawn + 1
+
             End If
             Lbl_SkipTriAll:
         End If
@@ -621,6 +638,10 @@ Do
     End If
 
     'Print "Z Fight Bias (+\-): "; Z_Fight_Bias
+    
+    Print "+FOV- Degrees: "; Frustum_FOV_deg
+
+    Print "Triangles Drawn: "; Triangles_Drawn; "+"; New_Triangles_Drawn
 
     _Limit 30
     _Display
@@ -634,11 +655,11 @@ Do
         ElseIf KeyNow = "S" Then
             Animate_Spin = Not Animate_Spin
         ElseIf KeyNow = "=" Or KeyNow = "+" Then
-            Z_Fight_Bias = Z_Fight_Bias * 2.0
+            Frustum_FOV_deg = Frustum_FOV_deg - 5.0
+            FOVchange
         ElseIf KeyNow = "-" Then
-            Z_Fight_Bias = Z_Fight_Bias / 2.0
-        ElseIf KeyNow = "\" Then
-            Z_Fight_Bias = -Z_Fight_Bias
+            Frustum_FOV_deg = Frustum_FOV_deg + 5.0
+            FOVchange
 
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
@@ -839,6 +860,17 @@ Data 0,3
 Data 1,0,1,0,0,0,1,0,0
 Data 0,48,16,32,16,48
 Data 0,3
+
+Sub FOVchange
+    If Frustum_FOV_deg < 10.0 Then Frustum_FOV_deg = 10.0
+    If Frustum_FOV_deg > 140.0 Then Frustum_FOV_deg = 140.0
+    Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
+    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
+    matProj(1, 1) = Frustum_FOV_ratio
+    matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
+    matProj(2, 3) = 1.0
+    matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
+End Sub
 
 Sub NearClip (A As vec3d, B As vec3d, C As vec3d, D As vec3d, TA As vertex_attribute5, TB As vertex_attribute5, TC As vertex_attribute5, TD As vertex_attribute5, result As Integer)
     ' result:
@@ -1353,7 +1385,7 @@ Function ReadTexel3Point& (ccol As Single, rrow As Single)
     b0 = _Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11
 
     'ReadTexel3Point& = _RGB32(r0, g0, b0)
-    ReadTexel3Point& = _SHL(r0, 16) Or _SHL(g0, 8) Or b0
+    ReadTexel3Point& = _ShL(r0, 16) Or _ShL(g0, 8) Or b0
 End Function
 
 
@@ -1517,7 +1549,7 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
     Frac_rr1_FIX8 = (rm5 - Int(rm5)) * 128
 
     ' cache
-    this_cache = _SHL(rr, 16) Or cc
+    this_cache = _ShL(rr, 16) Or cc
     If this_cache <> last_cache Then
         uv_0_0 = Texture1(cc, rr)
         uv_1_0 = Texture1(cc1, rr)
@@ -1529,24 +1561,24 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
     End If
 
     r0 = _Red32(uv_0_0)
-    r0 = _SHR((_Red32(uv_1_0) - r0) * Frac_cc1_FIX8, 7) + r0
+    r0 = _ShR((_Red32(uv_1_0) - r0) * Frac_cc1_FIX8, 7) + r0
 
     g0 = _Green32(uv_0_0)
-    g0 = _SHR((_Green32(uv_1_0) - g0) * Frac_cc1_FIX8, 7) + g0
+    g0 = _ShR((_Green32(uv_1_0) - g0) * Frac_cc1_FIX8, 7) + g0
 
     b0 = _Blue32(uv_0_0)
-    b0 = _SHR((_Blue32(uv_1_0) - b0) * Frac_cc1_FIX8, 7) + b0
+    b0 = _ShR((_Blue32(uv_1_0) - b0) * Frac_cc1_FIX8, 7) + b0
 
     r1 = _Red32(uv_0_1)
-    r1 = _SHR((_Red32(uv_1_1) - r1) * Frac_cc1_FIX8, 7) + r1
+    r1 = _ShR((_Red32(uv_1_1) - r1) * Frac_cc1_FIX8, 7) + r1
 
     g1 = _Green32(uv_0_1)
-    g1 = _SHR((_Green32(uv_1_1) - g1) * Frac_cc1_FIX8, 7) + g1
+    g1 = _ShR((_Green32(uv_1_1) - g1) * Frac_cc1_FIX8, 7) + g1
 
     b1 = _Blue32(uv_0_1)
-    b1 = _SHR((_Blue32(uv_1_1) - b1) * Frac_cc1_FIX8, 7) + b1
+    b1 = _ShR((_Blue32(uv_1_1) - b1) * Frac_cc1_FIX8, 7) + b1
 
-    ReadTexelBiLinearFix& = _SHL(_SHR((r1 - r0) * Frac_rr1_FIX8, 7) + r0, 16) Or _SHL(_SHR((g1 - g0) * Frac_rr1_FIX8, 7) + g0, 8) Or _SHR((b1 - b0) * Frac_rr1_FIX8, 7) + b0
+    ReadTexelBiLinearFix& = _ShL(_ShR((r1 - r0) * Frac_rr1_FIX8, 7) + r0, 16) Or _ShL(_ShR((g1 - g0) * Frac_rr1_FIX8, 7) + g0, 8) Or _ShR((b1 - b0) * Frac_rr1_FIX8, 7) + b0
 End Function
 
 
@@ -1621,14 +1653,14 @@ Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long)
     g2 = _Green32(RGB_Mod) + 1 'but do it in a way that is not a division
     b2 = _Blue32(RGB_Mod) + 1
 
-    RGB_Modulate& = _RGB32(_SHR(r1 * r2, 8), _SHR(g1 * g2, 8), _SHR(b1 * b2, 8))
+    RGB_Modulate& = _RGB32(_ShR(r1 * r2, 8), _ShR(g1 * g2, 8), _ShR(b1 * b2, 8))
 End Function
 
 
 Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
-    Dim delta2 As vertex8
-    Dim delta1 As vertex8
-    Dim draw_min_y As Long, draw_max_y As Long
+    Static delta2 As vertex8
+    Static delta1 As vertex8
+    Static draw_min_y As Long, draw_max_y As Long
 
     ' Sort so that vertex A is on top and C is on bottom.
     ' This seems inverted from math class, but remember that Y increases in value downward on PC monitors
@@ -1668,13 +1700,13 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' DDA is Digital Differential Analyzer
     ' It is an accumulator that counts from a known start point to an end point, in equal increments defined by the number of steps in-between.
     ' Probably faster nowadays to do the one division at the start, instead of Bresenham, anyway.
-    Dim d_legx1_step As Single
-    Dim dw1_step As Single, du1_step As Single, dv1_step As Single
-    Dim dred1_step As Single, dgreen1_step As Single, dblue1_step As Single
+    Static d_legx1_step As Single
+    Static dw1_step As Single, du1_step As Single, dv1_step As Single
+    Static dred1_step As Single, dgreen1_step As Single, dblue1_step As Single
 
-    Dim d_legx2_step As Single
-    Dim dw2_step As Single, du2_step As Single, dv2_step As Single
-    Dim dred2_step As Single, dgreen2_step As Single, dblue2_step As Single
+    Static d_legx2_step As Single
+    Static dw2_step As Single, du2_step As Single, dv2_step As Single
+    Static dred2_step As Single, dgreen2_step As Single, dblue2_step As Single
 
     ' Leg 2 steps from A to C (the full triangle height)
     d_legx2_step = delta2.x / delta2.y
@@ -1688,7 +1720,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' Leg 1, Draw top to middle
     ' For most triangles, draw downward from the apex A to a knee B.
     ' That knee could be on either the left or right side, but that is handled much later.
-    Dim draw_middle_y As Long
+    Static draw_middle_y As Long
     draw_middle_y = _Ceil(B.y)
     If draw_middle_y < clip_min_y Then draw_middle_y = clip_min_y
     ' Do not clip B to max_y. Let the y count expire before reaching the knee if it is past bottom of screen.
@@ -1717,16 +1749,16 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     End If
 
     ' Y Accumulators
-    Dim leg_x1 As Single
-    Dim tex_w1 As Single, tex_u1 As Single, tex_v1 As Single
-    Dim tex_r1 As Single, tex_g1 As Single, tex_b1 As Single
+    Static leg_x1 As Single
+    Static tex_w1 As Single, tex_u1 As Single, tex_v1 As Single
+    Static tex_r1 As Single, tex_g1 As Single, tex_b1 As Single
 
-    Dim leg_x2 As Single
-    Dim tex_w2 As Single, tex_u2 As Single, tex_v2 As Single
-    Dim tex_r2 As Single, tex_g2 As Single, tex_b2 As Single
+    Static leg_x2 As Single
+    Static tex_w2 As Single, tex_u2 As Single, tex_v2 As Single
+    Static tex_r2 As Single, tex_g2 As Single, tex_b2 As Single
 
     ' 11-4-2022 Prestep Y
-    Dim prestep_y1 As Single
+    Static prestep_y1 As Single
     ' Basically we are sampling pixels on integer exact rows.
     ' But we only are able to know the next row by way of forward interpolation. So always round up.
     ' To get to that next row, we have to prestep by the fractional forward distance from A. _Ceil(A.y) - A.y
@@ -1749,21 +1781,21 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     tex_b2 = A.b + prestep_y1 * dblue2_step
 
     ' Inner loop vars
-    Dim row As Integer
-    Dim col As Integer
-    Dim draw_max_x As Integer
-    Dim zbuf_index As _Unsigned Long ' Z-Buffer
-    Dim tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
+    Static row As Long
+    Static col As Long
+    Static draw_max_x As Long
+    Static zbuf_index As _Unsigned Long ' Z-Buffer
+    Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
 
     ' Stepping along the X direction
-    Dim delta_x As Single
-    Dim prestep_x As Single
-    Dim tex_w_step As Single, tex_u_step As Single, tex_v_step As Single
-    Dim tex_r_step As Single, tex_g_step As Single, tex_b_step As Single
+    Static delta_x As Single
+    Static prestep_x As Single
+    Static tex_w_step As Single, tex_u_step As Single, tex_v_step As Single
+    Static tex_r_step As Single, tex_g_step As Single, tex_b_step As Single
 
     ' X Accumulators
-    Dim tex_w As Single, tex_u As Single, tex_v As Single
-    Dim tex_r As Single, tex_g As Single, tex_b As Single
+    Static tex_w As Single, tex_u As Single, tex_v As Single
+    Static tex_r As Single, tex_g As Single, tex_b As Single
 
     row = draw_min_y
     While row <= draw_max_y

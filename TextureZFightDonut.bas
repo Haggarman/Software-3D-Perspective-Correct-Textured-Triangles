@@ -9,6 +9,7 @@ _Title "Texture Z Fight Donut"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  3/04/2023 - Bugfix for wide triangles (make col a Long)
 '  2/23/2023 - Texture wrapping options
 '  2/18/2023 - Utilize all reasonable and known methods to speed up the inner pixel X drawing loop.
 '  2/12/2023 - Release to the World
@@ -34,7 +35,6 @@ _Title "Texture Z Fight Donut"
 '          Some other clever genius thought of the triangle knee concept, but I think I explain it better in code.
 '          It is thus easy to draw perspective correct textures in software.
 '
-$Checking:Off
 Dim Shared DISP_IMAGE As Long
 Dim Shared WORK_IMAGE As Long
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
@@ -187,15 +187,15 @@ Next row
 Dim Triangles_In_A_Cube
 Triangles_In_A_Cube = 12
 
-Dim Shared Mesh_Last_Element
+Dim Shared Mesh_Last_Element As Integer
 Mesh_Last_Element = Cube_Count * Triangles_In_A_Cube - 1
 Dim mesh(Mesh_Last_Element) As triangle
 
 Dim cube As Integer
 Dim tri_num As Integer
+Dim A As Integer
 
 Dim offset As Single
-Dim A As Integer
 
 A = 0
 For cube = 1 To Cube_Count
@@ -311,8 +311,8 @@ vLightDir.y = 10.0 '+Y is now up
 vLightDir.z = -5.0
 Vector3_Normalize vLightDir
 Dim Shared dotProdLightDir As Single
-Dim Shared LightDiffuseVal As Single
-LightDiffuseVal = 0.3
+Dim Shared LightAmbientVal As Single
+LightAmbientVal = 0.3
 
 
 ' Screen Scaling
@@ -359,6 +359,7 @@ For L = 0 To Screen_Z_Buffer_MaxElement
     Screen_Z_Buffer(L) = 3.402823E+38 ' https://qb64phoenix.com/qb64wiki/index.php/Variable_Types
 Next L
 
+$Checking:Off
 main:
 ExitCode = 0
 Animate_Spin = -1
@@ -1077,9 +1078,9 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     tex_b2 = A.b + prestep_y1 * dblue2_step
 
     ' Inner loop vars
-    Static row As Integer
-    Static col As Integer
-    Static draw_max_x As Integer
+    Static row As Long
+    Static col As Long
+    Static draw_max_x As Long
     Static zbuf_index As _Unsigned Long ' Z-Buffer
     Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
     Static pixel_value As _Unsigned Long ' The ARGB value to write to screen
@@ -1311,7 +1312,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
 
                     '---- Begin Inline Directional Lighting
                     Static scale As Single
-                    scale = dotProdLightDir + LightDiffuseVal 'oversaturate the bright colors
+                    scale = dotProdLightDir + LightAmbientVal 'oversaturate the bright colors
                     r0 = r0 * scale
                     g0 = g0 * scale
                     b0 = b0 * scale
