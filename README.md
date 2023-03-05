@@ -9,6 +9,7 @@
  ![Textured Cube Plains](https://user-images.githubusercontent.com/96515734/219141104-2c77c587-f4d6-4f52-baaa-d302638e0d97.PNG)
  ![Vertex Color Cube](https://user-images.githubusercontent.com/96515734/219141230-6d9a9d36-ec02-4c5a-94eb-a01773a02b5b.PNG)
  ![Dither Color Cube](https://user-images.githubusercontent.com/96515734/219270641-b560848f-5ef0-429c-9c9c-6191e8ac88a9.png)
+ ![Skybox Long Tube](https://user-images.githubusercontent.com/96515734/222982848-81e9a2b5-2fa4-4dbf-af8a-e3ee4164b683.png)
  
 ## Approach
  QBASIC was used because of the very quick edit-compile-test iterations. I wanted this exploration to be fun.
