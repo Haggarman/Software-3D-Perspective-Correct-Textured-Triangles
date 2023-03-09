@@ -31,6 +31,52 @@
  To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same amount. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region.
 ### Knee B
  When the Minor Edge DDAs reach vertexBy, the start values and steps are recalculated to be from point B to point C. Note that this case also handles a flat-topped triangle where vertexBy = vertexAy.
+ 
+## Clipping
+### Near Frustum Clipping
+For this discussion, I am asserting that an object moving forward from the viewer increases in +Z distance. Note this can differ in well-known graphics libraries.
+
+Projecting and rendering what is behind the camera (-Z) makes no sense perceptually. Although it might be mathematically correct for surfaces to invert that pass the Z=0 camera plane, we do not have double-sided eyeballs that are able to simultaneously project light onto both sides of our retinas. So we need to handle this limited field of view while rendering.
+
+We have 3 options:
+
+1. Constrain movement so that any Z coordinate can never be less than the near frustrum plane Z value.
+2. Do not draw (as in cull) the triangle if any Z is less than the near frustum plane Z value.
+3. Clip the triangle so that its Z coordinates remain at least at the near frustum.
+
+I would say the options follow a natural progression, where many programmers give up before reaching option 3.
+
+With option 3, we are fortunate with front clipping because the near frustum plane is always parallel to the rendering screen surface (with traditional single-point projection). This takes the required math down from a 3D vector intersecting a 3D plane, to a 2D line intersecting a 1D plane.
+
+#### Tesselation
+
+We are also in a sense unlucky in trying to just draw triangles. If one Z value (of 3) needs to be clipped, this creates a 4 point "quadrangle". We need to tesselate to create 2 triangles out of this quadrangle.
+
+#### Winding Order
+
+Imagine hammering 3 nails partially into a board. The nails representing the vertexes of the triangle. Then proceed to wrap a string around the outline of these nails. You have 2 ways of winding: clockwise or counter-clockwise. Preserving winding order preserves which side of the tesselated triangle is facing the viewer.
+
+Setting some ground rules can make this clipping process less painful. In this codebase, two triangles share a side (vertex A and vertex C). Triangles wind in the following order:
+
+Triangle 1: A to B, B to C, **C to A**
+
+Triangle 2: **A to C**, C to D, D to A
+
+#### Number of Triangles
+
+In the near clipping function, we return the number of triangles (n = 0, 1, or 2).
+
+- n = 0: The input triangle is culled (not drawn).
+
+- n = 1: Do not need Triangle 2, so do not update vertex D but do update vertexes A, B, and C.
+
+- n = 2: Cautiously update vertex D along with vertexes A, B, and C. Preserve "winding order".
+
+#### Backface culling
+
+Imagine ink bleeding through paper so that both sides have ink on them. The printed side is the front face, and the opposite bled-through side is the back face. Seeing both sides is sometimes desirable, like for a leaf. But with closed, solid objects made of multiple triangles, it is more efficient to not draw the back-facing triangles because they will never be seen.
+
+The sign (positive or negative) of the triangle's **surface normal** as compared (dot product) to a ray extending out from the viewer can determine which side of the triangle is facing the viewer. the Z value of this surface normal can be used if re-calculated after rotation and translation but before projection, because the view normal is usually (0, 0, 1). If the triangle were to be viewed perfectly edge-on to have a value of 0, it is also invisible because it is infinitely thin. So not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
 
 ## Texture Filters
 ### Texture Magnification
