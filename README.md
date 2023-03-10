@@ -46,7 +46,7 @@ We have 3 options:
 
 I would say the options follow a natural progression, where many programmers give up before reaching option 3.
 
-With option 3, we are fortunate with front clipping because the near frustum plane is always parallel to the rendering screen surface (with traditional single-point projection). This takes the required math down from a 3D vector intersecting a 3D plane, to a 2D line intersecting a 1D plane.
+With option 3, we are fortunate with front clipping because the near frustum plane is always parallel to the rendering screen surface (with traditional single-point projection). This reduces the required math down from a 3D vector intersecting a 3D plane, to a 2D line intersecting a 1D plane.
 
 #### Tesselation
 
@@ -62,9 +62,11 @@ Triangle 1: A to B, B to C, **C to A**
 
 Triangle 2: **A to C**, C to D, D to A
 
+![Triangle Near Clip](https://user-images.githubusercontent.com/96515734/224221060-d9673899-82c3-4f87-b502-88fde7c958ec.png)
+
 #### Number of Triangles
 
-In the near clipping function, we return the number of triangles (n = 0, 1, or 2).
+The near clipping function returns the number of triangles (n = 0, 1, or 2) after clipping.
 
 - n = 0: The input triangle is culled (not drawn).
 
@@ -74,9 +76,9 @@ In the near clipping function, we return the number of triangles (n = 0, 1, or 2
 
 #### Backface culling
 
-Imagine ink bleeding through paper so that both sides have ink on them. The printed side is the front face, and the opposite bled-through side is the back face. Seeing both sides is sometimes desirable, like for a leaf. But with closed, solid objects made of multiple triangles, it is more efficient to not draw the back-facing triangles because they will never be seen.
+Imagine ink bleeding through paper so that both sides have ink on them. The printed side is the front face, and the opposite bled-through side is the back face. Seeing both sides is sometimes desirable, like for a leaf. But with closed solid objects made of multiple triangles, it is more efficient to not draw the back-facing triangles because they will never be seen.
 
-The sign (positive or negative) of the triangle's **surface normal** as compared (dot product) to a ray extending out from the viewer can determine which side of the triangle is facing the viewer. the Z value of this surface normal can be used if re-calculated after rotation and translation but before projection, because the view normal is usually (0, 0, 1). If the triangle were to be viewed perfectly edge-on to have a value of 0, it is also invisible because it is infinitely thin. So not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
+The sign (positive or negative) of the triangle's **surface normal** as compared (dot product) to a ray extending out from the viewer can determine which side of the triangle is facing the viewer. The Z value of this surface normal can be used if re-calculated after rotation and translation but before projection, because the view normal is usually (0, 0, 1). If the triangle were to be viewed perfectly edge-on to have a value of 0, it is also invisible because it is infinitely thin. So not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
 
 ## Texture Filters
 ### Texture Magnification
