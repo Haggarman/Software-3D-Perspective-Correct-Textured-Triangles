@@ -6,10 +6,11 @@
  
  For extra fun there are blending operations like Fog, Vertex Color, and Directional/Ambient lighting.
 ## Screenshots
- ![Textured Cube Plains](https://user-images.githubusercontent.com/96515734/219141104-2c77c587-f4d6-4f52-baaa-d302638e0d97.PNG)
+ ![Textured Cube Plains 640](https://user-images.githubusercontent.com/96515734/224503609-ac961d99-c086-400e-b1f9-a1a8c639f918.PNG)
  ![Vertex Color Cube](https://user-images.githubusercontent.com/96515734/219141230-6d9a9d36-ec02-4c5a-94eb-a01773a02b5b.PNG)
  ![Dither Color Cube](https://user-images.githubusercontent.com/96515734/219270641-b560848f-5ef0-429c-9c9c-6191e8ac88a9.png)
- ![Skybox Long Tube](https://user-images.githubusercontent.com/96515734/222982848-81e9a2b5-2fa4-4dbf-af8a-e3ee4164b683.png)
+ ![Texture Z Fight Donut](https://user-images.githubusercontent.com/96515734/224503149-33eb6e8a-73cc-473b-a61c-5c3262b0c93f.PNG)
+ ![Skybox Long Tube 800](https://user-images.githubusercontent.com/96515734/224502776-09c13ed1-60a6-4074-a7d4-dd2b05e30085.png)
  
 ## Approach
  QBASIC was used because of the very quick edit-compile-test iterations. I wanted this exploration to be fun.
