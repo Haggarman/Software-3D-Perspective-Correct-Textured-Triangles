@@ -34,9 +34,9 @@
  
 ## Clipping
 ### Near Frustum Clipping
-For this discussion, I am asserting that an object moving forward from the viewer increases in +Z distance. Note this can differ in well-known graphics libraries.
+ For this discussion, I am asserting that an object moving forward from the viewer increases in +Z distance. Note this can differ in well-known graphics libraries.
 
-Projecting and rendering what is behind the camera (-Z) makes no sense perceptually. Although it might be mathematically correct for surfaces to invert that pass the Z=0 camera plane, we do not have double-sided eyeballs that are able to simultaneously project light onto both sides of our retinas. So we need to handle this limited field of view while rendering.
+ Projecting and rendering what is behind the camera (-Z) makes no sense perceptually. Although it might be mathematically correct for surfaces to invert that pass the Z=0 camera plane, we do not have double-sided eyeballs that are able to simultaneously project light onto both sides of our retinas. So we need to handle this limited field of view while rendering.
 
 We have 3 options:
 
@@ -74,11 +74,15 @@ The near clipping function returns the number of triangles (n = 0, 1, or 2) afte
 
 - n = 2: Cautiously update vertex D along with vertexes A, B, and C. Preserve "winding order".
 
-#### Backface culling
+#### Demonstration
+
+The test program that was used to develop and debug the NearClip function is available in the concepts folder. Program *NearFrustumClipTriangleAttributes.bas* rotates and clips a single triangle, while animating the winding order as crawling dots.
+
+### Backface culling
 
 Imagine ink bleeding through paper so that both sides have ink on them. The printed side is the front face, and the opposite bled-through side is the back face. Seeing both sides is sometimes desirable, like for a leaf. But with closed solid objects made of multiple triangles, it is more efficient to not draw the back-facing triangles because they will never be seen.
 
-The sign (positive or negative) of the triangle's **surface normal** as compared (dot product) to a ray extending out from the viewer can determine which side of the triangle is facing the viewer. The Z value of this surface normal can be used if re-calculated after rotation and translation but before projection, because the view normal is usually (0, 0, 1). If the triangle were to be viewed perfectly edge-on to have a value of 0, it is also invisible because it is infinitely thin. So not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
+The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer. The Z value of this surface normal can be used if re-calculated after rotation and translation but before projection, because the view normal is usually (0, 0, 1). If the triangle were to be viewed perfectly edge-on to have a value of 0, it is also invisible because it is infinitely thin. So not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
 
 ## Texture Filters
 ### Texture Magnification
@@ -134,6 +138,16 @@ ID | Name | Description
  Area = 2 * 1/2 * 1.0 * Fractional_U is just Fractional_U.
 
  So it ends up being 3 area multiplications per color component. For RGB, that is just 9 total multiplications.
+
+### Texture boundaries
+
+Nothing is really preventing the U or V texel coordinates from going outside of the range of the sampled texture. The question becomes what to do. And the answer is that it depends on what the artist wants. So it makes sense to give them the option.
+
+1. Tile - Texture is regularly repeated. The bitwise AND function is used to keep only the lower significant bits.
+2. Clamp - Texture coordinates are clamped to the min and max boundaries of the texture.
+3. Decal - Texture simply is not drawn if coordinates are outside the boundaries of the texture.
+
+A program named *TextureWrapOptions.bas* in the Concepts folder was used to develop the Tile versus Clamp options. It draws a 2D visual as the options are changed by pressing number keys on the keyboard.
 
 ## Fog (Depth Cueing)
  Fog is calculated at the end of the pixel blending process. Fog is usually intended to have objects blend into a background color with increasing distance from the viewer.
