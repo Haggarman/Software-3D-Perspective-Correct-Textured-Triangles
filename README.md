@@ -156,3 +156,21 @@ A program named *TextureWrapOptions.bas* in the Concepts folder was used to deve
  It is implemented here as a gradient, where the input color values blend linearly into the fog color for Z values between the fog_near and fog_far variables. If the input Z value is closer than the fog_near value, the input color values are passed through unchanged. At the fog_far Z value and beyond, the input color is replaced with the fog color but yet the Z-Buffer is still updated and the screen pixel is still drawn.
  
  I could not arrive at a rational reason why fog tables existed, so just the gradient is implemented here for simplicity sake. For different batches of triangles with different visual rendering requirements, the depths fog_near and fog_far could be adjusted accordingly.
+
+## Retrospective
+### Introduction
+ A lot of what I researched and discovered cannot be reflected in these program's source. But perhaps you would appreciate some brief random thoughts.
+### Design Mindset
+ It would have been tough to predict the winning companies in the PC 3D Accelerator era. Consider two approaches that could not have been more different: S3 ViRGE series versus 3dfx Voodoo series.
+- S3 had an extremely well-performing and well-priced 2D accelerator Super VGA chip. To ride the wave they decided to tack on a minimalistic 3D triangle edge stepper. Their new 3D chip fit in the same PCB footprint as their earlier 2D only chip. This is the cautious retreat approach. Let's not kill our existing income base on a risky fad that might not ever materialize. Be able to roll back to safe territory when the smoke clears. Did you know the ViRGE series had hardware video playback overlay and NTSC video capture capability that also worked decently well?
+- 3dfx started from scratch, and focused their limited engineering resources and transistor budget on just drawing triangles. Starting over with new hardware is usually a horrible idea because there isn't any existing software that works with it. Go big or go home. Their design had to be so blatantly obviously better in a field of competing geniuses. They won on fill rate speed, and speed indeed matters. But what to leave out, what to copy, what to skimp on, and what would waste time and be unused was largely unknowable at the time. I would say they wasted a lot of time and silicon die space on "data swizzling" (mixed big- and little endian swap conversion) features.
+
+In the end, both companies were sold off. But it's how they're remembered and celebrated, either famously or infamously.
+
+### Quips
+ Puffery: Did you know that ViRGE stands for Virtual Reality Graphics Engine? Which is complete and utterly laughable P.T. Barnum **SUCKER** level marketing? Reading the headline features and benefits claimed in the official datasheet is entertaining in its own right, compared to how it benchmarks.
+
+ Worthless Patents: Untold time was spent on 16-bit Z-Buffers to cater to stingy manufacturers that wanted minimum viable product. Hey, we noticed RAM is going to be very inexpensive soon, so what is the least amount of onboard RAM required?! Is it really genius to think if you have 80-bit, 64-bit, or 32-bit floating point, that it is *possible* to have a 16-bit floating point number? But really, is that a good use of resources? By the time the Patent Lawyer's check clears, technology would have just moved on. The value of a company's patent portfolio is more about jumping out from the shadows and saying GOTCHA and hoping the competitor also made the same shortcut.
+
+ 16-bit doesn't cut it: Basically all of these first-generation 3D accelerator chips dithered the final colors into either RGB 555 or RGB 565, thinking we wouldn't notice. For perspective, having a healthy variety of texture color reduction and compression choices to save memory footprint leads to overall more visual variety and better graphical look. But skimping on 2 bits per channel in the final display framebuffer is just being really cheap. This isn't the first time, and it won't be the last time that dithering is used to inflate the number of bits. Well on average it's 8 bits... if you stand far enough back and squint your eyes. And yes a lot of your HDR displays are only 8-bit, twice dithered.
+ 
