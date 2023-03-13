@@ -22,6 +22,24 @@
  I believe it would be much easier to translate this BASIC code to C-lang or Python, than it was for me to catch onto the nuances from other's example C++ code that was using STL std::list, templates and pointer tricks.
  
  No dropping to assembly or using pokes!
+
+## Capabilities
+ Let's list what has currently been implemented or explored, Final Reality Advanced benchmark style.
+ 
+Y/N | 3D graphics options
+-- | --------
+Yes | Texture bi-linear filtering
+Yes | Z-buffer sorting
+No | Texture mip-mapping
+No | Texture tri-linear mapping
+Yes | Depth Fog
+Yes | Specular gouraud
+No | Vertex Alpha
+No | Alpha blending (crossfade)
+Yes | Additive alpha (lighten)
+Yes | Multiplicative alpha (darken)
+Yes | Subpixel accuracy
+
 ## Triangles
 ### Vertex
  The triangles are specified by vertexes A, B, and C. They are sorted by the triangle drawing subroutine so that A is always on top and C is always on the bottom. That still leaves two categories where the knee at B faces left or right. The triangle drawing subroutine also adjusts for this so that pixels are drawn from left to right.
@@ -83,7 +101,11 @@ The test program that was used to develop and debug the NearClip function is ava
 
 Imagine ink bleeding through paper so that both sides have ink on them. The printed side is the front face, and the opposite bled-through side is the back face. Seeing both sides is sometimes desirable, like for a leaf. But with closed solid objects made of multiple triangles, it is more efficient to not draw the back-facing triangles because they will never be seen.
 
-The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer. The Z value of this surface normal can be used if re-calculated after rotation and translation but before projection, because the view normal is usually (0, 0, 1). If the triangle were to be viewed perfectly edge-on to have a value of 0, it is also invisible because it is infinitely thin. So not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
+The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer.
+
+There is an easier way. If a triangle's normal is recalculated after rotation and translation but before projection, The Z value can be used directly. This is because the view normal is usually (0, 0, 1), which is the same as just multiplying by one. Not exactly a revelation because the viewpoint is staring down the Z line.
+
+If the triangle were to be viewed perfectly edge-on to have a Z value of 0, it is also invisible because it is infinitely thin. So not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
 
 ## Texture Filters
 ### Texture Magnification
@@ -146,7 +168,6 @@ Nothing is really preventing the U or V texel coordinates from going outside of 
 
 1. Tile - Texture is regularly repeated. The bitwise AND function is used to keep only the lower significant bits.
 2. Clamp - Texture coordinates are clamped to the min and max boundaries of the texture.
-3. Decal - Texture simply is not drawn if coordinates are outside the boundaries of the texture.
 
 A program named *TextureWrapOptions.bas* in the Concepts folder was used to develop the Tile versus Clamp options. It draws a 2D visual as the options are changed by pressing number keys on the keyboard.
 
