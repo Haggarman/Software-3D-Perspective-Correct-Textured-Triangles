@@ -9,6 +9,7 @@
  ![Textured Cube Plains 640](https://user-images.githubusercontent.com/96515734/224503609-ac961d99-c086-400e-b1f9-a1a8c639f918.PNG)
  ![Vertex Color Cube](https://user-images.githubusercontent.com/96515734/219141230-6d9a9d36-ec02-4c5a-94eb-a01773a02b5b.PNG)
  ![Dither Color Cube](https://user-images.githubusercontent.com/96515734/219270641-b560848f-5ef0-429c-9c9c-6191e8ac88a9.png)
+ ![Vertex Alpha](https://user-images.githubusercontent.com/96515734/225165954-80881ea9-3c7f-4ebb-9fe2-b48b3d54a161.PNG)
  ![Texture Z Fight Donut](https://user-images.githubusercontent.com/96515734/224503149-33eb6e8a-73cc-473b-a61c-5c3262b0c93f.PNG)
  ![Skybox Long Tube 800](https://user-images.githubusercontent.com/96515734/224502776-09c13ed1-60a6-4074-a7d4-dd2b05e30085.png)
  
