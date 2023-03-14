@@ -1,7 +1,9 @@
 Option _Explicit
-_Title "Dither Color Cube"
+_Title "Vertex Alpha Dither Color Cube"
 ' 2023 Haggarman
 ' Draw a few perspective correct textured cubes in 3D.
+' You can have Alpha transparency as a vertex attribute.
+'
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
@@ -89,7 +91,7 @@ Type triangle
     options As _Unsigned Long
 End Type
 
-Type vertex8
+Type vertex9
     x As Single
     y As Single
     w As Single
@@ -98,6 +100,7 @@ Type vertex8
     r As Single
     g As Single
     b As Single
+    a As Single ' alpha ranges from 0.0 to 1.0 for less conversion calculations
 End Type
 
 
@@ -138,7 +141,7 @@ Fog_near = 9.0
 Fog_far = 19.0
 Fog_rate = 1.0 / (Fog_far - Fog_near)
 
-Fog_color = _RGB32(9, 9, 9)
+Fog_color = _RGB32(111, 177, 233)
 Fog_R = _Red(Fog_color)
 Fog_G = _Green(Fog_color)
 Fog_B = _Blue(Fog_color)
@@ -153,8 +156,10 @@ Dim Shared T1_Filter_Selection As Integer
 Dim Shared T1_options As _Unsigned Long
 Dim Shared T1_option_clamp_width As _Unsigned Long
 Dim Shared T1_option_clamp_height As _Unsigned Long
+Dim Shared T1_option_no_Z_write As _Unsigned Long
 T1_option_clamp_width = 1 'constant
 T1_option_clamp_height = 2 'constant
+T1_option_no_Z_write = 4 'constant
 
 ' Later optimization in ReadTexel requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
@@ -324,9 +329,9 @@ Dim SX0 As Single, SY0 As Single
 Dim SX1 As Single, SY1 As Single
 Dim SX2 As Single, SY2 As Single
 
-Dim vertexA As vertex8
-Dim vertexB As vertex8
-Dim vertexC As vertex8
+Dim vertexA As vertex9
+Dim vertexB As vertex9
+Dim vertexC As vertex9
 
 ' This is so that the cube object animates by rotating
 Dim spinAngleDegZ As Single
@@ -395,6 +400,7 @@ Do
     ' Clear Screen
     _Dest WORK_IMAGE
     Cls , Fog_color
+    _Source WORK_IMAGE
 
     ' Clear Z-Buffer
     'For L = 0 To Screen_Z_Buffer_MaxElement
@@ -478,25 +484,28 @@ Do
             vertexA.w = pointProj0.w 'depth
             vertexA.u = mesh(A).u0 * pointProj0.w
             vertexA.v = mesh(A).v0 * pointProj0.w
+            vertexA.a = 0.96 * pointProj0.w
 
             vertexB.x = SX1
             vertexB.y = SY1
             vertexB.w = pointProj1.w 'depth
             vertexB.u = mesh(A).u1 * pointProj1.w
             vertexB.v = mesh(A).v1 * pointProj1.w
+            vertexB.a = 0.5 * pointProj1.w
 
             vertexC.x = SX2
             vertexC.y = SY2
             vertexC.w = pointProj2.w 'depth
             vertexC.u = mesh(A).u2 * pointProj2.w
             vertexC.v = mesh(A).v2 * pointProj2.w
+            vertexC.a = 0.5 * pointProj2.w
 
             ' Directional light 1-17-2023
             Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
             If Light_Directional < 0.0 Then Light_Directional = 0.0
 
             ' 2-23-2023
-            T1_options = mesh(A).options
+            T1_options = mesh(A).options Or T1_option_no_Z_write
 
             ' Color each vertex brightly.
             ' Using modulation function for bright primary colors.
@@ -522,7 +531,7 @@ Do
                 vertexC.b = 0
             End If
 
-            TexturedVtxColorTriangle vertexA, vertexB, vertexC
+            TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
 
             ' Wireframe triangle
             'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
@@ -1338,9 +1347,9 @@ Sub RGB_Dither555 (col As Integer, row As Integer, RGB_1 As _Unsigned Long)
 End Sub
 
 
-Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
-    Dim delta2 As vertex8
-    Dim delta1 As vertex8
+Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
+    Dim delta2 As vertex9
+    Dim delta1 As vertex9
     Dim draw_min_y As Long, draw_max_y As Long
 
     ' Sort so that vertex A is on top and C is on bottom.
@@ -1372,6 +1381,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     delta2.r = C.r - A.r
     delta2.g = C.g - A.g
     delta2.b = C.b - A.b
+    delta2.a = C.a - A.a
 
     ' Avoiding div by 0
     ' Entire Y height less than 1/256 would not have meaningful pixel color change
@@ -1384,10 +1394,12 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     Dim d_legx1_step As Single
     Dim dw1_step As Single, du1_step As Single, dv1_step As Single
     Dim dred1_step As Single, dgreen1_step As Single, dblue1_step As Single
+    Dim dalpha1_step As Single
 
     Dim d_legx2_step As Single
     Dim dw2_step As Single, du2_step As Single, dv2_step As Single
     Dim dred2_step As Single, dgreen2_step As Single, dblue2_step As Single
+    Dim dalpha2_step As Single
 
     ' Leg 2 steps from A to C (the full triangle height)
     d_legx2_step = delta2.x / delta2.y
@@ -1397,6 +1409,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     dred2_step = delta2.r / delta2.y
     dgreen2_step = delta2.g / delta2.y
     dblue2_step = delta2.b / delta2.y
+    dalpha2_step = delta2.a / delta2.y
 
     ' Leg 1, Draw top to middle
     ' For most triangles, draw downward from the apex A to a knee B.
@@ -1415,6 +1428,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     delta1.r = B.r - A.r
     delta1.g = B.g - A.g
     delta1.b = B.b - A.b
+    delta1.a = B.a - A.a
 
     ' If the triangle has no knee, this section gets skipped to avoid divide by 0.
     ' That is okay, because the recalculate Leg 1 from B to C triggers before actually drawing.
@@ -1427,16 +1441,19 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
         dred1_step = delta1.r / delta1.y
         dgreen1_step = delta1.g / delta1.y
         dblue1_step = delta1.b / delta1.y
+        dalpha1_step = delta1.a / delta1.y
     End If
 
     ' Y Accumulators
     Dim leg_x1 As Single
     Dim tex_w1 As Single, tex_u1 As Single, tex_v1 As Single
     Dim tex_r1 As Single, tex_g1 As Single, tex_b1 As Single
+    Dim tex_a1 As Single
 
     Dim leg_x2 As Single
     Dim tex_w2 As Single, tex_u2 As Single, tex_v2 As Single
     Dim tex_r2 As Single, tex_g2 As Single, tex_b2 As Single
+    Dim tex_a2 As Single
 
     ' 11-4-2022 Prestep Y
     Dim prestep_y1 As Single
@@ -1452,6 +1469,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     tex_r1 = A.r + prestep_y1 * dred1_step
     tex_g1 = A.g + prestep_y1 * dgreen1_step
     tex_b1 = A.b + prestep_y1 * dblue1_step
+    tex_a1 = A.a + prestep_y1 * dalpha1_step
 
     leg_x2 = A.x + prestep_y1 * d_legx2_step
     tex_w2 = A.w + prestep_y1 * dw2_step
@@ -1460,6 +1478,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     tex_r2 = A.r + prestep_y1 * dred2_step
     tex_g2 = A.g + prestep_y1 * dgreen2_step
     tex_b2 = A.b + prestep_y1 * dblue2_step
+    tex_a2 = A.a + prestep_y1 * dalpha2_step
 
     ' Inner loop vars
     Dim row As Long
@@ -1467,16 +1486,17 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     Dim draw_max_x As Long
     Dim zbuf_index As _Unsigned Long ' Z-Buffer
     Dim tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
+    Static pixel_alpha As Single
 
     ' Stepping along the X direction
     Dim delta_x As Single
     Dim prestep_x As Single
     Dim tex_w_step As Single, tex_u_step As Single, tex_v_step As Single
-    Dim tex_r_step As Single, tex_g_step As Single, tex_b_step As Single
+    Dim tex_r_step As Single, tex_g_step As Single, tex_b_step As Single, tex_a_step As Single
 
     ' X Accumulators
     Dim tex_w As Single, tex_u As Single, tex_v As Single
-    Dim tex_r As Single, tex_g As Single, tex_b As Single
+    Dim tex_r As Single, tex_g As Single, tex_b As Single, tex_a As Single
 
     row = draw_min_y
     While row <= draw_max_y
@@ -1492,6 +1512,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             delta1.r = C.r - B.r
             delta1.g = C.g - B.g
             delta1.b = C.b - B.b
+            delta1.a = C.a - B.a
 
             If delta1.y = 0.0 Then Exit Sub
 
@@ -1503,6 +1524,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             dred1_step = delta1.r / delta1.y ' vertex color
             dgreen1_step = delta1.g / delta1.y
             dblue1_step = delta1.b / delta1.y
+            dalpha1_step = delta1.a / delta1.y
 
             ' 11-4-2022 Prestep Y
             ' Most cases has B lower downscreen than A.
@@ -1517,7 +1539,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             tex_r1 = B.r + prestep_y1 * dred1_step
             tex_g1 = B.g + prestep_y1 * dgreen1_step
             tex_b1 = B.b + prestep_y1 * dblue1_step
-
+            tex_a1 = B.a + prestep_y1 * dalpha1_step
         End If
 
         ' Horizontal Scanline
@@ -1534,6 +1556,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 tex_r_step = (tex_r2 - tex_r1) / delta_x
                 tex_g_step = (tex_g2 - tex_g1) / delta_x
                 tex_b_step = (tex_b2 - tex_b1) / delta_x
+                tex_a_step = (tex_a2 - tex_a1) / delta_x
 
                 ' Set the horizontal starting point to (1)
                 col = _Ceil(leg_x1)
@@ -1547,6 +1570,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 tex_r = tex_r1 + prestep_x * tex_r_step
                 tex_g = tex_g1 + prestep_x * tex_g_step
                 tex_b = tex_b1 + prestep_x * tex_b_step
+                tex_a = tex_a1 + prestep_x * tex_a_step
 
                 ' ending point is (2)
                 draw_max_x = _Ceil(leg_x2)
@@ -1560,6 +1584,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 tex_r_step = (tex_r1 - tex_r2) / delta_x
                 tex_g_step = (tex_g1 - tex_g2) / delta_x
                 tex_b_step = (tex_b1 - tex_b2) / delta_x
+                tex_a_step = (tex_a1 - tex_a2) / delta_x
 
                 ' Set the horizontal starting point to (2)
                 col = _Ceil(leg_x2)
@@ -1573,6 +1598,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 tex_r = tex_r2 + prestep_x * tex_r_step
                 tex_g = tex_g2 + prestep_x * tex_g_step
                 tex_b = tex_b2 + prestep_x * tex_b_step
+                tex_a = tex_a2 + prestep_x * tex_a_step
 
                 ' ending point is (1)
                 draw_max_x = _Ceil(leg_x1)
@@ -1585,9 +1611,24 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             While col < draw_max_x
                 tex_z = 1 / tex_w
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
-                    Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
+                    If T1_options And T1_option_no_Z_write = 0 Then
+                        Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
+                    End If
 
-                    RGB_Dither555 col, row, RGB_Fog&(tex_z, RGB_Lit&(RGB_Modulate&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB(tex_r, tex_g, tex_b))))
+                    Static pixel_existing As _Unsigned Long
+                    pixel_existing = Point(col, row)
+
+                    Static pixel_combine As _Unsigned Long
+                    pixel_combine = RGB_Lit&(RGB_Modulate&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB(tex_r, tex_g, tex_b)))
+
+                    Static pixel_value As _Unsigned Long
+                    pixel_alpha = tex_a * tex_z
+
+                    pixel_value = _RGB((1.0 - pixel_alpha) *   _Red32(pixel_existing) + pixel_alpha *   _red32(pixel_combine), _
+                                       (1.0 - pixel_alpha) * _Green32(pixel_existing) + pixel_alpha * _green32(pixel_combine), _
+                                       (1.0 - pixel_alpha) *  _Blue32(pixel_existing) + pixel_alpha *  _blue32(pixel_combine))
+
+                    RGB_Dither555 col, row, pixel_value
 
                 End If
                 zbuf_index = zbuf_index + 1
@@ -1597,6 +1638,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 tex_r = tex_r + tex_r_step
                 tex_g = tex_g + tex_g_step
                 tex_b = tex_b + tex_b_step
+                tex_a = tex_a + tex_a_step
                 col = col + 1
             Wend 'col
 
@@ -1610,6 +1652,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
         tex_r1 = tex_r1 + dred1_step
         tex_g1 = tex_g1 + dgreen1_step
         tex_b1 = tex_b1 + dblue1_step
+        tex_a1 = tex_a1 + dalpha1_step
 
         leg_x2 = leg_x2 + d_legx2_step
         tex_w2 = tex_w2 + dw2_step
@@ -1618,6 +1661,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
         tex_r2 = tex_r2 + dred2_step
         tex_g2 = tex_g2 + dgreen2_step
         tex_b2 = tex_b2 + dblue2_step
+        tex_a2 = tex_a2 + dalpha2_step
 
         row = row + 1
     Wend 'row
