@@ -61,7 +61,7 @@ Dim Shared Screen_Z_Buffer(Screen_Z_Buffer_MaxElement) As Single
 ' Z Fight has to do with overdrawing on top of the same coplanar surface.
 ' If it is positive, a newer pixel at the same exact Z will always overdraw the older one.
 Dim Shared Z_Fight_Bias
-Z_Fight_Bias = -0.001953125 / 4.0 ' this is intentionally too small, press + to increase.
+Z_Fight_Bias = -0.001953125 / 4.0
 
 Type vec3d
     x As Single

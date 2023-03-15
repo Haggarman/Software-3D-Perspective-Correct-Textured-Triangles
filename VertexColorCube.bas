@@ -5,6 +5,7 @@ _Title "Vertex Color Cube"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  3/04/2023 - Bugfix for wide triangles (make col a Long)
 '  2/23/2023 - Texture wrapping options
 '  2/12/2023 - Release to the World
 '  2/10/2023 - Camera View Space, move with Arrow keys.
@@ -130,7 +131,7 @@ Dim Shared Fog_color As Long
 Dim Shared Fog_R As Long, Fog_G As Long, Fog_B As Long
 Fog_near = 13.0
 Fog_far = 32.0
-Fog_rate = 1 / (Fog_far - Fog_near)
+Fog_rate = 1.0 / (Fog_far - Fog_near)
 
 Fog_color = _RGB32(183, 194, 216)
 Fog_R = _Red(Fog_color)
@@ -206,12 +207,12 @@ For cube = 1 To Cube_Count
         Read mesh(A).v1
         Read mesh(A).u2
         Read mesh(A).v2
-        
+
         Read mesh(A).texture
         Read mesh(A).options
-        
+
         offset = cube * 8 * Atn(1) / Cube_Count
-        
+
         mesh(A).z0 = mesh(A).z0 + 2 * Sin(offset)
         mesh(A).z1 = mesh(A).z1 + 2 * Sin(offset)
         mesh(A).z2 = mesh(A).z2 + 2 * Sin(offset)
@@ -262,9 +263,6 @@ Dim pointProj2 As vec4d
 ' Surface Normal Calculation
 ' Part 2
 Dim tri_normal As vec3d
-'Dim line1 As vec3d
-'Dim line2 As vec3d
-'Dim lengthNormal As Single
 
 ' Part 2-2
 Dim vCameraPsn As vec3d ' location of camera in world space
@@ -296,9 +294,9 @@ vLightDir.x = -2.0
 vLightDir.y = 10.0 '+Y is now up
 vLightDir.z = -5.0
 Vector3_Normalize vLightDir
-Dim Shared dotProdLightDir As Single
-Dim Shared LightDiffuseVal As Single
-LightDiffuseVal = 0.3
+Dim Shared Light_Directional As Single
+Dim Shared Light_AmbientVal As Single
+Light_AmbientVal = 0.3
 
 
 ' Screen Scaling
@@ -486,8 +484,8 @@ Do
             vertexC.v = mesh(A).v2 * pointProj2.w
 
             ' Directional light 1-17-2023
-            dotProdLightDir = Vector3_DotProduct!(tri_normal, vLightDir)
-            If dotProdLightDir < 0.0 Then dotProdLightDir = 0.0
+            Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
+            If Light_Directional < 0.0 Then Light_Directional = 0.0
 
             ' 2-23-2023
             T1_options = mesh(A).options
@@ -1082,7 +1080,7 @@ Function ReadTexel3Point& (ccol As Single, rrow As Single)
     b0 = _Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11
 
     'ReadTexel3Point& = _RGB32(r0, g0, b0)
-    ReadTexel3Point& = _SHL(r0, 16) Or _SHL(g0, 8) Or b0
+    ReadTexel3Point& = _ShL(r0, 16) Or _ShL(g0, 8) Or b0
 End Function
 
 
@@ -1246,7 +1244,7 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
     Frac_rr1_FIX8 = (rm5 - Int(rm5)) * 128
 
     ' cache
-    this_cache = _SHL(rr, 16) Or cc
+    this_cache = _ShL(rr, 16) Or cc
     If this_cache <> last_cache Then
         uv_0_0 = Texture1(cc, rr)
         uv_1_0 = Texture1(cc1, rr)
@@ -1258,24 +1256,24 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
     End If
 
     r0 = _Red32(uv_0_0)
-    r0 = _SHR((_Red32(uv_1_0) - r0) * Frac_cc1_FIX8, 7) + r0
+    r0 = _ShR((_Red32(uv_1_0) - r0) * Frac_cc1_FIX8, 7) + r0
 
     g0 = _Green32(uv_0_0)
-    g0 = _SHR((_Green32(uv_1_0) - g0) * Frac_cc1_FIX8, 7) + g0
+    g0 = _ShR((_Green32(uv_1_0) - g0) * Frac_cc1_FIX8, 7) + g0
 
     b0 = _Blue32(uv_0_0)
-    b0 = _SHR((_Blue32(uv_1_0) - b0) * Frac_cc1_FIX8, 7) + b0
+    b0 = _ShR((_Blue32(uv_1_0) - b0) * Frac_cc1_FIX8, 7) + b0
 
     r1 = _Red32(uv_0_1)
-    r1 = _SHR((_Red32(uv_1_1) - r1) * Frac_cc1_FIX8, 7) + r1
+    r1 = _ShR((_Red32(uv_1_1) - r1) * Frac_cc1_FIX8, 7) + r1
 
     g1 = _Green32(uv_0_1)
-    g1 = _SHR((_Green32(uv_1_1) - g1) * Frac_cc1_FIX8, 7) + g1
+    g1 = _ShR((_Green32(uv_1_1) - g1) * Frac_cc1_FIX8, 7) + g1
 
     b1 = _Blue32(uv_0_1)
-    b1 = _SHR((_Blue32(uv_1_1) - b1) * Frac_cc1_FIX8, 7) + b1
+    b1 = _ShR((_Blue32(uv_1_1) - b1) * Frac_cc1_FIX8, 7) + b1
 
-    ReadTexelBiLinearFix& = _SHL(_SHR((r1 - r0) * Frac_rr1_FIX8, 7) + r0, 16) Or _SHL(_SHR((g1 - g0) * Frac_rr1_FIX8, 7) + g0, 8) Or _SHR((b1 - b0) * Frac_rr1_FIX8, 7) + b0
+    ReadTexelBiLinearFix& = _ShL(_ShR((r1 - r0) * Frac_rr1_FIX8, 7) + r0, 16) Or _ShL(_ShR((g1 - g0) * Frac_rr1_FIX8, 7) + g0, 8) Or _ShR((b1 - b0) * Frac_rr1_FIX8, 7) + b0
 End Function
 
 
@@ -1300,24 +1298,16 @@ Function RGB_Fog& (zz As Single, RGB_color As _Unsigned Long)
 End Function
 
 
-Function RGB_Lit& (directional As Single, RGB_color As _Unsigned Long)
+Function RGB_Lit& (RGB_color As _Unsigned Long)
     Static scale As Single
-    Static r0 As Long
-    Static g0 As Long
-    Static b0 As Long
+    scale = Light_Directional + Light_AmbientVal 'oversaturate the bright colors
 
-    r0 = _Red32(RGB_color)
-    g0 = _Green32(RGB_color)
-    b0 = _Blue32(RGB_color)
-
-    'scale = directional * (1.0 - LightDiffuseVal) + LightDiffuseVal
-    scale = directional + LightDiffuseVal 'oversaturate the bright colors
-
-    RGB_Lit& = _RGB32(scale * r0, scale * g0, scale * b0) 'values over 255 are just clamped to 255
+    RGB_Lit& = _RGB32(scale * _Red32(RGB_color), scale * _Green32(RGB_color), scale * _Blue32(RGB_color)) 'values over 255 are just clamped to 255
 End Function
 
 
 Function RGB_Sum& (RGB_1 As _Unsigned Long, RGB_2 As _Unsigned Long)
+    ' Lighten function
     Static r1 As Long
     Static g1 As Long
     Static b1 As Long
@@ -1337,6 +1327,7 @@ End Function
 
 
 Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long)
+    ' Darken function
     Static r1 As Integer
     Static g1 As Integer
     Static b1 As Integer
@@ -1351,7 +1342,7 @@ Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long)
     g2 = _Green32(RGB_Mod) + 1 'but do it in a way that is not a division
     b2 = _Blue32(RGB_Mod) + 1
 
-    RGB_Modulate& = _RGB32(_SHR(r1 * r2, 8), _SHR(g1 * g2, 8), _SHR(b1 * b2, 8))
+    RGB_Modulate& = _RGB32(_ShR(r1 * r2, 8), _ShR(g1 * g2, 8), _ShR(b1 * b2, 8))
 End Function
 
 
@@ -1479,9 +1470,9 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     tex_b2 = A.b + prestep_y1 * dblue2_step
 
     ' Inner loop vars
-    Dim row As Integer
-    Dim col As Integer
-    Dim draw_max_x As Integer
+    Dim row As Long
+    Dim col As Long
+    Dim draw_max_x As Long
     Dim zbuf_index As _Unsigned Long ' Z-Buffer
     Dim tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
 
@@ -1604,7 +1595,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
                     Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
 
-                    PSet (col, row), RGB_Fog&(tex_z, RGB_Lit&(dotProdLightDir, RGB_Sum&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB(tex_r, tex_g, tex_b))))
+                    PSet (col, row), RGB_Fog&(tex_z, RGB_Lit&(RGB_Sum&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB(tex_r, tex_g, tex_b))))
                 End If
                 zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
