@@ -534,9 +534,9 @@ Do
             TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
 
             ' Wireframe triangle
-            'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
-            'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
-            'Line (SX2, SY2)-(SX0, SY0), _RGB(128, 128, 128)
+            'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 128, 128)
+            'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 128, 128)
+            'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
         End If
 
         Lbl_SkipA:
@@ -1217,7 +1217,7 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
         uv_0_1 = Texture1(cc, rr1)
         uv_1_1 = Texture1(cc1, rr1)
         last_cache = this_cache
-        'ReadTexelBiLinearFix& = _RGB(255, 255, 127)
+        'ReadTexelBiLinearFix& = _RGB32(255, 255, 127)
         'Exit Function
     End If
 
@@ -1312,7 +1312,7 @@ Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long)
 End Function
 
 
-Sub RGB_Dither555 (col As Integer, row As Integer, RGB_1 As _Unsigned Long)
+Sub RGB_Dither555 (col As Long, row As Long, RGB_1 As _Unsigned Long)
     Static r1 As Long
     Static g1 As Long
     Static b1 As Long
@@ -1619,14 +1619,14 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                     pixel_existing = Point(col, row)
 
                     Static pixel_combine As _Unsigned Long
-                    pixel_combine = RGB_Lit&(RGB_Modulate&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB(tex_r, tex_g, tex_b)))
+                    pixel_combine = RGB_Lit&(RGB_Modulate&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB32(tex_r, tex_g, tex_b)))
 
                     Static pixel_value As _Unsigned Long
                     pixel_alpha = tex_a * tex_z
 
-                    pixel_value = _RGB((1.0 - pixel_alpha) *   _Red32(pixel_existing) + pixel_alpha *   _red32(pixel_combine), _
-                                       (1.0 - pixel_alpha) * _Green32(pixel_existing) + pixel_alpha * _green32(pixel_combine), _
-                                       (1.0 - pixel_alpha) *  _Blue32(pixel_existing) + pixel_alpha *  _blue32(pixel_combine))
+                    pixel_value = _RGB32((1.0 - pixel_alpha) *   _Red32(pixel_existing) + pixel_alpha *   _red32(pixel_combine), _
+                                         (1.0 - pixel_alpha) * _Green32(pixel_existing) + pixel_alpha * _green32(pixel_combine), _
+                                         (1.0 - pixel_alpha) *  _Blue32(pixel_existing) + pixel_alpha *  _blue32(pixel_combine))
 
                     RGB_Dither555 col, row, pixel_value
 

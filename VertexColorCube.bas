@@ -516,9 +516,9 @@ Do
             TexturedVtxColorTriangle vertexA, vertexB, vertexC
 
             ' Wireframe triangle
-            'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
-            'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
-            'Line (SX2, SY2)-(SX0, SY0), _RGB(128, 128, 128)
+            'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 128, 128)
+            'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 128, 128)
+            'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
         End If
 
         Lbl_SkipA:
@@ -1251,7 +1251,7 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
         uv_0_1 = Texture1(cc, rr1)
         uv_1_1 = Texture1(cc1, rr1)
         last_cache = this_cache
-        'ReadTexelBiLinearFix& = _RGB(255, 255, 127)
+        'ReadTexelBiLinearFix& = _RGB32(255, 255, 127)
         'Exit Function
     End If
 
@@ -1595,7 +1595,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
                     Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
 
-                    PSet (col, row), RGB_Fog&(tex_z, RGB_Lit&(RGB_Sum&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB(tex_r, tex_g, tex_b))))
+                    PSet (col, row), RGB_Fog&(tex_z, RGB_Lit&(RGB_Sum&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB32(tex_r, tex_g, tex_b))))
                 End If
                 zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step

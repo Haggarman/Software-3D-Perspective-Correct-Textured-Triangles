@@ -189,7 +189,7 @@ Dither4(0, 3) = 8: Dither4(1, 3) = 4: Dither4(2, 3) = 7: Dither4(3, 3) = 3
 Dim Triangles_In_A_Cube
 Triangles_In_A_Cube = 12
 
-Dim Shared Mesh_Last_Element
+Dim Shared Mesh_Last_Element As Integer
 Mesh_Last_Element = Cube_Count * Triangles_In_A_Cube - 1
 Dim mesh(Mesh_Last_Element) As triangle
 
@@ -525,9 +525,9 @@ Do
             TexturedVtxColorTriangle vertexA, vertexB, vertexC
 
             ' Wireframe triangle
-            'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
-            'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
-            'Line (SX2, SY2)-(SX0, SY0), _RGB(128, 128, 128)
+            'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 128, 128)
+            'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 128, 128)
+            'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
         End If
 
         Lbl_SkipA:
@@ -1208,7 +1208,7 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
         uv_0_1 = Texture1(cc, rr1)
         uv_1_1 = Texture1(cc1, rr1)
         last_cache = this_cache
-        'ReadTexelBiLinearFix& = _RGB(255, 255, 127)
+        'ReadTexelBiLinearFix& = _RGB32(255, 255, 127)
         'Exit Function
     End If
 
@@ -1303,7 +1303,7 @@ Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long)
 End Function
 
 
-Sub RGB_Dither555 (col As Integer, row As Integer, RGB_1 As _Unsigned Long)
+Sub RGB_Dither555 (col As Long, row As Long, RGB_1 As _Unsigned Long)
     Static r1 As Long
     Static g1 As Long
     Static b1 As Long
@@ -1339,9 +1339,9 @@ End Sub
 
 
 Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
-    Dim delta2 As vertex8
-    Dim delta1 As vertex8
-    Dim draw_min_y As Long, draw_max_y As Long
+    Static delta2 As vertex8
+    Static delta1 As vertex8
+    Static draw_min_y As Long, draw_max_y As Long
 
     ' Sort so that vertex A is on top and C is on bottom.
     ' This seems inverted from math class, but remember that Y increases in value downward on PC monitors
@@ -1381,13 +1381,13 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' DDA is Digital Differential Analyzer
     ' It is an accumulator that counts from a known start point to an end point, in equal increments defined by the number of steps in-between.
     ' Probably faster nowadays to do the one division at the start, instead of Bresenham, anyway.
-    Dim d_legx1_step As Single
-    Dim dw1_step As Single, du1_step As Single, dv1_step As Single
-    Dim dred1_step As Single, dgreen1_step As Single, dblue1_step As Single
+    Static d_legx1_step As Single
+    Static dw1_step As Single, du1_step As Single, dv1_step As Single
+    Static dred1_step As Single, dgreen1_step As Single, dblue1_step As Single
 
-    Dim d_legx2_step As Single
-    Dim dw2_step As Single, du2_step As Single, dv2_step As Single
-    Dim dred2_step As Single, dgreen2_step As Single, dblue2_step As Single
+    Static d_legx2_step As Single
+    Static dw2_step As Single, du2_step As Single, dv2_step As Single
+    Static dred2_step As Single, dgreen2_step As Single, dblue2_step As Single
 
     ' Leg 2 steps from A to C (the full triangle height)
     d_legx2_step = delta2.x / delta2.y
@@ -1401,7 +1401,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' Leg 1, Draw top to middle
     ' For most triangles, draw downward from the apex A to a knee B.
     ' That knee could be on either the left or right side, but that is handled much later.
-    Dim draw_middle_y As Long
+    Static draw_middle_y As Long
     draw_middle_y = _Ceil(B.y)
     If draw_middle_y < clip_min_y Then draw_middle_y = clip_min_y
     ' Do not clip B to max_y. Let the y count expire before reaching the knee if it is past bottom of screen.
@@ -1430,16 +1430,16 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     End If
 
     ' Y Accumulators
-    Dim leg_x1 As Single
-    Dim tex_w1 As Single, tex_u1 As Single, tex_v1 As Single
-    Dim tex_r1 As Single, tex_g1 As Single, tex_b1 As Single
+    Static leg_x1 As Single
+    Static tex_w1 As Single, tex_u1 As Single, tex_v1 As Single
+    Static tex_r1 As Single, tex_g1 As Single, tex_b1 As Single
 
-    Dim leg_x2 As Single
-    Dim tex_w2 As Single, tex_u2 As Single, tex_v2 As Single
-    Dim tex_r2 As Single, tex_g2 As Single, tex_b2 As Single
+    Static leg_x2 As Single
+    Static tex_w2 As Single, tex_u2 As Single, tex_v2 As Single
+    Static tex_r2 As Single, tex_g2 As Single, tex_b2 As Single
 
     ' 11-4-2022 Prestep Y
-    Dim prestep_y1 As Single
+    Static prestep_y1 As Single
     ' Basically we are sampling pixels on integer exact rows.
     ' But we only are able to know the next row by way of forward interpolation. So always round up.
     ' To get to that next row, we have to prestep by the fractional forward distance from A. _Ceil(A.y) - A.y
@@ -1462,21 +1462,21 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     tex_b2 = A.b + prestep_y1 * dblue2_step
 
     ' Inner loop vars
-    Dim row As Long
-    Dim col As Long
-    Dim draw_max_x As Long
-    Dim zbuf_index As _Unsigned Long ' Z-Buffer
-    Dim tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
+    Static row As Long
+    Static col As Long
+    Static draw_max_x As Long
+    Static zbuf_index As _Unsigned Long ' Z-Buffer
+    Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
 
     ' Stepping along the X direction
-    Dim delta_x As Single
-    Dim prestep_x As Single
-    Dim tex_w_step As Single, tex_u_step As Single, tex_v_step As Single
-    Dim tex_r_step As Single, tex_g_step As Single, tex_b_step As Single
+    Static delta_x As Single
+    Static prestep_x As Single
+    Static tex_w_step As Single, tex_u_step As Single, tex_v_step As Single
+    Static tex_r_step As Single, tex_g_step As Single, tex_b_step As Single
 
     ' X Accumulators
-    Dim tex_w As Single, tex_u As Single, tex_v As Single
-    Dim tex_r As Single, tex_g As Single, tex_b As Single
+    Static tex_w As Single, tex_u As Single, tex_v As Single
+    Static tex_r As Single, tex_g As Single, tex_b As Single
 
     row = draw_min_y
     While row <= draw_max_y
@@ -1587,7 +1587,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
                     Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
 
-                    RGB_Dither555 col, row, RGB_Fog&(tex_z, RGB_Lit&(RGB_Modulate&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB(tex_r, tex_g, tex_b))))
+                    RGB_Dither555 col, row, RGB_Fog&(tex_z, RGB_Lit&(RGB_Modulate&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB32(tex_r, tex_g, tex_b))))
 
                 End If
                 zbuf_index = zbuf_index + 1

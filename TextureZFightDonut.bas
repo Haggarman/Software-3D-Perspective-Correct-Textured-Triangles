@@ -310,9 +310,9 @@ vLightDir.x = -17.5
 vLightDir.y = 10.0 '+Y is now up
 vLightDir.z = -5.0
 Vector3_Normalize vLightDir
-Dim Shared dotProdLightDir As Single
-Dim Shared LightAmbientVal As Single
-LightAmbientVal = 0.3
+Dim Shared Light_Directional As Single
+Dim Shared Light_AmbientVal As Single
+Light_AmbientVal = 0.3
 
 
 ' Screen Scaling
@@ -504,17 +504,17 @@ Do
             vertexC.v = mesh(A).v2 * pointProj2.w
 
             ' Directional light 1-17-2023
-            dotProdLightDir = Vector3_DotProduct!(tri_normal, vLightDir)
-            If dotProdLightDir < 0.0 Then dotProdLightDir = 0.0
+            Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
+            If Light_Directional < 0.0 Then Light_Directional = 0.0
 
             ' 2-23-2023
             T1_options = mesh(A).options
             TexturedVtxColorTriangle vertexA, vertexB, vertexC
 
             ' Wireframe triangle
-            'Line (SX0, SY0)-(SX1, SY1), _RGB(128, 128, 128)
-            'Line (SX1, SY1)-(SX2, SY2), _RGB(128, 128, 128)
-            'Line (SX2, SY2)-(SX0, SY0), _RGB(128, 128, 128)
+            'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 128, 128)
+            'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 128, 128)
+            'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
             Triangles_Drawn = Triangles_Drawn + 1
         End If
 
@@ -1312,7 +1312,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
 
                     '---- Begin Inline Directional Lighting
                     Static scale As Single
-                    scale = dotProdLightDir + LightAmbientVal 'oversaturate the bright colors
+                    scale = Light_Directional + Light_AmbientVal 'oversaturate the bright colors
                     r0 = r0 * scale
                     g0 = g0 * scale
                     b0 = b0 * scale
