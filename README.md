@@ -46,12 +46,14 @@ Yes | Subpixel accuracy
  The triangles are specified by vertexes A, B, and C. They are sorted by the triangle drawing subroutine so that A is always on top and C is always on the bottom. That still leaves two categories where the knee at B faces left or right. The triangle drawing subroutine also adjusts for this so that pixels are drawn from left to right.
  ![TrianglesABC](https://user-images.githubusercontent.com/96515734/220204499-62aaed3c-f1fe-4c07-9c64-1c61564219e7.PNG)
 ### DDA
- The DDA (Digital Difference Analyzer) algorithm is used to simultaneously step on whole number Y increments from point A to point C on the major edge, and from point A to point B on the minor edge. The start value of Y at point A is pre-stepped ahead to the next highest integer pixel row using the ceiling function.
- 
- To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same amount. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region.
-### Knee B
- When the Minor Edge DDAs reach vertexBy, the start values and steps are recalculated to be from point B to point C. Note that this case also handles a flat-topped triangle where vertexBy = vertexAy.
- 
+ The DDA (Digital Difference Analyzer) algorithm is used to simultaneously step on whole number Y increments from point A to point C on the major edge, and from point A to point B on the minor edge. When the Minor Edge DDAs reach vertexBy, the start values and steps are recalculated to be from point B to point C. Note that this case also handles a flat-topped triangle where vertexBy = vertexAy.
+
+### Pre-stepping
+ The start value of Y at point A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same amount. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region.
+
+### Why use DDA?
+ DDA was used because not all math operations complete in the same amount of time. Dividing once before a loop and then accumulating that quotient within the loop, is going to be faster than dividing every single step within the loop. Sneakily, many of the earliest PC graphics accelerators left this initial division calculation up the main system CPU.
+
 ## Clipping
 ### Near Frustum Clipping
  For this discussion, I am asserting that an object moving forward from the viewer increases in +Z distance. Note this can differ in well-known graphics libraries.
