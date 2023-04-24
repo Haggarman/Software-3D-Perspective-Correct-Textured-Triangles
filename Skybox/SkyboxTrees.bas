@@ -40,14 +40,14 @@ Dim Shared DISP_IMAGE As Long
 Dim Shared WORK_IMAGE As Long
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
 
-Dim Tree_Count As Integer
-Dim Road_Count As Integer
+Dim Shared Road_Count As Integer
+Dim Shared Tree_Count As Integer
 
 ' MODIFY THESE if you want.
 Size_Screen_X = 1024 / 2 ' render size
 Size_Screen_Y = 768 / 2
 Tree_Count = 100 ' number of trees
-Road_Count = 50 ' number of road squares
+Road_Count = 70 ' number of road squares
 
 DISP_IMAGE = _NewImage(1024, 768, 32)
 Screen DISP_IMAGE
@@ -204,190 +204,22 @@ T1_height = 16: T1_height_AND = T1_height - 1
 T1_mblock = _MemImage(TextureCatalog(0))
 T1_Alpha_Threshold = 250 ' below this alpha channel value, do not update z buffer (0..255)
 
-' Load the cube
-' Load what is called a mesh from data statements.
-' (x0,y0,z0) (x1,y1,z1) (x2,y2,z2) (u0,v0) (u1,v1) (u2,v2)
 
+' Load the Mesh
 Dim Triangles_In_A_Tree
 Triangles_In_A_Tree = 4
 
 Dim Triangles_In_A_Road
 Triangles_In_A_Road = 2
 
-
 Dim Shared Mesh_Last_Element As Integer
 Mesh_Last_Element = (Tree_Count * Triangles_In_A_Tree) + (Road_Count * Triangles_In_A_Road) - 1
-Dim mesh(Mesh_Last_Element) As triangle
+Dim Shared mesh(Mesh_Last_Element) As triangle
 
-Dim A As Integer
-A = 0
+Dim Shared Mesh_Seed As Long
+Mesh_Seed = 2
+MakeMesh Mesh_Seed
 
-Dim thing As Integer
-Dim thing_offset As Single
-Dim noise As Single
-Dim lastNoise As Single
-
-thing_offset = 0.0
-noise = 0.0
-lastNoise = 0.0
-
-For thing = 1 To Road_Count
-    mesh(A).x0 = -5.0 + noise
-    mesh(A).y0 = -2.0
-    mesh(A).z0 = 10.0 + thing_offset
-
-    mesh(A).x1 = 5.0 + noise
-    mesh(A).y1 = -2.0
-    mesh(A).z1 = 10.0 + thing_offset
-
-    mesh(A).x2 = -5.0 + lastNoise
-    mesh(A).y2 = -2.0
-    mesh(A).z2 = 0.0 + thing_offset
-
-    mesh(A).texture = 2
-    mesh(A).options = T1_option_clamp_width
-
-    mesh(A).u0 = 0
-    mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
-    mesh(A).v1 = 0
-    mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
-
-    A = A + 1
-
-    mesh(A).x0 = 5.0 + noise
-    mesh(A).y0 = -2.0
-    mesh(A).z0 = 10.0 + thing_offset
-
-    mesh(A).x1 = 5.0 + lastNoise
-    mesh(A).y1 = -2.0
-    mesh(A).z1 = 0.0 + thing_offset
-
-    mesh(A).x2 = -5.0 + lastNoise
-    mesh(A).y2 = -2.0
-    mesh(A).z2 = 0.0 + thing_offset
-
-    mesh(A).texture = 2
-    mesh(A).options = T1_option_clamp_width
-
-    mesh(A).u0 = _Width(TextureCatalog(mesh(A).texture))
-    mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
-    mesh(A).v1 = _Height(TextureCatalog(mesh(A).texture))
-    mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
-
-    A = A + 1
-    thing_offset = thing_offset + 10.0
-    lastNoise = noise
-    noise = noise + Rnd - 0.8
-Next thing
-
-For thing = 1 To Tree_Count
-    thing_offset = 5.5 * thing
-    noise = (Rnd - 0.5) * 70.0
-    'If Abs(noise) < 5.0 Then noise = noise + 5 * Sgn(noise)
-
-    'X plane
-    mesh(A).x0 = -2.0 + noise
-    mesh(A).y0 = 6.0
-    mesh(A).z0 = 0 + thing_offset
-
-    mesh(A).x1 = 2.0 + noise
-    mesh(A).y1 = 6.0
-    mesh(A).z1 = 0 + thing_offset
-
-    mesh(A).x2 = -2.0 + noise
-    mesh(A).y2 = -2.0
-    mesh(A).z2 = 0 + thing_offset
-
-    mesh(A).texture = 1
-    mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull
-
-    mesh(A).u0 = 0
-    mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
-    mesh(A).v1 = 0
-    mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
-
-    A = A + 1
-
-    mesh(A).x0 = 2.0 + noise
-    mesh(A).y0 = 6.0
-    mesh(A).z0 = 0 + thing_offset
-
-    mesh(A).x1 = 2.0 + noise
-    mesh(A).y1 = -2.0
-    mesh(A).z1 = 0 + thing_offset
-
-    mesh(A).x2 = -2.0 + noise
-    mesh(A).y2 = -2.0
-    mesh(A).z2 = 0 + thing_offset
-
-    mesh(A).texture = 1
-    mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull
-
-    mesh(A).u0 = _Width(TextureCatalog(mesh(A).texture))
-    mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
-    mesh(A).v1 = _Height(TextureCatalog(mesh(A).texture))
-    mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
-
-    A = A + 1
-
-    'Z plane
-    mesh(A).x0 = noise
-    mesh(A).y0 = 6.0
-    mesh(A).z0 = -2.0 + thing_offset
-
-    mesh(A).x1 = noise
-    mesh(A).y1 = 6.0
-    mesh(A).z1 = 2.0 + thing_offset
-
-    mesh(A).x2 = noise
-    mesh(A).y2 = -2.0
-    mesh(A).z2 = -2.0 + thing_offset
-
-    mesh(A).texture = 1
-    mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull
-
-    mesh(A).u0 = 0
-    mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
-    mesh(A).v1 = 0
-    mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
-
-    A = A + 1
-
-    mesh(A).x0 = noise
-    mesh(A).y0 = 6.0
-    mesh(A).z0 = 2.0 + thing_offset
-
-    mesh(A).x1 = noise
-    mesh(A).y1 = -2.0
-    mesh(A).z1 = 2.0 + thing_offset
-
-    mesh(A).x2 = noise
-    mesh(A).y2 = -2.0
-    mesh(A).z2 = -2.0 + thing_offset
-
-    mesh(A).texture = 1
-    mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull
-
-    mesh(A).u0 = _Width(TextureCatalog(mesh(A).texture))
-    mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
-    mesh(A).v1 = _Height(TextureCatalog(mesh(A).texture))
-    mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
-
-    A = A + 1
-
-Next thing
 
 '     +---+
 '     | 2 |
@@ -422,7 +254,7 @@ _PutImage (128 * 2, 128), SkyBoxRef(0)
 _PutImage (128 * 3, 128), SkyBoxRef(5)
 _PutImage (128 * 1, 128 * 2), SkyBoxRef(3)
 
-
+Dim A As Integer
 Dim Shared Sky_Last_Element As Integer
 Sky_Last_Element = 11
 
@@ -964,6 +796,8 @@ Do
         Print "Press S to Start Spin"
     End If
 
+    Print "(N)ew Mesh Seed: "; Mesh_Seed
+
     Print "+FOV- Degrees: "; Frustum_FOV_deg
 
     Print "Triangles Drawn: "; Triangles_Drawn; "+"; New_Triangles_Drawn
@@ -982,7 +816,9 @@ Do
         ElseIf KeyNow = "-" Then
             Frustum_FOV_deg = Frustum_FOV_deg + 5.0
             FOVchange
-
+        ElseIf KeyNow = "N" Then
+            Mesh_Seed = Mesh_Seed + 1
+            MakeMesh Mesh_Seed
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
@@ -1131,6 +967,253 @@ Data -10,-10,-10
 Data 128,0,128,128,0,128
 Data 3,3
 
+
+Sub MakeMesh (seed As Long)
+    ' Load what is called a mesh from a random terrain generator.
+    ' (x0,y0,z0) (x1,y1,z1) (x2,y2,z2) (u0,v0) (u1,v1) (u2,v2)
+    Dim A As Integer
+    A = 0
+
+    Dim thing As Integer
+    Dim thing_offset As Single
+    Dim noise As Single
+    Dim lastNoise As Single
+
+    thing_offset = 0.0
+    noise = 0.0
+    lastNoise = 0.0
+
+    Dim road_angle As Single
+    Dim road_curve As Single
+    Dim road_repeat As Long
+    road_angle = 0.0
+    road_curve = 0.0
+    road_repeat = 2
+
+    Dim road_px0 As Single, road_pz0 As Single
+    Dim road_px1 As Single, road_pz1 As Single
+
+    Dim road_p As vec3d
+    Dim road_r As vec3d
+    Dim road_left0 As vec3d, road_right0 As vec3d
+    Dim road_left1 As vec3d, road_right1 As vec3d
+
+    Dim road_pa0 As Single, road_pa1 As Single
+    Dim road_m44(3, 3) As Single
+
+    road_left0.x = -5.0
+    road_left0.y = -2.0
+    road_left0.z = 0.0
+
+    road_right0.x = 5.0
+    road_right0.y = -2.0
+    road_right0.z = 0.0
+
+    ' previous piece
+    road_pa0 = road_angle: road_px0 = 0.0: road_pz0 = 0.0
+    
+    Randomize Using seed
+    For thing = 1 To Road_Count
+
+        Matrix4_MakeRotation_Y road_angle, road_m44()
+
+        ' centerline
+        road_p.x = 0.0
+        road_p.y = 0.0
+        road_p.z = 10.0
+        Multiply_Vector3_Matrix4 road_p, road_m44(), road_r
+        road_px1 = road_px0 + road_r.x
+        road_pz1 = road_pz0 + road_r.z
+
+        thing_offset = Rnd - 0.54
+
+        ' 2D rotation of left curb
+        road_p.x = -5.0
+        road_p.y = 0.0
+        road_p.z = 10.0
+        Multiply_Vector3_Matrix4 road_p, road_m44(), road_r
+        road_left1.x = road_px0 + road_r.x
+        road_left1.y = road_left0.y + thing_offset
+        road_left1.z = road_pz0 + road_r.z
+
+        ' 2D rotation of right curb
+        road_p.x = 5.0
+        road_p.y = 0.0
+        road_p.z = 10.0
+        Multiply_Vector3_Matrix4 road_p, road_m44(), road_r
+        road_right1.x = road_px0 + road_r.x
+        road_right1.y = road_right0.y + thing_offset
+        road_right1.z = road_pz0 + road_r.z
+
+
+        mesh(A).x0 = road_left1.x
+        mesh(A).y0 = road_left1.y
+        mesh(A).z0 = road_left1.z
+
+        mesh(A).x1 = road_right1.x
+        mesh(A).y1 = road_right1.y
+        mesh(A).z1 = road_right1.z
+
+        mesh(A).x2 = road_left0.x
+        mesh(A).y2 = road_left0.y
+        mesh(A).z2 = road_left0.z
+
+        mesh(A).texture = 2
+        mesh(A).options = T1_option_clamp_width
+
+        mesh(A).u0 = 0
+        mesh(A).v0 = 0
+        mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
+        mesh(A).v1 = 0
+        mesh(A).u2 = 0
+        mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
+
+        A = A + 1
+
+        mesh(A).x0 = road_right1.x
+        mesh(A).y0 = road_right1.y
+        mesh(A).z0 = road_right1.z
+
+        mesh(A).x1 = road_right0.x
+        mesh(A).y1 = road_right0.y
+        mesh(A).z1 = road_right0.z
+
+        mesh(A).x2 = road_left0.x
+        mesh(A).y2 = road_left0.y
+        mesh(A).z2 = road_left0.z
+
+        mesh(A).texture = 2
+        mesh(A).options = T1_option_clamp_width
+
+        mesh(A).u0 = _Width(TextureCatalog(mesh(A).texture))
+        mesh(A).v0 = 0
+        mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
+        mesh(A).v1 = _Height(TextureCatalog(mesh(A).texture))
+        mesh(A).u2 = 0
+        mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
+
+        A = A + 1
+        road_px0 = road_px1
+        road_pz0 = road_pz1
+        road_pa0 = road_pa1
+
+        Swap road_left0, road_left1
+        Swap road_right0, road_right1
+
+        road_repeat = road_repeat - 1
+        If road_repeat <= 0 Then
+            'INT(RND * (max% - min% + 1)) + min%
+            road_curve = 3 * Int(Rnd * (5.0 + 5.0 + 1)) - 5.0
+            road_repeat = Int(Rnd * 5.0) + 1
+        End If
+        road_angle = road_angle + road_curve
+    Next thing
+
+    For thing = 1 To Tree_Count
+        thing_offset = 5.5 * thing
+        noise = (Rnd - 0.5) * 70.0
+
+        ' X plane
+        mesh(A).x0 = -2.0 + noise
+        mesh(A).y0 = 6.0
+        mesh(A).z0 = 0 + thing_offset
+
+        mesh(A).x1 = 2.0 + noise
+        mesh(A).y1 = 6.0
+        mesh(A).z1 = 0 + thing_offset
+
+        mesh(A).x2 = -2.0 + noise
+        mesh(A).y2 = -2.0
+        mesh(A).z2 = 0 + thing_offset
+
+        mesh(A).texture = 1
+        mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull
+
+        mesh(A).u0 = 0
+        mesh(A).v0 = 0
+        mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
+        mesh(A).v1 = 0
+        mesh(A).u2 = 0
+        mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
+
+        A = A + 1
+
+        mesh(A).x0 = 2.0 + noise
+        mesh(A).y0 = 6.0
+        mesh(A).z0 = 0 + thing_offset
+
+        mesh(A).x1 = 2.0 + noise
+        mesh(A).y1 = -2.0
+        mesh(A).z1 = 0 + thing_offset
+
+        mesh(A).x2 = -2.0 + noise
+        mesh(A).y2 = -2.0
+        mesh(A).z2 = 0 + thing_offset
+
+        mesh(A).texture = 1
+        mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull
+
+        mesh(A).u0 = _Width(TextureCatalog(mesh(A).texture))
+        mesh(A).v0 = 0
+        mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
+        mesh(A).v1 = _Height(TextureCatalog(mesh(A).texture))
+        mesh(A).u2 = 0
+        mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
+
+        A = A + 1
+
+        ' Z plane
+        mesh(A).x0 = noise
+        mesh(A).y0 = 6.0
+        mesh(A).z0 = -2.0 + thing_offset
+
+        mesh(A).x1 = noise
+        mesh(A).y1 = 6.0
+        mesh(A).z1 = 2.0 + thing_offset
+
+        mesh(A).x2 = noise
+        mesh(A).y2 = -2.0
+        mesh(A).z2 = -2.0 + thing_offset
+
+        mesh(A).texture = 1
+        mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull
+
+        mesh(A).u0 = 0
+        mesh(A).v0 = 0
+        mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
+        mesh(A).v1 = 0
+        mesh(A).u2 = 0
+        mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
+
+        A = A + 1
+
+        mesh(A).x0 = noise
+        mesh(A).y0 = 6.0
+        mesh(A).z0 = 2.0 + thing_offset
+
+        mesh(A).x1 = noise
+        mesh(A).y1 = -2.0
+        mesh(A).z1 = 2.0 + thing_offset
+
+        mesh(A).x2 = noise
+        mesh(A).y2 = -2.0
+        mesh(A).z2 = -2.0 + thing_offset
+
+        mesh(A).texture = 1
+        mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull
+
+        mesh(A).u0 = _Width(TextureCatalog(mesh(A).texture))
+        mesh(A).v0 = 0
+        mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture))
+        mesh(A).v1 = _Height(TextureCatalog(mesh(A).texture))
+        mesh(A).u2 = 0
+        mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture))
+
+        A = A + 1
+
+    Next thing
+
+End Sub
 
 Sub FOVchange
     If Frustum_FOV_deg < 10.0 Then Frustum_FOV_deg = 10.0
@@ -2110,7 +2193,6 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
     Static row As Long
     Static col As Long
     Static draw_max_x As Long
-    Static zbuf_index As _Unsigned Long ' Z-Buffer
     Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
     Static pixel_value As _Unsigned Long ' The ARGB value to write to screen
 
@@ -2215,7 +2297,6 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
 
             ' Draw the Horizontal Scanline
             screen_address = screen_row_base + 4 * col
-            zbuf_index = row * Size_Screen_X + col
             While col < draw_max_x
 
                 ' do not update Z Buffer
@@ -2324,7 +2405,6 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                 _MemPut screen_mem_info, screen_address, pixel_value
                 'PSet (col, row), pixel_value
 
-                zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
                 tex_u = tex_u + tex_u_step
                 tex_v = tex_v + tex_v_step
