@@ -151,8 +151,8 @@ clip_max_x = Size_Screen_X 'not (-1) because rounding rule drops one pixel on ri
 Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate As Single
 Dim Shared Fog_color As Long
 Dim Shared Fog_R As Long, Fog_G As Long, Fog_B As Long
-Fog_near = 30.0
-Fog_far = 90.0
+Fog_near = 50.0
+Fog_far = 110.0
 Fog_rate = 1 / (Fog_far - Fog_near)
 
 Fog_color = _RGB32(47, 78, 105)
@@ -288,21 +288,9 @@ Sleep 2
 
 ' Here are the 3D math and projection vars
 
-' Rotation
-Dim matRotZ(3, 3) As Single
-Dim matRotX(3, 3) As Single
-
 Dim point0 As vec3d
 Dim point1 As vec3d
 Dim point2 As vec3d
-
-Dim pointRotZ0 As vec3d
-Dim pointRotZ1 As vec3d
-Dim pointRotZ2 As vec3d
-
-Dim pointRotZX0 As vec3d
-Dim pointRotZX1 As vec3d
-Dim pointRotZX2 As vec3d
 
 ' Translation (as in offset)
 Dim pointTrans0 As vec3d
@@ -331,9 +319,6 @@ Dim pointProj3 As vec4d ' extra clipped tri
 ' Surface Normal Calculation
 ' Part 2
 Dim tri_normal As vec3d
-'Dim line1 As vec3d
-'Dim line2 As vec3d
-'Dim lengthNormal As Single
 
 ' Part 2-2
 Dim vCameraPsn As vec3d ' location of camera in world space
@@ -345,17 +330,21 @@ Dim cameraRay As vec3d
 Dim dotProductCam As Single
 
 ' View Space 2-10-2023
-Dim fYaw As Single ' FPS Camera rotation in XZ plane
+Dim fPitch As Single ' FPS Camera rotation in YZ plane (X)
+Dim fYaw As Single ' FPS Camera rotation in XZ plane (Y)
+Dim fRoll As Single
 Dim matCameraRot(3, 3) As Single
 
-Dim vCameraHome As vec3d 'Home angle orientation is facing down the Z line.
-vCameraHome.x = 0.0: vCameraHome.y = 0.0: vCameraHome.z = 1.0
+Dim vCameraHomeFwd As vec3d ' Home angle forward orientation is facing down the Z line.
+vCameraHomeFwd.x = 0.0: vCameraHomeFwd.y = 0.0: vCameraHomeFwd.z = 1.0
 
-Dim vCameraUp As vec3d
-vCameraUp.x = 0.0: vCameraUp.y = 1.0: vCameraUp.z = 0.0
+Dim vCameraTripod As vec3d ' Home angle orientation of which way is up.
+' You could simulate tipping over the camera tripod with something other than y=1, and it will gimbal oddly.
+vCameraTripod.x = 0.0: vCameraTripod.y = 1.0: vCameraTripod.z = 0.0
 
+Dim vLookPitch As vec3d
 Dim vLookDir As vec3d
-Dim vTarget As vec3d
+Dim vCameraTarget As vec3d
 Dim matCamera(3, 3) As Single
 
 
@@ -393,12 +382,6 @@ clip_max_y = Size_Screen_Y - 5
 clip_min_x = 10
 clip_max_x = Size_Screen_X - 10
 
-' This is so that the cube object animates by rotating
-Dim spinAngleDegZ As Single
-Dim spinAngleDegX As Single
-spinAngleDegZ = 0.0
-spinAngleDegX = 0.0
-
 ' code execution time
 Dim start_ms As Double
 Dim finish_ms As Double
@@ -410,51 +393,32 @@ Dim Animate_Spin As Integer
 Dim Triangles_Drawn As Long
 Dim triCount As Integer
 Dim New_Triangles_Drawn As Long 'because of clipping
+Dim vMove_Player_Forward As vec3d
 
-' Clear Z-Buffer
-Dim L As _Unsigned Long
-For L = 0 To Screen_Z_Buffer_MaxElement
-    Screen_Z_Buffer(L) = 3.402823E+38 ' https://qb64phoenix.com/qb64wiki/index.php/Variable_Types
-Next L
 
 $Checking:Off
 main:
 ExitCode = 0
 Animate_Spin = 0
 T1_Filter_Selection = 1
-fYaw = 0
+fPitch = -10.0
+fYaw = 0.0
+fRoll = 0.0
 Do
-    If Animate_Spin Then
-        spinAngleDegZ = spinAngleDegZ + (0.980)
-        spinAngleDegX = spinAngleDegX '+ (0.228)
-        'fYaw = fYaw + 1
-    End If
-
-    ' Set up rotation matrices
-    ' _D2R is just a built-in degrees to radians conversion
-
-    ' Rotation Z
-    matRotZ(0, 0) = Cos(_D2R(spinAngleDegZ))
-    matRotZ(0, 1) = Sin(_D2R(spinAngleDegZ))
-    matRotZ(1, 0) = -Sin(_D2R(spinAngleDegZ))
-    matRotZ(1, 1) = Cos(_D2R(spinAngleDegZ))
-    matRotZ(2, 2) = 1
-    matRotZ(3, 3) = 1
-
-    ' Rotation X
-    matRotX(0, 0) = 1
-    matRotX(1, 1) = Cos(_D2R(spinAngleDegX))
-    matRotX(1, 2) = -Sin(_D2R(spinAngleDegX)) 'flip
-    matRotX(2, 1) = Sin(_D2R(spinAngleDegX)) 'flip
-    matRotX(2, 2) = Cos(_D2R(spinAngleDegX))
-    matRotX(3, 3) = 1
-
-
     ' Create "Point At" Matrix for camera
+
+    ' the neck tilts up and down first
+    Matrix4_MakeRotation_X fPitch, matCameraRot()
+    Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), vLookPitch
+
+    ' then you spin around in place
     Matrix4_MakeRotation_Y fYaw, matCameraRot()
-    Multiply_Vector3_Matrix4 vCameraHome, matCameraRot(), vLookDir
-    Vector3_Add vCameraPsn, vLookDir, vTarget
-    Matrix4_PointAt vCameraPsn, vTarget, vCameraUp, matCamera()
+    Multiply_Vector3_Matrix4 vLookPitch, matCameraRot(), vLookDir
+
+    ' Add to camera position to chase a dangling carrot so to speak
+    Vector3_Add vCameraPsn, vLookDir, vCameraTarget
+
+    Matrix4_PointAt vCameraPsn, vCameraTarget, vCameraTripod, matCamera()
 
     ' Make view matrix from Camera
     Matrix4_QuickInverse matCamera(), matView()
@@ -620,21 +584,10 @@ Do
         point2.y = mesh(A).y2
         point2.z = mesh(A).z2
 
-        ' Rotate in Z-Axis
-        Multiply_Vector3_Matrix4 point0, matRotZ(), pointRotZ0
-        Multiply_Vector3_Matrix4 point1, matRotZ(), pointRotZ1
-        Multiply_Vector3_Matrix4 point2, matRotZ(), pointRotZ2
-
-        ' Rotate in X-Axis
-        Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), pointRotZX0
-        Multiply_Vector3_Matrix4 pointRotZ1, matRotX(), pointRotZX1
-        Multiply_Vector3_Matrix4 pointRotZ2, matRotX(), pointRotZX2
-
-        ' Offset into the screen
-        pointTrans0 = pointRotZX0
-        pointTrans1 = pointRotZX1
-        pointTrans2 = pointRotZX2
-
+        ' no offset
+        pointTrans0 = point0
+        pointTrans1 = point1
+        pointTrans2 = point2
 
         ' Part 2 (Triangle Surface Normal Calculation)
         CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
@@ -788,19 +741,11 @@ Do
     Color _RGB32(249, 244, 17)
     Print "ESC to exit. ";
     Color _RGB32(233)
-    Print "Arrow Keys Move."
-
-    If Animate_Spin Then
-        Print "Press S to Stop Spin"
-    Else
-        Print "Press S to Start Spin"
-    End If
-
-    Print "(N)ew Mesh Seed: "; Mesh_Seed
-
-    Print "+FOV- Degrees: "; Frustum_FOV_deg
-
-    Print "Triangles Drawn: "; Triangles_Drawn; "+"; New_Triangles_Drawn
+    Print "Arrow Keys Move. Q,Z Pitch."
+    Print "Spacebar jump. R to reset."
+    Print "(N)ew Mesh Seed:"; Mesh_Seed
+    Print "+FOV- Degrees:"; Frustum_FOV_deg
+    Print "Triangles Drawn:"; Triangles_Drawn; "+"; New_Triangles_Drawn
 
     _Limit 30
     _Display
@@ -808,9 +753,7 @@ Do
     KeyNow = UCase$(InKey$)
     If KeyNow <> "" Then
 
-        If KeyNow = "S" Then
-            Animate_Spin = Not Animate_Spin
-        ElseIf KeyNow = "=" Or KeyNow = "+" Then
+        If KeyNow = "=" Or KeyNow = "+" Then
             Frustum_FOV_deg = Frustum_FOV_deg - 5.0
             FOVchange
         ElseIf KeyNow = "-" Then
@@ -819,9 +762,26 @@ Do
         ElseIf KeyNow = "N" Then
             Mesh_Seed = Mesh_Seed + 1
             MakeMesh Mesh_Seed
+        ElseIf KeyNow = "Z" Then
+            fPitch = fPitch + 5.0
+            If fPitch > 85.0 Then fPitch = 85.0
+        ElseIf KeyNow = "Q" Then
+            fPitch = fPitch - 5.0
+            If fPitch < -85.0 Then fPitch = -85.0
+        ElseIf KeyNow = "R" Then
+            vCameraPsn.x = 0.0
+            vCameraPsn.y = 0.0
+            vCameraPsn.z = 0.0
+            fPitch = 0.0
+            fYaw = 0.0
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
+    End If
+
+    If _KeyDown(32) Then
+        ' Spacebar
+        vCameraPsn.y = vCameraPsn.y + 0.2
     End If
 
     If _KeyDown(19712) Then
@@ -834,8 +794,10 @@ Do
         fYaw = fYaw + 1.8
     End If
 
-    Dim vMove_Player_Forward As vec3d
-    Vector3_Mul vLookDir, 0.2, vMove_Player_Forward
+    ' Move the player
+    Matrix4_MakeRotation_Y fYaw, matCameraRot()
+    Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), vMove_Player_Forward
+    Vector3_Mul vMove_Player_Forward, 0.2, vMove_Player_Forward
 
     If _KeyDown(18432) Then
         ' Up arrow
@@ -1217,7 +1179,7 @@ End Sub
 
 Sub FOVchange
     If Frustum_FOV_deg < 10.0 Then Frustum_FOV_deg = 10.0
-    If Frustum_FOV_deg > 140.0 Then Frustum_FOV_deg = 140.0
+    If Frustum_FOV_deg > 120.0 Then Frustum_FOV_deg = 120.0
     Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
     matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
     matProj(1, 1) = Frustum_FOV_ratio
@@ -1434,7 +1396,7 @@ End Sub
 
 
 ' Multiply a 3D vector into a 4x4 matrix and output another 3D vector
-'
+' Important!: matrix o must be a different variable from matrix i. if i and o are the same variable it will malfunction.
 ' To understand the optimization here. Mathematically you can only multiply matrices of the same dimension. 4 here.
 ' But I'm only interested in x, y, and z; so don't bother calculating "w" because it is always 1.
 ' Avoiding 7 unnecessary extra multiplications
@@ -1569,6 +1531,9 @@ Sub Matrix4_MakeRotation_X (deg As Single, m( 3 , 3) As Single)
 End Sub
 
 Sub Matrix4_PointAt (psn As vec3d, target As vec3d, up As vec3d, m( 3 , 3) As Single)
+    ' It will create a matrix that keeps target centered onscreen
+    '  from the vantage point of psn. It will pivot on a gimbal.
+
     ' Calculate new forward direction
     Dim newForward As vec3d
     Vector3_Delta target, psn, newForward
