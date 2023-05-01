@@ -48,12 +48,28 @@ Yes | Subpixel accuracy
  ![TrianglesABC](https://user-images.githubusercontent.com/96515734/220204499-62aaed3c-f1fe-4c07-9c64-1c61564219e7.PNG)
 ### DDA
  The DDA (Digital Difference Analyzer) algorithm is used to simultaneously step on whole number Y increments from point A to point C on the major edge, and from point A to point B on the minor edge. When the Minor Edge DDAs reach vertexBy, the start values and steps are recalculated to be from point B to point C. Note that this case also handles a flat-topped triangle where vertexBy = vertexAy.
+ 
+ DDA is a complicated name for a simple concept. Count from a start value to an end value by steps of 1. And then set up additional counter(s) that change in value along with those steps.
 
+ Pseudocode example:
+```
+X = 8.0
+For Y = 1 to 10
+  // do something with X and Y
+  X = X - 0.5
+Next Y
+
+// Values of Y { 1,   2,   3,   4,   5,   6,   7,   8,   9,  10}
+// Values of X { 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5, 4.0, 3.5}
+// 8.0 is the start value of X, -0.5 is the step (delta) value of X
+```
 ### Pre-stepping
- The start value of Y at point A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same amount. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region.
+ Y is a floating point value but pixels are evenly spaced at integers. The start value of Y at point A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same amount. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region.
 
 ### Why use DDA?
- DDA was used because not all math operations complete in the same amount of time. Dividing once before a loop and then accumulating that quotient within the loop, is going to be faster than dividing every single step within the loop. Sneakily, many of the earliest PC graphics accelerators left this initial division calculation up the main system CPU.
+ DDA was used because not all math operations complete in the same amount of time. Dividing once before a loop to determine a step value and then adding that step value, is going to be faster than mutiplying and dividing at every single step within the loop.
+ 
+ Addition requires significantly less circuitry than division. Division requires multiple clocks whereas addition can complete in one clock. Sneakily, many of the earliest PC graphics accelerators left this initial division calculation up the main system CPU as part of the driver library.
 
 ## Clipping
 ### Near Frustum Clipping
@@ -108,6 +124,19 @@ Imagine ink bleeding through paper so that both sides have ink on them. The prin
 The winding order of the triangle's vertexes determines which side is the front face. The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer. 
 
 If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So flagging and then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
+
+## Projection
+### Core Concept
+Projection is division. In order to project a 3D point (X, Y, Z) onto a 2D screen (X, Y) a division by Z is required: (X / Z, Y / Z). As Z becomes larger, the closer the projected point gets to the origin (X=0, Y=0). In art this is called the vanishing point. As an object gets further away in Z distance, it appears to shrink in size and approach the vanishing point.
+
+The vanishing point is usually centered on the display screen. Doesn't have to be, but usually. So half the screen width is added to X, and half the screen height is added to Y. Otherwise you'd see 1/4 of the image you expected to see with the origin at the top left of the screen.
+
+### Deep Perspective
+Division is expensive. The best we can do is use 1 / Z. The Inverse of Z has a special symbol: W.
+
+W = 1 / Z
+
+Two multiplications are faster than two divisions. Dividing X by Z and then Y by Z is slower than calculating W = 1 / Z, multiplying W times X, and multiplying W times Y. Further savings from bothering to calculate the inverse of Z will appear again when calculating texels.
 
 ## Texture Filters
 ### Texture Magnification
