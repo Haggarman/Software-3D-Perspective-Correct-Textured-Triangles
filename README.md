@@ -42,6 +42,18 @@ Yes | Additive alpha (lighten)
 Yes | Multiplicative alpha (darken)
 Yes | Subpixel accuracy
 
+## Program complexity
+ This table lists the rough order in which the programs were written. The programs features get more complicated further down the list.
+| Program File Name | World Mesh Source | Near Clipping | Texture Source | Texture Size | Texture Filters | Background | Texture Alpha | Vertex Color | Vertex Alpha | Special Adjustment Keys |
+|---|---|---|---|---|---|---|---|---|---|---|
+| VertexColorCube.bas | DATA | Type 2 - Cull if any Z < Near | DATA | constant | 4 choices | Solid color | None | Sum with T1 | None | World Spin, Z Fight Bias |
+| DitherColorCube.bas | DATA | Type 2 - Cull if any Z < Near | DATA | constant | 4 choices | Solid color | None | Modulate T1 | None | World Spin, Z Fight Bias |
+| TexturedCubePlains.bas | DATA + PROCEDURAL | Type 3 - Interpolate | DATA | constant | 4 choices | Solid color | None | Unused - Sum with T1 | None | World Spin, Field of View |
+| TextureZFightDonut.bas | DATA | Type 2 - Cull if any Z < Near | DATA | constant | 4 choices | Solid color | None | Unused - Sum with T1 | None | World Spin, Z Fight Bias |
+| SkyboxLongTube.bas | DATA + PROCEDURAL | Type 3 - Interpolate | FILE | set during draw | 3 point only | Skybox cube | None | Unused - Sum with T1 | None | World Spin, Field of View |
+| VertexAlphaDitherColorCube.bas | DATA | Type 2 - Cull if any Z < Near | DATA | constant | 4 choices | Solid color | None | Modulate T1 | Proportional(Dest , T1) | World Spin, Z Fight Bias |
+| SkyboxTrees.bas | PROCEDURAL | Type 3 - Interpolate | FILE | from file | 3 point only | Skybox cube | Proportional(Dest , T1) | Unused - Sum with T1 | None | Field of View, Camera Pitch |
+
 ## Triangles
 ### Vertex
  The triangles are specified by vertexes A, B, and C. They are sorted by the triangle drawing subroutine so that A is always on top and C is always on the bottom. That still leaves two categories where the knee at B faces left or right. The triangle drawing subroutine also adjusts for this so that pixels are drawn from left to right.
