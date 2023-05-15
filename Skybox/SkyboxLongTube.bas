@@ -42,10 +42,10 @@ Dim Cube_Count As Integer
 Dim Thing_Count As Integer
 
 ' MODIFY THESE if you want.
-Size_Screen_X = 1024 / 2 'render size
+Size_Screen_X = 1024 / 2 ' render size
 Size_Screen_Y = 768 / 2
-Cube_Count = 12 'how many cubes are used to make a tube thing
-Thing_Count = 100 'number of tube things
+Cube_Count = 12 ' how many cubes are used to make a tube thing
+Thing_Count = 100 ' number of tube things
 
 DISP_IMAGE = _NewImage(1024, 768, 32)
 Screen DISP_IMAGE
@@ -179,6 +179,7 @@ Next refIndex
 
 
 ' These T1 Texture characteristics are read later on during drawing.
+Dim Shared T1_ImageHandle As Long
 Dim Shared T1_width As Integer, T1_height As Integer
 Dim Shared T1_width_AND As Integer, T1_height_AND As Integer
 Dim Shared T1_Filter_Selection As Integer
@@ -186,8 +187,12 @@ Dim Shared T1_mblock As _MEM
 Dim Shared T1_options As _Unsigned Long
 Dim Shared T1_option_clamp_width As _Unsigned Long
 Dim Shared T1_option_clamp_height As _Unsigned Long
+Dim Shared T1_option_alpha_channel As _Unsigned Long
+Dim Shared T1_option_no_backface_cull As _Unsigned Long
 T1_option_clamp_width = 1 'constant
 T1_option_clamp_height = 2 'constant
+T1_option_alpha_channel = 8 'constant
+T1_option_no_backface_cull = 16 'constant
 
 ' Later optimization requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
@@ -289,6 +294,8 @@ For refIndex = 0 To 5
         Print "Could not load texture file for skybox face: "; refIndex
         End
     End If
+    Print refIndex; _Width(SkyBoxRef(refIndex)); _Height(SkyBoxRef(refIndex))
+
 Next refIndex
 
 _PutImage (128, 0), SkyBoxRef(2)
@@ -375,9 +382,6 @@ Dim pointProj3 As vec4d ' extra clipped tri
 ' Surface Normal Calculation
 ' Part 2
 Dim tri_normal As vec3d
-'Dim line1 As vec3d
-'Dim line2 As vec3d
-'Dim lengthNormal As Single
 
 ' Part 2-2
 Dim vCameraPsn As vec3d ' location of camera in world space
@@ -389,10 +393,10 @@ Dim cameraRay As vec3d
 Dim dotProductCam As Single
 
 ' View Space 2-10-2023
-Dim fYaw As Single ' FPS Camera rotation in XZ plane
+Dim fYaw As Single ' FPS Camera rotation in XZ plane (Y)
 Dim matCameraRot(3, 3) As Single
 
-Dim vCameraHome As vec3d 'Home angle orientation is facing down the Z line.
+Dim vCameraHome As vec3d ' Home angle orientation is facing down the Z line.
 vCameraHome.x = 0.0: vCameraHome.y = 0.0: vCameraHome.z = 1.0
 
 Dim vCameraUp As vec3d
@@ -454,12 +458,8 @@ Dim Animate_Spin As Integer
 Dim Triangles_Drawn As Long
 Dim triCount As Integer
 Dim New_Triangles_Drawn As Long 'because of clipping
+Dim vMove_Player_Forward As vec3d
 
-' Clear Z-Buffer
-Dim L As _Unsigned Long
-For L = 0 To Screen_Z_Buffer_MaxElement
-    Screen_Z_Buffer(L) = 3.402823E+38 ' https://qb64phoenix.com/qb64wiki/index.php/Variable_Types
-Next L
 
 $Checking:Off
 main:
@@ -554,7 +554,8 @@ Do
         Vector3_Delta vCameraPsn, pointTrans0, cameraRay
         dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay)
 
-        If dotProductCam > 0.0 Then
+        T1_options = mesh(A).options
+        If (T1_options And T1_option_no_backface_cull) Or (dotProductCam > 0.0) Then
             ' Convert World Space --> View Space
             Multiply_Vector3_Matrix4 pointTrans0, matView(), pointView0
             Multiply_Vector3_Matrix4 pointTrans1, matView(), pointView1
@@ -581,13 +582,20 @@ Do
 
             ' Directional light 1-17-2023
             Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
-            If Light_Directional < 0.0 Then Light_Directional = 0.0
+            If dotProductCam > 0.0 Then
+                ' front face
+                If Light_Directional < 0.0 Then Light_Directional = 0.0
+            Else
+                ' back face
+                If Light_Directional > 0.0 Then Light_Directional = 0.0
+                Light_Directional = Abs(Light_Directional)
+            End If
 
-            ' 2-22-2023
-            T1_mblock = _MemImage(TextureCatalog(mesh(A).texture))
-            T1_options = mesh(A).options
-            T1_width = 16: T1_width_AND = T1_width - 1
-            T1_height = 16: T1_height_AND = T1_height - 1
+            ' Fill in Texture 1 data
+            T1_ImageHandle = TextureCatalog(mesh(A).texture)
+            T1_mblock = _MemImage(T1_ImageHandle)
+            T1_width = _Width(T1_ImageHandle): T1_width_AND = T1_width - 1
+            T1_height = _Height(T1_ImageHandle): T1_height_AND = T1_height - 1
 
             ' Slide to center, then Scale into viewport
             SX0 = (pointProj0.x + 1) * halfWidth
@@ -760,16 +768,14 @@ Do
             vertexC.u = vattb2.u * pointProj2.w
             vertexC.v = vattb2.v * pointProj2.w
 
-            ' Directional light 1-17-2023
-            'Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
-            'If Light_Directional < 0.0 Then Light_Directional = 0.0
-            Light_Directional = 1.0
+            ' No Directional light
 
-            ' 2-22-2023
-            T1_mblock = _MemImage(SkyBoxRef(sky(A).texture))
+            ' Fill in Texture 1 data
+            T1_ImageHandle = SkyBoxRef(sky(A).texture)
+            T1_mblock = _MemImage(T1_ImageHandle)
             T1_options = sky(A).options
-            T1_width = 128: T1_width_AND = T1_width - 1
-            T1_height = 128: T1_height_AND = T1_height - 1
+            T1_width = _Width(T1_ImageHandle): T1_width_AND = T1_width - 1
+            T1_height = _Height(T1_ImageHandle): T1_height_AND = T1_height - 1
 
             TexturedNonlitTriangle vertexA, vertexB, vertexC
 
@@ -866,8 +872,10 @@ Do
         fYaw = fYaw + 1.8
     End If
 
-    Dim vMove_Player_Forward As vec3d
-    Vector3_Mul vLookDir, 0.2, vMove_Player_Forward
+    ' Move the player
+    Matrix4_MakeRotation_Y fYaw, matCameraRot()
+    Multiply_Vector3_Matrix4 vCameraHome, matCameraRot(), vMove_Player_Forward
+    Vector3_Mul vMove_Player_Forward, 0.2, vMove_Player_Forward
 
     If _KeyDown(18432) Then
         ' Up arrow
@@ -1274,7 +1282,7 @@ End Sub
 
 
 ' Multiply a 3D vector into a 4x4 matrix and output another 3D vector
-'
+' Important!: matrix o must be a different variable from matrix i. if i and o are the same variable it will malfunction.
 ' To understand the optimization here. Mathematically you can only multiply matrices of the same dimension. 4 here.
 ' But I'm only interested in x, y, and z; so don't bother calculating "w" because it is always 1.
 ' Avoiding 7 unnecessary extra multiplications
@@ -1409,6 +1417,9 @@ Sub Matrix4_MakeRotation_X (deg As Single, m( 3 , 3) As Single)
 End Sub
 
 Sub Matrix4_PointAt (psn As vec3d, target As vec3d, up As vec3d, m( 3 , 3) As Single)
+    ' It will create a matrix that keeps target centered onscreen
+    '  from the vantage point of psn. It will pivot on a gimbal.
+
     ' Calculate new forward direction
     Dim newForward As vec3d
     Vector3_Delta target, psn, newForward
@@ -1761,11 +1772,11 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                         ' clamp
                         If cm5 < 0.0 Then cm5 = 0.0
                         If cm5 >= T1_width_AND Then
-                            '15.0 and up
+                            ' 15.0 and up
                             cc = T1_width_AND
                             cc1 = T1_width_AND
                         Else
-                            '0 1 2 .. 13 14.999
+                            ' 0 1 2 .. 13 14.999
                             cc = Int(cm5)
                             cc1 = cc + 1
                         End If
@@ -1779,7 +1790,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                         ' clamp
                         If rm5 < 0.0 Then rm5 = 0.0
                         If rm5 >= T1_height_AND Then
-                            '15.0 and up
+                            ' 15.0 and up
                             rr = T1_height_AND
                             rr1 = T1_height_AND
                         Else
@@ -1857,7 +1868,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                     _MemPut screen_mem_info, screen_address, pixel_value
                     'PSet (col, row), pixel_value
 
-                End If 'tex_z
+                End If ' tex_z
                 zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
                 tex_u = tex_u + tex_u_step
@@ -1867,9 +1878,9 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 tex_b = tex_b + tex_b_step
                 screen_address = screen_address + 4
                 col = col + 1
-            Wend 'col
+            Wend ' col
 
-        End If 'end div/0 avoidance
+        End If ' end div/0 avoidance
 
         ' DDA next step
         leg_x1 = leg_x1 + d_legx1_step
@@ -1890,13 +1901,14 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
 
         screen_row_base = screen_row_base + screen_next_row_step
         row = row + 1
-    Wend 'row
+    Wend ' row
 
 End Sub
 
 
 Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
-    'this is a reduced copy for skybox drawing
+    ' this is a reduced copy for skybox drawing
+    ' T1_options is ignored
     Static delta2 As vertex8
     Static delta1 As vertex8
     Static draw_min_y As Long, draw_max_y As Long
@@ -2113,7 +2125,6 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Then
                     ' do not update Z Buffer
                     tex_z = 1 / tex_w
-                    'Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
 
                     '--- Begin Inline Texel Read
                     ' Originally function ReadTexel3Point& (ccol As Single, rrow As Single)
@@ -2154,7 +2165,7 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                             cc = T1_width_AND
                             cc1 = T1_width_AND
                         Else
-                            '0 1 2 .. 13 14.999
+                            ' 0 1 2 .. 13 14.999
                             cc = Int(cm5)
                             cc1 = cc + 1
                         End If
@@ -2168,7 +2179,7 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                         ' clamp
                         If rm5 < 0.0 Then rm5 = 0.0
                         If rm5 >= T1_height_AND Then
-                            '15.0 and up
+                            ' 15.0 and up
                             rr = T1_height_AND
                             rr1 = T1_height_AND
                         Else
@@ -2228,16 +2239,16 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                     _MemPut screen_mem_info, screen_address, pixel_value
                     'PSet (col, row), pixel_value
 
-                End If 'tex_z
+                End If ' tex_z
                 zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
                 tex_u = tex_u + tex_u_step
                 tex_v = tex_v + tex_v_step
                 screen_address = screen_address + 4
                 col = col + 1
-            Wend 'col
+            Wend ' col
 
-        End If 'end div/0 avoidance
+        End If ' end div/0 avoidance
 
         ' DDA next step
         leg_x1 = leg_x1 + d_legx1_step
@@ -2252,7 +2263,7 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
 
         screen_row_base = screen_row_base + screen_next_row_step
         row = row + 1
-    Wend 'row
+    Wend ' row
 
 End Sub
 

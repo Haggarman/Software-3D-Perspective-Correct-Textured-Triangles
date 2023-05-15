@@ -515,10 +515,7 @@ Do
             vertexC.u = vattb2.u * pointProj2.w
             vertexC.v = vattb2.v * pointProj2.w
 
-            ' Directional light 1-17-2023
-            'Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
-            'If Light_Directional < 0.0 Then Light_Directional = 0.0
-            Light_Directional = 1.0
+            ' No Directional light
 
             ' Fill in Texture 1 data
             T1_ImageHandle = SkyBoxRef(sky(A).texture)
