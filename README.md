@@ -37,7 +37,7 @@ No | Texture tri-linear mapping
 Yes | Depth Fog
 Yes | Specular gouraud
 Yes | Vertex Alpha
-No | Alpha blending (crossfade)
+Yes | Alpha blending (crossfade)
 Yes | Additive alpha (lighten)
 Yes | Multiplicative alpha (darken)
 Yes | Subpixel accuracy
