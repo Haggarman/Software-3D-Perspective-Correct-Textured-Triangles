@@ -32,7 +32,7 @@ Y/N | 3D graphics options
 -- | --------
 Yes | Texture bi-linear filtering
 Yes | Z-buffer sorting
-No | Texture mip-mapping
+Yes | Texture mip-mapping
 No | Texture tri-linear mapping
 Yes | Depth Fog
 Yes | Specular gouraud
