@@ -2312,7 +2312,12 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     LOD_v10 = LOD_next_voz / LOD_next_w
                     LOD_delta_v = LOD_v10 - LOD_v00
 
+                    ' Pythagoras distance formula without the square root.
                     LOD_vertical_squared = LOD_delta_v * LOD_delta_v + LOD_delta_u * LOD_delta_u
+
+                    ' LOD bias - I am favoring the horizontal LOD (x4) because vertical blurs the road way too much.
+                    ' But this effect is the actual drawback of isotropic mipmapping.
+                    LOD_vertical_squared = LOD_vertical_squared * 0.25
                 Else
                     ' Singularity and I dont care. Horizontal LOD will be sufficient.
                     LOD_vertical_squared = 0
@@ -2320,11 +2325,8 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
 
                 ' Pick the largest of the two LODs
-                LOD_squared = LOD_horizontal_squared
-
-                ' I am favoring the horizontal LOD (x4) because vertical squishes the road way too much.
-                ' But this effect is the actual drawback of isotropic mipmapping.
-                If LOD_vertical_squared > LOD_squared * 4.0 Then LOD_squared = LOD_vertical_squared
+                LOD_squared = LOD_vertical_squared
+                If LOD_squared < LOD_horizontal_squared Then LOD_squared = LOD_horizontal_squared
 
                 ' Threshold lookup tables.
                 ' This avoids a square root, logarithm, and a number raised to a power of 2.
