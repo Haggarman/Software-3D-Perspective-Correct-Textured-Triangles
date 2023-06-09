@@ -29,11 +29,11 @@
  Let's list what has currently been implemented or explored, Final Reality Advanced benchmark style.
  
 Y/N | 3D graphics options
--- | --------
+--- | --------
 Yes | Texture bi-linear filtering
 Yes | Z-buffer sorting
 Yes | Texture mip-mapping
-No | Texture tri-linear mapping
+Yes | Texture tri-linear mapping
 Yes | Depth Fog
 Yes | Specular gouraud
 Yes | Vertex Alpha
@@ -41,18 +41,22 @@ Yes | Alpha blending (crossfade)
 Yes | Additive alpha (lighten)
 Yes | Multiplicative alpha (darken)
 Yes | Subpixel accuracy
+Yes | Z-Fight Bias
 
 ## Program complexity
  This table lists the rough order in which the programs were written. The programs features get more complicated further down the list.
-| Program File Name | World Mesh Source | Near Clipping | Texture Source | Texture Size | Texture Filters | Background | Texture Alpha | Vertex Color | Vertex Alpha | Adjustment Keys |
-|:--|:--|:--|:--|:--|:--|:--|:--|:--|:--|---|
-| VertexColorCube.bas | DATA | Type 2 - Cull if any Z < Near | DATA | constant | 4 choices | Solid color | None | Sum with T1 | None | World Spin, Z Fight Bias |
-| DitherColorCube.bas | DATA | Type 2 - Cull if any Z < Near | DATA | constant | 4 choices | Solid color | None | Modulate T1 | None | World Spin, Z Fight Bias |
-| TexturedCubePlains.bas | DATA + PROCEDURAL | Type 3 - Interpolate | DATA | constant | 4 choices | Solid color | None | Unused - Sum with T1 | None | World Spin, Field of View |
-| TextureZFightDonut.bas | DATA | Type 2 - Cull if any Z < Near | DATA | constant | 3 point only | Solid color | None | Unused - Sum with T1 | None | World Spin, Z Fight Bias |
-| SkyboxLongTube.bas | DATA + PROCEDURAL | Type 3 - Interpolate | FILE | set during draw | 3 point only | Skybox cube | None | Unused - Sum with T1 | None | World Spin, Field of View |
-| VertexAlphaDitherColorCube.bas | DATA | Type 2 - Cull if any Z < Near | DATA | constant | 4 choices | Solid color | None | Modulate T1 | Proportional (Dest , T1) | World Spin, Z Fight Bias |
-| SkyboxTrees.bas | PROCEDURAL | Type 3 - Interpolate | FILE | from file | 3 point only | Skybox cube | Proportional (Dest , T1) | Unused - Sum with T1 | None | Field of View, Camera Pitch |
+| Program File Name | Note |
+|:--|:--|
+| VertexColorCube.bas | As basic as it gets. |
+| DitherColorCube.bas | Colorful RGB 555 Bayer Dithering example. |
+| TexturedCubePlains.bas | Fly over and spin a grass plane and also adjust Field of View. |
+| TextureZFightDonut.bas | Z Fight Bias adjustment and interesting table fog (pixel fog) effect. |
+| SkyboxLongTube.bas | Skybox background, near plane clipping, and major drawing speed increase. |
+| VertexAlphaDitherColorCube.bas | Back to the Cube for testing Alpha Transparency. |
+| SkyboxTrees.bas | Procedural Road and Tree drawing. Allows Camera Pitch. |
+| TwinTextureTriangles.bas | TwiN Texturing (TNT). Orange lights circling above the road. |
+| IsotropicMipmapRoad.bas | Integer Level of Detail (LOD) calculation selects which size road texture to draw. |
+| TrilinearMipmapRoad.bas | The final boss. Realtime blend between two mipmap textures based on LOD fraction. |
 
 ## Triangles
 ### Vertex
