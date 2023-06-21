@@ -87,6 +87,19 @@ Next Y
  
  Addition requires significantly less circuitry than division. Division requires multiple clocks whereas addition can complete in one clock. Sneakily, many of the earliest PC graphics accelerators left this initial division calculation up the main system CPU as part of the driver library.
 
+## Projection
+### Core Concept
+Projection is division. In order to project a 3D point (X, Y, Z) onto a 2D screen (X, Y) a division by Z is required: (X / Z, Y / Z). As Z becomes larger, the closer the projected point gets to the origin (X=0, Y=0). In art this is called the vanishing point. As an object gets further away in Z distance, it appears to shrink in size and approach the vanishing point.
+
+The vanishing point is usually centered on the display screen. Doesn't have to be, but usually. So half the screen width is added to X, and half the screen height is added to Y. Otherwise you'd see 1/4 of the image you expected to see with the origin at the top left of the screen.
+
+### Deep Perspective
+Division is expensive. The best we can do is use 1 / Z. The Inverse of Z has a special symbol: W.
+
+W = 1 / Z
+
+Two multiplications are faster than two divisions. Dividing X by Z and then Y by Z is slower than calculating W = 1 / Z, multiplying W times X, and multiplying W times Y. Further savings from bothering to calculate the inverse of Z will appear again when calculating texels.
+
 ## Clipping
 ### Near Frustum Clipping
  For this discussion, I am asserting that an object moving forward from the viewer increases in +Z distance. Note this can differ in well-known graphics libraries.
@@ -140,19 +153,6 @@ Imagine ink bleeding through paper so that both sides have ink on them. The prin
 The winding order of the triangle's vertexes determines which side is the front face. The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer. 
 
 If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So flagging and then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
-
-## Projection
-### Core Concept
-Projection is division. In order to project a 3D point (X, Y, Z) onto a 2D screen (X, Y) a division by Z is required: (X / Z, Y / Z). As Z becomes larger, the closer the projected point gets to the origin (X=0, Y=0). In art this is called the vanishing point. As an object gets further away in Z distance, it appears to shrink in size and approach the vanishing point.
-
-The vanishing point is usually centered on the display screen. Doesn't have to be, but usually. So half the screen width is added to X, and half the screen height is added to Y. Otherwise you'd see 1/4 of the image you expected to see with the origin at the top left of the screen.
-
-### Deep Perspective
-Division is expensive. The best we can do is use 1 / Z. The Inverse of Z has a special symbol: W.
-
-W = 1 / Z
-
-Two multiplications are faster than two divisions. Dividing X by Z and then Y by Z is slower than calculating W = 1 / Z, multiplying W times X, and multiplying W times Y. Further savings from bothering to calculate the inverse of Z will appear again when calculating texels.
 
 ## Texture Filters
 ### Texture Magnification

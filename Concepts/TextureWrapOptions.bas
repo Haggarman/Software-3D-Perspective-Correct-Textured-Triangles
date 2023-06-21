@@ -1,33 +1,32 @@
 ' 2023 Haggarman
-' 3/10/2023 Version 6
+' 6/19/2023 Version 7
 Option _Explicit
-_Title "Texture Wrap Options - Press 1 2 3, or press ESC to exit"
+_Title "Texture Wrap Options - Press 1 2 3 4 5 or press ESC to exit"
 Screen _NewImage(800, 600, 32)
+
+' These are read from a sub later on, named ReadTexel
+Dim Shared T1_width As Integer, T1_width_MASK As Integer, T1_width_mirror As Integer
+Dim Shared T1_height As Integer, T1_height_MASK As Integer, T1_height_mirror As Integer
+Dim Shared T1_Filter_Selection As Integer
+Dim Shared Texture_options As _Unsigned Long
+Const T1_option_clamp_width = 1
+Const T1_option_clamp_height = 2
+Const T1_option_mirror_width = 4
+Const T1_option_mirror_height = 8
+
+' Later optimization in ReadTexel requires these to be powers of 2.
+' That means: 2,4,8,16,32,64,128,256...
+T1_width = 16: T1_width_MASK = T1_width - 1: T1_width_mirror = T1_width + T1_width_MASK
+T1_height = 16: T1_height_MASK = T1_height - 1: T1_height_mirror = T1_height + T1_height_MASK
+Dim Shared Texture1(T1_width_MASK, T1_height_MASK) As _Unsigned Long
 
 ' Load Texture1 Array from Data
 Restore Texture1Data
 
-' These are read from a sub later on, named ReadTexel
-Dim Shared T1_width As Integer, T1_height As Integer
-Dim Shared T1_width_AND As Integer, T1_height_AND As Integer
-Dim Shared T1_Filter_Selection As Integer
-Dim Shared T1_options As _Unsigned Long
-Dim Shared T1_option_clamp_width As _Unsigned Long
-Dim Shared T1_option_clamp_height As _Unsigned Long
-T1_option_clamp_width = 1
-T1_option_clamp_height = 2
-
-' Later optimization in ReadTexel requires these to be powers of 2.
-' That means: 2,4,8,16,32,64,128,256...
-T1_width = 16: T1_width_AND = T1_width - 1
-T1_height = 16: T1_height_AND = T1_height - 1
-Dim Shared Texture1(T1_width_AND, T1_height_AND) As _Unsigned Long
-
-' Load Texture1
 Dim dvalue As _Unsigned Long
 Dim row As Integer, col As Integer
-For row = 0 To T1_height_AND
-    For col = 0 To T1_width_AND
+For row = 0 To T1_height_MASK
+    For col = 0 To T1_width_MASK
         Read dvalue
         Texture1(col, row) = dvalue
         'PSet (col, row), dvalue
@@ -39,19 +38,19 @@ _Display
 Dim x_zero_pixel As Single, x_pixels_per_div As Single, x_scaledown As Single
 Dim y_zero_pixel As Single, y_pixels_per_div As Single, y_scaledown As Single
 
-x_zero_pixel = 400
+x_zero_pixel = 400 - 100
 x_pixels_per_div = _Width / 4.0
 x_scaledown = 4.0 / _Width
 
-y_zero_pixel = 300
+y_zero_pixel = 300 - 100
 y_pixels_per_div = _Height / -3.0
 y_scaledown = 3.0 / _Height
 
 ' dependent inner loop vars
 Dim k$
 Dim X As Single, Y As Single
-T1_Filter_Selection = 1
-T1_options = T1_option_clamp_height
+T1_Filter_Selection = 0
+Texture_options = T1_option_clamp_height
 
 Do
     For row = 0 To _Height - 1
@@ -82,18 +81,22 @@ Do
 
     k$ = InKey$
     If k$ = "1" Then
-        T1_options = T1_options Xor T1_option_clamp_width
+        Texture_options = Texture_options Xor T1_option_clamp_width
     ElseIf k$ = "2" Then
-        T1_options = T1_options Xor T1_option_clamp_height
+        Texture_options = Texture_options Xor T1_option_clamp_height
     ElseIf k$ = "3" Then
         T1_Filter_Selection = T1_Filter_Selection + 1
         If T1_Filter_Selection > 2 Then T1_Filter_Selection = 0
+    ElseIf k$ = "4" Then
+        Texture_options = Texture_options Xor T1_option_mirror_width
+    ElseIf k$ = "5" Then
+        Texture_options = Texture_options Xor T1_option_mirror_height
     End If
 Loop Until k$ = Chr$(27)
 
 End
 
-Texture1Data:
+'Texture1Data:
 'Grass_Block_side', 16x16px
 Data &HFF517b46,&HFF45693c,&HFF486d3e,&HFF43663a,&HFF517b46,&HFF45693c,&HFF517b46,&HFF486d3e,&HFF486d3e,&HFF4c7442,&HFF517b46,&HFF4c7442,&HFF55814a,&HFF3d5e36,&HFF4c7442,&HFF486d3e
 Data &HFF517b46,&HFF43663a,&HFF517b46,&HFF45693c,&HFF55814a,&HFF593d29,&HFF517b46,&HFF3e5e36,&HFF55814a,&HFF486d3e,&HFF517b46,&HFF466b3d,&HFF517b46,&HFF43663a,&HFF517b46,&HFF42653a
@@ -130,6 +133,7 @@ Data &HFFd93f0f,&HFFb33409,&HFFa93515,&HFFae3709,&HFFb33409,&HFFb33409,&HFFaa270
 Data &HFFd93f0f,&HFFa61800,&HFFb93a1a,&HFFb33409,&HFFb33409,&HFFb33409,&HFFb33409,&HFFd1d3d4,&HFFd93f0f,&HFFb33409,&HFFb33409,&HFFb33409,&HFFb63521,&HFFb33409,&HFFaf3c0c,&HFFd1d1d1
 Data &HFFb3938b,&HFFb59181,&HFFa5857c,&HFFb59895,&HFFb3938b,&HFFb09a96,&HFFb3938b,&HFFd1d1d1,&HFFbaa085,&HFFb3938b,&HFFad8c8a,&HFFb3938b,&HFFbc9a8e,&HFFb3938b,&HFFb3938b,&HFFbec7c9
 
+Texture1Data:
 'Origin16x16', 16x16px
 Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
 Data &HFFffdbc4,&HFFff7f27,&HFFffdbc4,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
@@ -167,32 +171,45 @@ Function ReadTexelNearest& (ccol As Single, rrow As Single)
     Static cc As Integer
     Static rr As Integer
 
-    If T1_options And T1_option_clamp_width Then
+
+    If Texture_options And T1_option_clamp_width Then
         ' clamp
         If ccol < 0.0 Then
             cc = 0
-        ElseIf ccol >= T1_width_AND Then
-            cc = T1_width_AND
+        ElseIf ccol >= T1_width_MASK Then
+            cc = T1_width_MASK
         Else
             cc = Int(ccol)
         End If
     Else
         ' tile
-        cc = Int(ccol) And T1_width_AND
+        If Texture_options And T1_option_mirror_width Then
+            cc = Int(ccol) And T1_width_mirror
+            ' butterfly mirror
+            If cc > T1_width_MASK Then cc = T1_width_mirror - cc
+        Else
+            cc = Int(ccol) And T1_width_MASK
+        End If
     End If
 
-    If T1_options And T1_option_clamp_height Then
-        'clamp
+    If Texture_options And T1_option_clamp_height Then
+        ' clamp
         If rrow < 0.0 Then
             rr = 0
-        ElseIf rrow >= T1_height_AND Then
-            rr = T1_height_AND
+        ElseIf rrow >= T1_height_MASK Then
+            rr = T1_height_MASK
         Else
             rr = Int(rrow)
         End If
     Else
-        'tile
-        rr = Int(rrow) And T1_height_AND
+        ' tile
+        If Texture_options And T1_option_mirror_height Then
+            rr = Int(rrow) And T1_height_mirror
+            ' butterfly mirror
+            If rr > T1_height_MASK Then rr = T1_height_mirror - rr
+        Else
+            rr = Int(rrow) And T1_height_MASK
+        End If
     End If
 
     ReadTexelNearest& = Texture1(cc, rr)
@@ -228,39 +245,55 @@ Function ReadTexel3Point& (ccol As Single, rrow As Single)
     cm5 = ccol - 0.5
     rm5 = rrow - 0.5
 
-    If T1_options And T1_option_clamp_width Then
-        'clamp
+    If Texture_options And T1_option_clamp_width Then
+        ' clamp
         If cm5 < 0.0 Then cm5 = 0.0
-        If cm5 >= T1_width_AND Then
+        If cm5 >= T1_width_MASK Then
             '15.0 and up
-            cc = T1_width_AND
-            cc1 = T1_width_AND
+            cc = T1_width_MASK
+            cc1 = T1_width_MASK
         Else
             '0 1 2 .. 13 14.999
             cc = Int(cm5)
             cc1 = cc + 1
         End If
     Else
-        ' tile the texture
-        cc = Int(cm5) And T1_width_AND
-        cc1 = (cc + 1) And T1_width_AND
+        ' tile
+        If Texture_options And T1_option_mirror_width Then
+            cc = Int(cm5) And T1_width_mirror
+            cc1 = (cc + 1) And T1_width_mirror
+            ' butterfly mirror
+            If cc1 > T1_width_MASK Then cc1 = T1_width_mirror - cc1
+            If cc > T1_width_MASK Then cc = T1_width_mirror - cc
+        Else
+            cc = Int(cm5) And T1_width_MASK
+            cc1 = (cc + 1) And T1_width_MASK
+        End If
     End If
 
-    If T1_options And T1_option_clamp_height Then
-        'clamp
+    If Texture_options And T1_option_clamp_height Then
+        ' clamp
         If rm5 < 0.0 Then rm5 = 0.0
-        If rm5 >= T1_height_AND Then
-            '15.0 and up
-            rr = T1_height_AND
-            rr1 = T1_height_AND
+        If rm5 >= T1_height_MASK Then
+            ' 15.0 and up
+            rr = T1_height_MASK
+            rr1 = T1_height_MASK
         Else
             rr = Int(rm5)
             rr1 = rr + 1
         End If
     Else
-        'tile
-        rr = Int(rm5) And T1_height_AND
-        rr1 = (rr + 1) And T1_height_AND
+        ' tile
+        If Texture_options And T1_option_mirror_height Then
+            rr = Int(rm5) And T1_height_mirror
+            rr1 = (rr + 1) And T1_height_mirror
+            ' butterfly mirror
+            If rr1 > T1_height_MASK Then rr1 = T1_height_mirror - rr1
+            If rr > T1_height_MASK Then rr = T1_height_mirror - rr
+        Else
+            rr = Int(rm5) And T1_height_MASK
+            rr1 = (rr + 1) And T1_height_MASK
+        End If
     End If
 
     uv_0_0 = Texture1(cc, rr)
@@ -323,39 +356,55 @@ Function ReadTexelBiLinear& (ccol As Single, rrow As Single)
     cm5 = ccol - 0.5
     rm5 = rrow - 0.5
 
-    If T1_options And T1_option_clamp_width Then
-        'clamp
+    If Texture_options And T1_option_clamp_width Then
+        ' clamp
         If cm5 < 0.0 Then cm5 = 0.0
-        If cm5 >= T1_width_AND Then
-            '15.0 and up
-            cc = T1_width_AND
-            cc1 = T1_width_AND
+        If cm5 >= T1_width_MASK Then
+            ' 15.0 and up
+            cc = T1_width_MASK
+            cc1 = T1_width_MASK
         Else
-            '0 1 2 .. 13 14.999
+            ' 0 1 2 .. 13 14.999
             cc = Int(cm5)
             cc1 = cc + 1
         End If
     Else
-        ' tile the texture
-        cc = Int(cm5) And T1_width_AND
-        cc1 = (cc + 1) And T1_width_AND
+        ' tile
+        If Texture_options And T1_option_mirror_width Then
+            cc = Int(cm5) And T1_width_mirror
+            cc1 = (cc + 1) And T1_width_mirror
+            ' butterfly mirror
+            If cc1 > T1_width_MASK Then cc1 = T1_width_mirror - cc1
+            If cc > T1_width_MASK Then cc = T1_width_mirror - cc
+        Else
+            cc = Int(cm5) And T1_width_MASK
+            cc1 = (cc + 1) And T1_width_MASK
+        End If
     End If
 
-    If T1_options And T1_option_clamp_height Then
-        'clamp
+    If Texture_options And T1_option_clamp_height Then
+        ' clamp
         If rm5 < 0.0 Then rm5 = 0.0
-        If rm5 >= T1_height_AND Then
-            '15.0 and up
-            rr = T1_height_AND
-            rr1 = T1_height_AND
+        If rm5 >= T1_height_MASK Then
+            ' 15.0 and up
+            rr = T1_height_MASK
+            rr1 = T1_height_MASK
         Else
             rr = Int(rm5)
             rr1 = rr + 1
         End If
     Else
-        'tile
-        rr = Int(rm5) And T1_height_AND
-        rr1 = (rr + 1) And T1_height_AND
+        ' tile
+        If Texture_options And T1_option_mirror_height Then
+            rr = Int(rm5) And T1_height_mirror
+            rr1 = (rr + 1) And T1_height_mirror
+            ' butterfly mirror
+            If rr1 > T1_height_MASK Then rr1 = T1_height_mirror - rr1
+            If rr > T1_height_MASK Then rr = T1_height_mirror - rr
+        Else
+            rr = Int(rm5) And T1_height_MASK
+            rr1 = (rr + 1) And T1_height_MASK
+        End If
     End If
 
     uv_0_0 = Texture1(cc, rr)
