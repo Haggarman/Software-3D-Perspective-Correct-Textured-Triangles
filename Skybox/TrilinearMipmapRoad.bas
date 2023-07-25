@@ -3,7 +3,10 @@ _Title "Tri-Linear Mipmap Road"
 ' 2023 Haggarman
 ' Well I finally made it here. Trilinear Mip Mapping.
 ' Toggle false colors with (F) and move around with the arrow keys.
-' (M)ode 0 = no mipmap, Mode 1 = single mipmap per horizontal pixel, Mode 2 = trilinear per span.
+' (M)ode 0 = No mipmap
+'        1 = The academic per-pixel horizontal LOD calculation, requiring a square root. SLOW.
+'        2 = Per-Pixel horizontal LOD but avoiding a square root and a log base 2.
+'        3 = Fully implemented isotropic mip mapping. Enjoy the blurriness.
 '
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
@@ -313,7 +316,7 @@ T2_Offset_T = 0.0
 Dim Shared LOD_mode As Integer
 Dim Shared LOD_max As Integer
 
-LOD_mode = 2
+LOD_mode = 3
 LOD_max = 0 ' 0 is the base level texture (largest)
 
 ' Load the Mesh
@@ -981,7 +984,7 @@ Do
             Toggle_Mipmap_FalseColor = Not Toggle_Mipmap_FalseColor
         ElseIf KeyNow = "M" Then
             LOD_mode = LOD_mode + 1
-            If LOD_mode > 2 Then LOD_mode = 0
+            If LOD_mode > 3 Then LOD_mode = 0
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
@@ -2225,7 +2228,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
             Static LOD_coord_scale1 As Single
             Static LOD_coord_scale3 As Single
 
-            Static LOD_1M_fraction As Single
+            Static LOD_float As Single
             Static LOD_fraction As Single
 
             Static LOD As Integer
@@ -2237,8 +2240,9 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
             Static T3_ImageHandle As Long
             Static T3_mblock As _MEM
 
-            If (LOD_max > 0) And (LOD_mode = 2) Then
-                ' This section is performed once per horizontal line.
+            If (LOD_max > 0) And (LOD_mode = 3) Then
+                ' Mode 3 is performed once per horizontal line instead of per pixel.
+                ' This can give a nice tradeoff for increased performance.
 
                 ' Scanline Horizontal LOD calculation.
                 ' Answer how much the texel (U, V) coordinates change when going one pixel to the right.
@@ -2338,7 +2342,8 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     ' Pythagoras distance formula without the square root.
                     LOD_vertical_squared = LOD_delta_v * LOD_delta_v + LOD_delta_u * LOD_delta_u
                 Else
-                    ' Singularity and I dont care. Horizontal LOD will be sufficient.
+                    ' Singularity and I dont care.
+                    ' Horizontal LOD will be sufficient.
                     LOD_vertical_squared = 0
                 End If ' next_delta_x
 
@@ -2347,15 +2352,12 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                 LOD_squared = LOD_vertical_squared
                 If LOD_squared < LOD_horizontal_squared Then LOD_squared = LOD_horizontal_squared
 
-                Static LOD_float As Single
-
                 If LOD_squared > 1.0 Then
-                    ' determine integer and fractional LOD
+                    ' Determine integer and fractional LOD
                     ' Using an imported C99 math function for base 2 logarithm as this needs to be fast
                     LOD_float = log2f(Sqr(LOD_squared))
                     LOD = Int(LOD_float)
                     LOD_fraction = LOD_float - LOD
-                    LOD_1M_fraction = 1.0 - LOD_fraction
 
                     If LOD > LOD_max Then
                         LOD = LOD_max
@@ -2405,7 +2407,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                 T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
                 T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
-            End If ' LOD_mode 2
+            End If ' LOD_mode 3
 
             ' Draw the Horizontal Scanline
             tex_z = 1 / tex_w
@@ -2419,12 +2421,12 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
                     ' Level of Detail calculation
                     Static LOD_right As Single
-                    Static LOD_col As Single
+                    'Static LOD_col As Single
 
                     If LOD_max > 0 Then
 
                         Select Case LOD_mode
-                            ' For each path be sure to set LOD and LOD_coord_scale1
+                            ' For each path be sure to set LOD and coordinate scaling.
                             Case 0:
                                 ' Pass
                                 LOD = 0
@@ -2433,32 +2435,32 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                 LOD_coord_scale3 = 1.0
 
                             Case 1:
-                                ' The Academic way
+                                ' The Academic Per-Pixel Horizontal LOD calculation.
 
-                                ' Per-Pixel Horizontal LOD calculation.
+                                ' How much do the texel (U, V) coordinates change when going one pixel to the right?
                                 LOD_u00 = (tex_u * tex_z)
                                 LOD_u01 = ((tex_u + tex_u_step) / (tex_w + tex_w_step))
-                                LOD_delta_u = LOD_u01 - LOD_u00
 
                                 LOD_v00 = (tex_v * tex_z)
                                 LOD_v01 = ((tex_v + tex_v_step) / (tex_w + tex_w_step))
+
+                                LOD_delta_u = LOD_u01 - LOD_u00
                                 LOD_delta_v = LOD_v01 - LOD_v00
 
                                 ' Pythagoras distance formula
                                 LOD_right = Sqr(LOD_delta_v * LOD_delta_v + LOD_delta_u * LOD_delta_u)
-                                'LOD_right = _Hypot(LOD_delta_v, LOD_delta_u) ?? why is this slightly slower?
+
                                 If LOD_right < 1.0 Then
                                     ' step deltas are less than one
                                     ' texture magnification does not use LOD
-                                    LOD_col = 0.0
+                                    LOD_float = 0.0
                                 Else
                                     ' Base 2 logarithm
-                                    'LOD_col = Log(LOD_right) / Log(2.0)
-                                    LOD_col = log2f(LOD_right)
+                                    'LOD_float = Log(LOD_right) / Log(2.0)
+                                    LOD_float = log2f(LOD_right)
                                 End If
 
-                                ' TODO: Pick the largest of the two LODs
-                                LOD = Int(LOD_col)
+                                LOD = Int(LOD_float)
                                 If LOD > LOD_max Then LOD = LOD_max
 
                                 LOD_coord_scale1 = 1.0 / (2 ^ LOD)
@@ -2472,9 +2474,108 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                 T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
                                 T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
-                                ' Non-Trilinear Mip-mapping selects one texture at a time.
-                                ' When we set these two LODs equal, T3 read will not occur.
-                                LOD_3 = LOD
+                                ' 7-14-2023 we should trilinear blend
+                                LOD_3 = LOD + 1
+                                If LOD_3 > LOD_max Then LOD_3 = LOD_max
+
+                                If LOD_3 <> LOD Then
+                                    ' Introduce the smaller of the two mipmaps and determine the LOD fractional portion.
+                                    LOD_coord_scale3 = 1.0 / (2 ^ LOD_3)
+                                    LOD_fraction = LOD_float - LOD
+
+                                    T3_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_3)
+                                    T3_mblock = _MemImage(T3_ImageHandle)
+                                    T3_width = _Width(T3_ImageHandle): T3_width_MASK = T3_width - 1
+                                    T3_height = _Height(T3_ImageHandle): T3_height_MASK = T3_height - 1
+                                End If
+
+                            Case 2:
+                                ' Per-Pixel Horizontal LOD calculation but attempt to cheat.
+                                ' Avoid the log base 2, avoid the square root.
+
+                                ' How much do the texel (U, V) coordinates change when going one pixel to the right?
+                                LOD_u00 = (tex_u * tex_z)
+                                LOD_u01 = ((tex_u + tex_u_step) / (tex_w + tex_w_step))
+
+                                LOD_v00 = (tex_v * tex_z)
+                                LOD_v01 = ((tex_v + tex_v_step) / (tex_w + tex_w_step))
+
+                                LOD_delta_u = LOD_u01 - LOD_u00
+                                LOD_delta_v = LOD_v01 - LOD_v00
+
+                                ' Pythagoras distance formula but without the square root
+                                LOD_horizontal_squared = LOD_delta_v * LOD_delta_v + LOD_delta_u * LOD_delta_u
+
+                                LOD_squared = LOD_horizontal_squared
+
+                                ' Threshold lookup tables.
+                                ' The bend of the LOD fraction curve is not correct but visually close enough.
+                                ' Yes it ranges from 0 to 0.9999
+                                If LOD_squared < 1.0 Then
+                                    '1*1
+                                    LOD_fraction = 0.0
+                                    LOD_3 = 0
+                                    LOD_coord_scale1 = 1.0
+                                    LOD_coord_scale3 = 1.0
+                                    LOD = 0
+                                ElseIf LOD_squared < 4.0 Then
+                                    ' 2*2
+                                    LOD_fraction = (LOD_squared - 1.0) / (4.0 - 1.0)
+                                    LOD_3 = 1
+                                    LOD_coord_scale1 = 1.0
+                                    LOD_coord_scale3 = 0.5
+                                    LOD = 0
+                                ElseIf LOD_squared < 16.0 Then
+                                    ' 4*4
+                                    LOD_fraction = (LOD_squared - 4.0) / (16.0 - 4.0)
+                                    LOD_3 = 2
+                                    LOD_coord_scale1 = 0.5
+                                    LOD_coord_scale3 = 0.25
+                                    LOD = 1
+                                ElseIf LOD_squared < 64.0 Then
+                                    ' 8*8
+                                    LOD_fraction = (LOD_squared - 16.0) / (64.0 - 16.0)
+                                    LOD_3 = 3
+                                    LOD_coord_scale1 = 0.25
+                                    LOD_coord_scale3 = 0.125
+                                    LOD = 2
+                                ElseIf LOD_squared < 256.0 Then
+                                    ' 16*16
+                                    LOD_fraction = (LOD_squared - 64.0) / (256.0 - 64.0)
+                                    LOD_3 = 4
+                                    LOD_coord_scale1 = 0.125
+                                    LOD_coord_scale3 = 0.0625
+                                    LOD = 3
+                                ElseIf LOD_squared < 1024.0 Then
+                                    ' 32*32
+                                    LOD_fraction = (LOD_squared - 256.0) / (1024.0 - 256.0)
+                                    LOD_3 = 5
+                                    LOD_coord_scale1 = 0.0625
+                                    LOD_coord_scale3 = 0.03125
+                                    LOD = 4
+                                Else
+                                    ' 64*64
+                                    LOD_fraction = 1.0
+                                    LOD_3 = 5
+                                    LOD_coord_scale1 = 0.03125
+                                    LOD_coord_scale3 = 0.03125
+                                    LOD = 5
+                                End If
+
+                                ' Because LOD changes up or down, these T1 numbers need to be set again.
+                                ' This includes the case of going from LOD 1 back down to LOD 0.
+                                ' So just set every time.
+                                T1_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD)
+                                T1_mblock = _MemImage(T1_ImageHandle)
+                                T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
+                                T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
+
+                                If LOD_3 <> LOD Then
+                                    T3_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_3)
+                                    T3_mblock = _MemImage(T3_ImageHandle)
+                                    T3_width = _Width(T3_ImageHandle): T3_width_MASK = T3_width - 1
+                                    T3_height = _Height(T3_ImageHandle): T3_height_MASK = T3_height - 1
+                                End If
                         End Select
 
                     Else
