@@ -69,15 +69,17 @@ Yes | Z-Fight Bias
 
  Pseudocode example:
 ```
-X = 8.0
+Xstart = 8.0
+Xstep = -0.5
+
+Xacc = Xstart
 For Y = 1 to 10
-  // do something with X and Y
-  X = X - 0.5
+  do_something_with(Y, Xacc)
+  Xacc = Xacc + Xstep
 Next Y
 
-// Values of Y { 1,   2,   3,   4,   5,   6,   7,   8,   9,  10}
-// Values of X { 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5, 4.0, 3.5}
-// 8.0 is the start value of X, -0.5 is the step (delta) value of X
+// Values of Y    { 1,   2,   3,   4,   5,   6,   7,   8,   9,  10}
+// Values of Xacc { 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5, 4.0, 3.5}
 ```
 ### Pre-stepping
  Y is a floating point value but pixels are evenly spaced at integers. The start value of Y at point A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same amount. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region.
