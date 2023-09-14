@@ -43,20 +43,30 @@ Yes | Multiplicative alpha (darken)
 Yes | Subpixel accuracy
 Yes | Z-Fight Bias
 
-## Program complexity
+## Programs sorted by complexity
  This table lists the rough order in which the programs were written. The programs features get more complicated further down the list.
-| Program File Name | Note |
-|:--|:--|
-| VertexColorCube.bas | As basic as it gets. |
-| DitherColorCube.bas | Colorful RGB 555 Bayer Dithering example. |
-| TexturedCubePlains.bas | Fly over and spin a grass plane and also adjust Field of View. |
-| TextureZFightDonut.bas | Z Fight Bias adjustment and interesting table fog (pixel fog) effect. |
-| SkyboxLongTube.bas | Skybox background, near plane clipping, and major drawing speed increase. |
-| VertexAlphaDitherColorCube.bas | Back to the Cube for testing Alpha Transparency. |
-| SkyboxTrees.bas | Procedural Road and Tree drawing. Allows Camera Pitch. |
-| TwinTextureTriangles.bas | TwiN Texturing (TNT). Orange lights circling above the road. |
-| IsotropicMipmapRoad.bas | Integer Level of Detail (LOD) calculation selects which size road texture to draw. |
-| TrilinearMipmapRoad.bas | The final boss. Realtime blend between two mipmap textures based on LOD fraction. |
+<dl>
+ <dt>VertexColorCube.bas</dt>
+  <dd>As basic as it gets.</dd>
+ <dt>DitherColorCube.bas</dt>
+  <dd>Colorful RGB 555 Bayer Dithering example.</dd>
+ <dt>TexturedCubePlains.bas</dt>
+  <dd>Fly over and spin a grass plane and also adjust Field of View.</dd>
+ <dt>TextureZFightDonut.bas</dt>
+  <dd>Z Fight Bias adjustment and interesting table fog (pixel fog) effect.</dd>
+ <dt>SkyboxLongTube.bas</dt>
+  <dd>Skybox background, near plane clipping, and major drawing speed increase.</dd>
+ <dt>VertexAlphaDitherColorCube.bas</dt>
+  <dd>Back to the Cube for testing Alpha Transparency.</dd>
+ <dt>SkyboxTrees.bas</dt>
+  <dd>Procedural Road and Tree drawing. Allows Camera Pitch.</dd>
+ <dt>TwinTextureTriangles.bas</dt>
+  <dd>TwiN Texturing (TNT). Orange lights circling above the road.</dd>
+ <dt>IsotropicMipmapRoad.bas</dt>
+  <dd>Integer Level of Detail (LOD) calculation selects which size road texture to draw.</dd>
+ <dt>TrilinearMipmapRoad.bas</dt>
+  <dd>The final boss. Realtime blend between two mipmap textures based on LOD fraction.</dd>
+</dl>
 
 ## Triangles
 ### Vertex
@@ -69,25 +79,29 @@ Yes | Z-Fight Bias
 
  Pseudocode example:
 ```
-Xstart = 8.0
-Xstep = -0.5
+Xm_start = 8.0
+Xm_step = -0.5
 
-Xacc = Xstart
+Xm_acc = Xm_start
 For Y = 1 to 10
-  do_something_with(Y, Xacc)
-  Xacc = Xacc + Xstep
+  do_something_with(Y, Xm_acc)
+  Xm_acc = Xm_acc + Xm_step
 Next Y
 
-// Values of Y    { 1,   2,   3,   4,   5,   6,   7,   8,   9,  10}
-// Values of Xacc { 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5, 4.0, 3.5}
+// Values of Y      { 1,   2,   3,   4,   5,   6,   7,   8,   9,  10}
+// Values of Xm_acc { 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5, 4.0, 3.5}
 ```
-### Pre-stepping
- Y is a floating point value but pixels are evenly spaced at integers. The start value of Y at point A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same amount. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region.
-
 ### Why use DDA?
- DDA was used because not all math operations complete in the same amount of time. Dividing once before a loop to determine a step value and then adding that step value, is going to be faster than mutiplying and dividing at every single step within the loop.
+ DDA was used because not all math operations complete in the same amount of time. In this case we are comparing repeated additions to an accumulator, versus multiply then divide operations.
+ Addition requires significantly less circuitry than division. Division also requires multiple clocks whereas addition can complete in one clock. Multiplication is somewhere inbetween, but any multiplication that can be avoided helps speed.
  
- Addition requires significantly less circuitry than division. Division requires multiple clocks whereas addition can complete in one clock. Sneakily, many of the earliest PC graphics accelerators left this initial division calculation up the main system CPU as part of the driver library.
+ In other words, dividing (deltax / deltay) once before a loop to determine a step value and then adding that step value, is going to be faster than multiplying and dividing at every single step within the loop.
+ 
+ Sneakily, many of the earliest PC graphics accelerators left the division calculation up the main system CPU as part of the driver library. The driver then fed these DDA values over to the Graphics Accelerator in a large block move.
+### Pre-stepping
+ vertexAy is a floating point value but pixels are evenly spaced at integers. It is not okay to just round vertex coordinates to the nearest screen pixel integer, as in motion this causes vertex wobbling and unsightly seams between adjacent triangles.
+ 
+ The start value of Y at point A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation.
 
 ## Projection
 ### Core Concept
