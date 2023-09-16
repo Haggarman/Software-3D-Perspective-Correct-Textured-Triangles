@@ -3,10 +3,11 @@ _Title "Tri-Linear Mipmap Road"
 ' 2023 Haggarman
 ' Well I finally made it here. Trilinear Mip Mapping.
 ' Toggle false colors with (F) and move around with the arrow keys.
-' (M)ode 0 = No mipmap
+' (M)ode 0 = no mipmap
 '        1 = The academic per-pixel horizontal LOD calculation, requiring a square root. SLOW.
-'        2 = Per-Pixel horizontal LOD but avoiding a square root and a log base 2.
-'        3 = Fully implemented isotropic mip mapping. Enjoy the blurriness.
+'        2 = Per-Pixel horizontal LOD avoiding a square root and a log base 2.
+'        3 = Actual isotropic mip mapping. Enjoy the blurriness.
+'        4 = linear like 3. https://github.com/gonetz/GLideN64/wiki/Level-of-detail-emulation:-lod-per-pixel-calculation,-tile-selection-and-third-axis-interpolation-factor-computation. yes include period
 '
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
@@ -984,7 +985,7 @@ Do
             Toggle_Mipmap_FalseColor = Not Toggle_Mipmap_FalseColor
         ElseIf KeyNow = "M" Then
             LOD_mode = LOD_mode + 1
-            If LOD_mode > 3 Then LOD_mode = 0
+            If LOD_mode > 4 Then LOD_mode = 0
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
@@ -2240,7 +2241,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
             Static T3_ImageHandle As Long
             Static T3_mblock As _MEM
 
-            If (LOD_max > 0) And (LOD_mode = 3) Then
+            If (LOD_max > 0) And (LOD_mode >= 3) Then
                 ' Mode 3 is performed once per horizontal line instead of per pixel.
                 ' This can give a nice tradeoff for increased performance.
 
@@ -2357,7 +2358,15 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     ' Using an imported C99 math function for base 2 logarithm as this needs to be fast
                     LOD_float = log2f(Sqr(LOD_squared))
                     LOD = Int(LOD_float)
-                    LOD_fraction = LOD_float - LOD
+
+                    If LOD_mode = 4 Then
+                        ' exact linear fraction
+                        'LOD_fraction = (Sqr(LOD_squared) - (2 ^ LOD)) / ((2 ^ (LOD + 1)) - (2 ^ LOD))
+                        LOD_fraction = Sqr(LOD_squared) / (2 ^ LOD) - 1.0
+                    Else
+                        ' close enough, slight upward bend in middle
+                        LOD_fraction = LOD_float - LOD
+                    End If
 
                     If LOD > LOD_max Then
                         LOD = LOD_max
@@ -2421,12 +2430,11 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
                     ' Level of Detail calculation
                     Static LOD_right As Single
-                    'Static LOD_col As Single
 
                     If LOD_max > 0 Then
 
                         Select Case LOD_mode
-                            ' For each path be sure to set LOD and coordinate scaling.
+                            ' For each path be sure to set LOD and LOD_coord_scale1
                             Case 0:
                                 ' Pass
                                 LOD = 0
