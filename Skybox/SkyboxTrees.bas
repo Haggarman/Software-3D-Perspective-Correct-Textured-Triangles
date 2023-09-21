@@ -39,25 +39,27 @@ _Title "Skybox Trees"
 Dim Shared DISP_IMAGE As Long
 Dim Shared WORK_IMAGE As Long
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
-
+Dim Shared Size_Render_X As Integer, Size_Render_Y As Integer
 Dim Shared Road_Count As Integer
 Dim Shared Tree_Count As Integer
 
 ' MODIFY THESE if you want.
-Size_Screen_X = 1024 / 2 ' render size
-Size_Screen_Y = 768 / 2
 Tree_Count = 100 ' number of trees
 Road_Count = 70 ' number of road squares
+Size_Screen_X = 1024
+Size_Screen_Y = 768
+Size_Render_X = Size_Screen_X \ 2 ' render size
+Size_Render_Y = Size_Screen_Y \ 2
 
-DISP_IMAGE = _NewImage(1024, 768, 32)
+DISP_IMAGE = _NewImage(Size_Screen_X, Size_Screen_Y, 32)
 Screen DISP_IMAGE
 _DisplayOrder _Software
 
-WORK_IMAGE = _NewImage(Size_Screen_X, Size_Screen_Y, 32)
+WORK_IMAGE = _NewImage(Size_Render_X, Size_Render_Y, 32)
 _DontBlend
 
 Dim Shared Screen_Z_Buffer_MaxElement As Long
-Screen_Z_Buffer_MaxElement = Size_Screen_X * Size_Screen_Y - 1
+Screen_Z_Buffer_MaxElement = Size_Render_X * Size_Render_Y - 1
 Dim Shared Screen_Z_Buffer(Screen_Z_Buffer_MaxElement) As Single
 
 ' Z Fight has to do with overdrawing on top of the same coplanar surface.
@@ -143,9 +145,9 @@ matProj(3, 3) = 0.0
 Dim Shared clip_min_y As Long, clip_max_y As Long
 Dim Shared clip_min_x As Long, clip_max_x As Long
 clip_min_y = 0
-clip_max_y = Size_Screen_Y - 1
+clip_max_y = Size_Render_Y - 1
 clip_min_x = 0
-clip_max_x = Size_Screen_X ' not (-1) because rounding rule drops one pixel on right
+clip_max_x = Size_Render_X ' not (-1) because rounding rule drops one pixel on right
 
 ' Fog
 Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate As Single
@@ -351,7 +353,7 @@ Dim matCamera(3, 3) As Single
 ' Directional light 1-17-2023
 Dim vLightDir As vec3d
 vLightDir.x = -0.5
-vLightDir.y = 0.6 '+Y is now up
+vLightDir.y = 0.6 ' +Y is now up
 vLightDir.z = 0.4
 Vector3_Normalize vLightDir
 Dim Shared Light_Directional As Single
@@ -362,8 +364,8 @@ Light_AmbientVal = 0.3
 ' Screen Scaling
 Dim halfWidth As Single
 Dim halfHeight As Single
-halfWidth = Size_Screen_X / 2
-halfHeight = Size_Screen_Y / 2
+halfWidth = Size_Render_X / 2
+halfHeight = Size_Render_Y / 2
 
 ' Projected Screen Coordinate List
 Dim SX0 As Single, SY0 As Single
@@ -378,10 +380,10 @@ Dim vertexC As vertex8
 
 ' Screen clipping
 clip_min_y = 5
-clip_max_y = Size_Screen_Y - 5
+clip_max_y = Size_Render_Y - 5
 
 clip_min_x = 10
-clip_max_x = Size_Screen_X - 10
+clip_max_x = Size_Render_X - 10
 
 ' code execution time
 Dim start_ms As Double
@@ -656,19 +658,19 @@ Do
             ' Load Vertex List for Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vattb0.u * pointProj0.w
             vertexA.v = vattb0.v * pointProj0.w
 
             vertexB.x = SX1
             vertexB.y = SY1
-            vertexB.w = pointProj1.w 'depth
+            vertexB.w = pointProj1.w ' depth
             vertexB.u = vattb1.u * pointProj1.w
             vertexB.v = vattb1.v * pointProj1.w
 
             vertexC.x = SX2
             vertexC.y = SY2
-            vertexC.w = pointProj2.w 'depth
+            vertexC.w = pointProj2.w ' depth
             vertexC.u = vattb2.u * pointProj2.w
             vertexC.v = vattb2.v * pointProj2.w
 
@@ -1635,22 +1637,22 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' DDA is Digital Differential Analyzer
     ' It is an accumulator that counts from a known start point to an end point, in equal increments defined by the number of steps in-between.
     ' Probably faster nowadays to do the one division at the start, instead of Bresenham, anyway.
-    Static d_legx1_step As Single
-    Static dw1_step As Single, du1_step As Single, dv1_step As Single
-    Static dred1_step As Single, dgreen1_step As Single, dblue1_step As Single
+    Static legx1_step As Single
+    Static legw1_step As Single, legu1_step As Single, legv1_step As Single
+    Static legr1_step As Single, legg1_step As Single, legb1_step As Single
 
-    Static d_legx2_step As Single
-    Static dw2_step As Single, du2_step As Single, dv2_step As Single
-    Static dred2_step As Single, dgreen2_step As Single, dblue2_step As Single
+    Static legx2_step As Single
+    Static legw2_step As Single, legu2_step As Single, legv2_step As Single
+    Static legr2_step As Single, legg2_step As Single, legb2_step As Single
 
     ' Leg 2 steps from A to C (the full triangle height)
-    d_legx2_step = delta2.x / delta2.y
-    dw2_step = delta2.w / delta2.y
-    du2_step = delta2.u / delta2.y
-    dv2_step = delta2.v / delta2.y
-    dred2_step = delta2.r / delta2.y
-    dgreen2_step = delta2.g / delta2.y
-    dblue2_step = delta2.b / delta2.y
+    legx2_step = delta2.x / delta2.y
+    legw2_step = delta2.w / delta2.y
+    legu2_step = delta2.u / delta2.y
+    legv2_step = delta2.v / delta2.y
+    legr2_step = delta2.r / delta2.y
+    legg2_step = delta2.g / delta2.y
+    legb2_step = delta2.b / delta2.y
 
     ' Leg 1, Draw top to middle
     ' For most triangles, draw downward from the apex A to a knee B.
@@ -1674,23 +1676,23 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' That is okay, because the recalculate Leg 1 from B to C triggers before actually drawing.
     If delta1.y > (1 / 256) Then
         ' Find Leg 1 steps in the y direction from A to B
-        d_legx1_step = delta1.x / delta1.y
-        dw1_step = delta1.w / delta1.y
-        du1_step = delta1.u / delta1.y
-        dv1_step = delta1.v / delta1.y
-        dred1_step = delta1.r / delta1.y
-        dgreen1_step = delta1.g / delta1.y
-        dblue1_step = delta1.b / delta1.y
+        legx1_step = delta1.x / delta1.y
+        legw1_step = delta1.w / delta1.y
+        legu1_step = delta1.u / delta1.y
+        legv1_step = delta1.v / delta1.y
+        legr1_step = delta1.r / delta1.y
+        legg1_step = delta1.g / delta1.y
+        legb1_step = delta1.b / delta1.y
     End If
 
     ' Y Accumulators
     Static leg_x1 As Single
-    Static tex_w1 As Single, tex_u1 As Single, tex_v1 As Single
-    Static tex_r1 As Single, tex_g1 As Single, tex_b1 As Single
+    Static leg_w1 As Single, leg_u1 As Single, leg_v1 As Single
+    Static leg_r1 As Single, leg_g1 As Single, leg_b1 As Single
 
     Static leg_x2 As Single
-    Static tex_w2 As Single, tex_u2 As Single, tex_v2 As Single
-    Static tex_r2 As Single, tex_g2 As Single, tex_b2 As Single
+    Static leg_w2 As Single, leg_u2 As Single, leg_v2 As Single
+    Static leg_r2 As Single, leg_g2 As Single, leg_b2 As Single
 
     ' 11-4-2022 Prestep Y
     Static prestep_y1 As Single
@@ -1699,21 +1701,21 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' To get to that next row, we have to prestep by the fractional forward distance from A. _Ceil(A.y) - A.y
     prestep_y1 = draw_min_y - A.y
 
-    leg_x1 = A.x + prestep_y1 * d_legx1_step
-    tex_w1 = A.w + prestep_y1 * dw1_step
-    tex_u1 = A.u + prestep_y1 * du1_step
-    tex_v1 = A.v + prestep_y1 * dv1_step
-    tex_r1 = A.r + prestep_y1 * dred1_step
-    tex_g1 = A.g + prestep_y1 * dgreen1_step
-    tex_b1 = A.b + prestep_y1 * dblue1_step
+    leg_x1 = A.x + prestep_y1 * legx1_step
+    leg_w1 = A.w + prestep_y1 * legw1_step
+    leg_u1 = A.u + prestep_y1 * legu1_step
+    leg_v1 = A.v + prestep_y1 * legv1_step
+    leg_r1 = A.r + prestep_y1 * legr1_step
+    leg_g1 = A.g + prestep_y1 * legg1_step
+    leg_b1 = A.b + prestep_y1 * legb1_step
 
-    leg_x2 = A.x + prestep_y1 * d_legx2_step
-    tex_w2 = A.w + prestep_y1 * dw2_step
-    tex_u2 = A.u + prestep_y1 * du2_step
-    tex_v2 = A.v + prestep_y1 * dv2_step
-    tex_r2 = A.r + prestep_y1 * dred2_step
-    tex_g2 = A.g + prestep_y1 * dgreen2_step
-    tex_b2 = A.b + prestep_y1 * dblue2_step
+    leg_x2 = A.x + prestep_y1 * legx2_step
+    leg_w2 = A.w + prestep_y1 * legw2_step
+    leg_u2 = A.u + prestep_y1 * legu2_step
+    leg_v2 = A.v + prestep_y1 * legv2_step
+    leg_r2 = A.r + prestep_y1 * legr2_step
+    leg_g2 = A.g + prestep_y1 * legg2_step
+    leg_b2 = A.b + prestep_y1 * legb2_step
 
     ' Inner loop vars
     Static row As Long
@@ -1739,7 +1741,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     Static screen_row_base As _Offset ' Calculated every row
     Static screen_address As _Offset ' Calculated at every starting column
     screen_mem_info = _MemImage(WORK_IMAGE)
-    screen_next_row_step = 4 * Size_Screen_X
+    screen_next_row_step = 4 * Size_Render_X
 
     ' Row Loop from top to bottom
     row = draw_min_y
@@ -1761,13 +1763,13 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             If delta1.y = 0.0 Then Exit Sub
 
             ' Full steps in the y direction from B to C
-            d_legx1_step = delta1.x / delta1.y
-            dw1_step = delta1.w / delta1.y
-            du1_step = delta1.u / delta1.y
-            dv1_step = delta1.v / delta1.y
-            dred1_step = delta1.r / delta1.y ' vertex color
-            dgreen1_step = delta1.g / delta1.y
-            dblue1_step = delta1.b / delta1.y
+            legx1_step = delta1.x / delta1.y
+            legw1_step = delta1.w / delta1.y
+            legu1_step = delta1.u / delta1.y
+            legv1_step = delta1.v / delta1.y
+            legr1_step = delta1.r / delta1.y ' vertex color
+            legg1_step = delta1.g / delta1.y
+            legb1_step = delta1.b / delta1.y
 
             ' 11-4-2022 Prestep Y
             ' Most cases has B lower downscreen than A.
@@ -1775,13 +1777,13 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             prestep_y1 = draw_middle_y - B.y
 
             ' Re-Initialize DDA start values
-            leg_x1 = B.x + prestep_y1 * d_legx1_step
-            tex_w1 = B.w + prestep_y1 * dw1_step
-            tex_u1 = B.u + prestep_y1 * du1_step
-            tex_v1 = B.v + prestep_y1 * dv1_step
-            tex_r1 = B.r + prestep_y1 * dred1_step
-            tex_g1 = B.g + prestep_y1 * dgreen1_step
-            tex_b1 = B.b + prestep_y1 * dblue1_step
+            leg_x1 = B.x + prestep_y1 * legx1_step
+            leg_w1 = B.w + prestep_y1 * legw1_step
+            leg_u1 = B.u + prestep_y1 * legu1_step
+            leg_v1 = B.v + prestep_y1 * legv1_step
+            leg_r1 = B.r + prestep_y1 * legr1_step
+            leg_g1 = B.g + prestep_y1 * legg1_step
+            leg_b1 = B.b + prestep_y1 * legb1_step
 
         End If
 
@@ -1793,12 +1795,12 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             ' Drawing left to right, as in incrementing from a lower to higher memory address, is usually fastest.
             If leg_x1 < leg_x2 Then
                 ' leg 1 is on the left
-                tex_w_step = (tex_w2 - tex_w1) / delta_x
-                tex_u_step = (tex_u2 - tex_u1) / delta_x
-                tex_v_step = (tex_v2 - tex_v1) / delta_x
-                tex_r_step = (tex_r2 - tex_r1) / delta_x
-                tex_g_step = (tex_g2 - tex_g1) / delta_x
-                tex_b_step = (tex_b2 - tex_b1) / delta_x
+                tex_w_step = (leg_w2 - leg_w1) / delta_x
+                tex_u_step = (leg_u2 - leg_u1) / delta_x
+                tex_v_step = (leg_v2 - leg_v1) / delta_x
+                tex_r_step = (leg_r2 - leg_r1) / delta_x
+                tex_g_step = (leg_g2 - leg_g1) / delta_x
+                tex_b_step = (leg_b2 - leg_b1) / delta_x
 
                 ' Set the horizontal starting point to (1)
                 col = _Ceil(leg_x1)
@@ -1806,12 +1808,12 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
 
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x1
-                tex_w = tex_w1 + prestep_x * tex_w_step
-                tex_u = tex_u1 + prestep_x * tex_u_step
-                tex_v = tex_v1 + prestep_x * tex_v_step
-                tex_r = tex_r1 + prestep_x * tex_r_step
-                tex_g = tex_g1 + prestep_x * tex_g_step
-                tex_b = tex_b1 + prestep_x * tex_b_step
+                tex_w = leg_w1 + prestep_x * tex_w_step
+                tex_u = leg_u1 + prestep_x * tex_u_step
+                tex_v = leg_v1 + prestep_x * tex_v_step
+                tex_r = leg_r1 + prestep_x * tex_r_step
+                tex_g = leg_g1 + prestep_x * tex_g_step
+                tex_b = leg_b1 + prestep_x * tex_b_step
 
                 ' ending point is (2)
                 draw_max_x = _Ceil(leg_x2)
@@ -1819,12 +1821,12 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
 
             Else
                 ' Things are flipped. leg 1 is on the right.
-                tex_w_step = (tex_w1 - tex_w2) / delta_x
-                tex_u_step = (tex_u1 - tex_u2) / delta_x
-                tex_v_step = (tex_v1 - tex_v2) / delta_x
-                tex_r_step = (tex_r1 - tex_r2) / delta_x
-                tex_g_step = (tex_g1 - tex_g2) / delta_x
-                tex_b_step = (tex_b1 - tex_b2) / delta_x
+                tex_w_step = (leg_w1 - leg_w2) / delta_x
+                tex_u_step = (leg_u1 - leg_u2) / delta_x
+                tex_v_step = (leg_v1 - leg_v2) / delta_x
+                tex_r_step = (leg_r1 - leg_r2) / delta_x
+                tex_g_step = (leg_g1 - leg_g2) / delta_x
+                tex_b_step = (leg_b1 - leg_b2) / delta_x
 
                 ' Set the horizontal starting point to (2)
                 col = _Ceil(leg_x2)
@@ -1832,12 +1834,12 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
 
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x2
-                tex_w = tex_w2 + prestep_x * tex_w_step
-                tex_u = tex_u2 + prestep_x * tex_u_step
-                tex_v = tex_v2 + prestep_x * tex_v_step
-                tex_r = tex_r2 + prestep_x * tex_r_step
-                tex_g = tex_g2 + prestep_x * tex_g_step
-                tex_b = tex_b2 + prestep_x * tex_b_step
+                tex_w = leg_w2 + prestep_x * tex_w_step
+                tex_u = leg_u2 + prestep_x * tex_u_step
+                tex_v = leg_v2 + prestep_x * tex_v_step
+                tex_r = leg_r2 + prestep_x * tex_r_step
+                tex_g = leg_g2 + prestep_x * tex_g_step
+                tex_b = leg_b2 + prestep_x * tex_b_step
 
                 ' ending point is (1)
                 draw_max_x = _Ceil(leg_x1)
@@ -1848,7 +1850,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             ' Draw the Horizontal Scanline
             tex_z = 1 / tex_w
             screen_address = screen_row_base + 4 * col
-            zbuf_index = row * Size_Screen_X + col
+            zbuf_index = row * Size_Render_X + col
             While col < draw_max_x
 
                 ' Check Z-Buffer early to see if we even need texture lookup and color combine
@@ -2034,21 +2036,21 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
         End If ' end div/0 avoidance
 
         ' DDA next step
-        leg_x1 = leg_x1 + d_legx1_step
-        tex_w1 = tex_w1 + dw1_step
-        tex_u1 = tex_u1 + du1_step
-        tex_v1 = tex_v1 + dv1_step
-        tex_r1 = tex_r1 + dred1_step
-        tex_g1 = tex_g1 + dgreen1_step
-        tex_b1 = tex_b1 + dblue1_step
+        leg_x1 = leg_x1 + legx1_step
+        leg_w1 = leg_w1 + legw1_step
+        leg_u1 = leg_u1 + legu1_step
+        leg_v1 = leg_v1 + legv1_step
+        leg_r1 = leg_r1 + legr1_step
+        leg_g1 = leg_g1 + legg1_step
+        leg_b1 = leg_b1 + legb1_step
 
-        leg_x2 = leg_x2 + d_legx2_step
-        tex_w2 = tex_w2 + dw2_step
-        tex_u2 = tex_u2 + du2_step
-        tex_v2 = tex_v2 + dv2_step
-        tex_r2 = tex_r2 + dred2_step
-        tex_g2 = tex_g2 + dgreen2_step
-        tex_b2 = tex_b2 + dblue2_step
+        leg_x2 = leg_x2 + legx2_step
+        leg_w2 = leg_w2 + legw2_step
+        leg_u2 = leg_u2 + legu2_step
+        leg_v2 = leg_v2 + legv2_step
+        leg_r2 = leg_r2 + legr2_step
+        leg_g2 = leg_g2 + legg2_step
+        leg_b2 = leg_b2 + legb2_step
 
         screen_row_base = screen_row_base + screen_next_row_step
         row = row + 1
@@ -2099,17 +2101,17 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' DDA is Digital Differential Analyzer
     ' It is an accumulator that counts from a known start point to an end point, in equal increments defined by the number of steps in-between.
     ' Probably faster nowadays to do the one division at the start, instead of Bresenham, anyway.
-    Static d_legx1_step As Single
-    Static dw1_step As Single, du1_step As Single, dv1_step As Single
+    Static legx1_step As Single
+    Static legw1_step As Single, legu1_step As Single, legv1_step As Single
 
-    Static d_legx2_step As Single
-    Static dw2_step As Single, du2_step As Single, dv2_step As Single
+    Static legx2_step As Single
+    Static legw2_step As Single, legu2_step As Single, legv2_step As Single
 
     ' Leg 2 steps from A to C (the full triangle height)
-    d_legx2_step = delta2.x / delta2.y
-    dw2_step = delta2.w / delta2.y
-    du2_step = delta2.u / delta2.y
-    dv2_step = delta2.v / delta2.y
+    legx2_step = delta2.x / delta2.y
+    legw2_step = delta2.w / delta2.y
+    legu2_step = delta2.u / delta2.y
+    legv2_step = delta2.v / delta2.y
 
     ' Leg 1, Draw top to middle
     ' For most triangles, draw downward from the apex A to a knee B.
@@ -2130,18 +2132,18 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' That is okay, because the recalculate Leg 1 from B to C triggers before actually drawing.
     If delta1.y > (1 / 256) Then
         ' Find Leg 1 steps in the y direction from A to B
-        d_legx1_step = delta1.x / delta1.y
-        dw1_step = delta1.w / delta1.y
-        du1_step = delta1.u / delta1.y
-        dv1_step = delta1.v / delta1.y
+        legx1_step = delta1.x / delta1.y
+        legw1_step = delta1.w / delta1.y
+        legu1_step = delta1.u / delta1.y
+        legv1_step = delta1.v / delta1.y
     End If
 
     ' Y Accumulators
     Static leg_x1 As Single
-    Static tex_w1 As Single, tex_u1 As Single, tex_v1 As Single
+    Static leg_w1 As Single, leg_u1 As Single, leg_v1 As Single
 
     Static leg_x2 As Single
-    Static tex_w2 As Single, tex_u2 As Single, tex_v2 As Single
+    Static leg_w2 As Single, leg_u2 As Single, leg_v2 As Single
 
     ' 11-4-2022 Prestep Y
     Static prestep_y1 As Single
@@ -2150,15 +2152,15 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' To get to that next row, we have to prestep by the fractional forward distance from A. _Ceil(A.y) - A.y
     prestep_y1 = draw_min_y - A.y
 
-    leg_x1 = A.x + prestep_y1 * d_legx1_step
-    tex_w1 = A.w + prestep_y1 * dw1_step
-    tex_u1 = A.u + prestep_y1 * du1_step
-    tex_v1 = A.v + prestep_y1 * dv1_step
+    leg_x1 = A.x + prestep_y1 * legx1_step
+    leg_w1 = A.w + prestep_y1 * legw1_step
+    leg_u1 = A.u + prestep_y1 * legu1_step
+    leg_v1 = A.v + prestep_y1 * legv1_step
 
-    leg_x2 = A.x + prestep_y1 * d_legx2_step
-    tex_w2 = A.w + prestep_y1 * dw2_step
-    tex_u2 = A.u + prestep_y1 * du2_step
-    tex_v2 = A.v + prestep_y1 * dv2_step
+    leg_x2 = A.x + prestep_y1 * legx2_step
+    leg_w2 = A.w + prestep_y1 * legw2_step
+    leg_u2 = A.u + prestep_y1 * legu2_step
+    leg_v2 = A.v + prestep_y1 * legv2_step
 
     ' Inner loop vars
     Static row As Long
@@ -2181,7 +2183,7 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
     Static screen_row_base As _Offset ' Calculated every row
     Static screen_address As _Offset ' Calculated at every starting column
     screen_mem_info = _MemImage(WORK_IMAGE)
-    screen_next_row_step = 4 * Size_Screen_X
+    screen_next_row_step = 4 * Size_Render_X
 
     ' Row Loop from top to bottom
     row = draw_min_y
@@ -2200,10 +2202,10 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
             If delta1.y = 0.0 Then Exit Sub
 
             ' Full steps in the y direction from B to C
-            d_legx1_step = delta1.x / delta1.y
-            dw1_step = delta1.w / delta1.y
-            du1_step = delta1.u / delta1.y
-            dv1_step = delta1.v / delta1.y
+            legx1_step = delta1.x / delta1.y
+            legw1_step = delta1.w / delta1.y
+            legu1_step = delta1.u / delta1.y
+            legv1_step = delta1.v / delta1.y
 
             ' 11-4-2022 Prestep Y
             ' Most cases has B lower downscreen than A.
@@ -2211,10 +2213,10 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
             prestep_y1 = draw_middle_y - B.y
 
             ' Re-Initialize DDA start values
-            leg_x1 = B.x + prestep_y1 * d_legx1_step
-            tex_w1 = B.w + prestep_y1 * dw1_step
-            tex_u1 = B.u + prestep_y1 * du1_step
-            tex_v1 = B.v + prestep_y1 * dv1_step
+            leg_x1 = B.x + prestep_y1 * legx1_step
+            leg_w1 = B.w + prestep_y1 * legw1_step
+            leg_u1 = B.u + prestep_y1 * legu1_step
+            leg_v1 = B.v + prestep_y1 * legv1_step
 
         End If
 
@@ -2226,9 +2228,9 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
             ' Drawing left to right, as in incrementing from a lower to higher memory address, is usually fastest.
             If leg_x1 < leg_x2 Then
                 ' leg 1 is on the left
-                tex_w_step = (tex_w2 - tex_w1) / delta_x
-                tex_u_step = (tex_u2 - tex_u1) / delta_x
-                tex_v_step = (tex_v2 - tex_v1) / delta_x
+                tex_w_step = (leg_w2 - leg_w1) / delta_x
+                tex_u_step = (leg_u2 - leg_u1) / delta_x
+                tex_v_step = (leg_v2 - leg_v1) / delta_x
 
                 ' Set the horizontal starting point to (1)
                 col = _Ceil(leg_x1)
@@ -2236,10 +2238,10 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
 
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x1
-                tex_w = tex_w1 + prestep_x * tex_w_step
+                tex_w = leg_w1 + prestep_x * tex_w_step
                 tex_z = 1 / tex_w ' this can be absorbed
-                tex_u = tex_u1 + prestep_x * tex_u_step
-                tex_v = tex_v1 + prestep_x * tex_v_step
+                tex_u = leg_u1 + prestep_x * tex_u_step
+                tex_v = leg_v1 + prestep_x * tex_v_step
 
                 ' ending point is (2)
                 draw_max_x = _Ceil(leg_x2)
@@ -2247,9 +2249,9 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
 
             Else
                 ' Things are flipped. leg 1 is on the right.
-                tex_w_step = (tex_w1 - tex_w2) / delta_x
-                tex_u_step = (tex_u1 - tex_u2) / delta_x
-                tex_v_step = (tex_v1 - tex_v2) / delta_x
+                tex_w_step = (leg_w1 - leg_w2) / delta_x
+                tex_u_step = (leg_u1 - leg_u2) / delta_x
+                tex_v_step = (leg_v1 - leg_v2) / delta_x
 
                 ' Set the horizontal starting point to (2)
                 col = _Ceil(leg_x2)
@@ -2257,10 +2259,10 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
 
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x2
-                tex_w = tex_w2 + prestep_x * tex_w_step
+                tex_w = leg_w2 + prestep_x * tex_w_step
                 tex_z = 1 / tex_w ' this can be absorbed
-                tex_u = tex_u2 + prestep_x * tex_u_step
-                tex_v = tex_v2 + prestep_x * tex_v_step
+                tex_u = leg_u2 + prestep_x * tex_u_step
+                tex_v = leg_v2 + prestep_x * tex_v_step
 
                 ' ending point is (1)
                 draw_max_x = _Ceil(leg_x1)
@@ -2387,15 +2389,15 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
         End If ' end div/0 avoidance
 
         ' DDA next step
-        leg_x1 = leg_x1 + d_legx1_step
-        tex_w1 = tex_w1 + dw1_step
-        tex_u1 = tex_u1 + du1_step
-        tex_v1 = tex_v1 + dv1_step
+        leg_x1 = leg_x1 + legx1_step
+        leg_w1 = leg_w1 + legw1_step
+        leg_u1 = leg_u1 + legu1_step
+        leg_v1 = leg_v1 + legv1_step
 
-        leg_x2 = leg_x2 + d_legx2_step
-        tex_w2 = tex_w2 + dw2_step
-        tex_u2 = tex_u2 + du2_step
-        tex_v2 = tex_v2 + dv2_step
+        leg_x2 = leg_x2 + legx2_step
+        leg_w2 = leg_w2 + legw2_step
+        leg_u2 = leg_u2 + legu2_step
+        leg_v2 = leg_v2 + legv2_step
 
         screen_row_base = screen_row_base + screen_next_row_step
         row = row + 1
