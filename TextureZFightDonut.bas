@@ -321,11 +321,12 @@ Dim halfHeight As Single
 halfWidth = Size_Render_X / 2
 halfHeight = Size_Render_Y / 2
 
-' Triangle Vertex List
+' Projected Screen Coordinate List
 Dim SX0 As Single, SY0 As Single
 Dim SX1 As Single, SY1 As Single
 Dim SX2 As Single, SY2 As Single
 
+' Triangle Vertex List
 Dim vertexA As vertex8
 Dim vertexB As vertex8
 Dim vertexC As vertex8
@@ -764,7 +765,7 @@ Data 0,0
 
 
 ' Multiply a 3D vector into a 4x4 matrix and output another 3D vector
-'
+' Important!: matrix o must be a different variable from matrix i. if i and o are the same variable it will malfunction.
 ' To understand the optimization here. Mathematically you can only multiply matrices of the same dimension. 4 here.
 ' But I'm only interested in x, y, and z; so don't bother calculating "w" because it is always 1.
 ' Avoiding 7 unnecessary extra multiplications
@@ -899,6 +900,9 @@ Sub Matrix4_MakeRotation_X (deg As Single, m( 3 , 3) As Single)
 End Sub
 
 Sub Matrix4_PointAt (psn As vec3d, target As vec3d, up As vec3d, m( 3 , 3) As Single)
+    ' It will create a matrix that keeps target centered onscreen
+    '  from the vantage point of psn. It will pivot on a gimbal.
+
     ' Calculate new forward direction
     Dim newForward As vec3d
     Vector3_Delta target, psn, newForward
@@ -1250,11 +1254,11 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                         ' clamp
                         If cm5 < 0.0 Then cm5 = 0.0
                         If cm5 >= T1_width_MASK Then
-                            '15.0 and up
+                            ' 15.0 and up
                             cc = T1_width_MASK
                             cc1 = T1_width_MASK
                         Else
-                            '0 1 2 .. 13 14.999
+                            ' 0 1 2 .. 13 14.999
                             cc = Int(cm5)
                             cc1 = cc + 1
                         End If
@@ -1268,7 +1272,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                         ' clamp
                         If rm5 < 0.0 Then rm5 = 0.0
                         If rm5 >= T1_height_MASK Then
-                            '15.0 and up
+                            ' 15.0 and up
                             rr = T1_height_MASK
                             rr1 = T1_height_MASK
                         Else
@@ -1322,10 +1326,10 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                     Static fog_scale As Single
 
                     If tex_z <= Fog_near Then
-                        'do nothing
+                        ' do nothing
                         pixel_value = _RGB32(r0, g0, b0)
                     ElseIf tex_z >= Fog_far Then
-                        'overwrite
+                        ' overwrite
                         pixel_value = Fog_color
                     Else
                         fog_scale = (tex_z - Fog_near) * Fog_rate
