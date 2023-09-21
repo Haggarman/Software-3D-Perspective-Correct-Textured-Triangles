@@ -145,7 +145,7 @@ Dim Shared clip_min_x As Long, clip_max_x As Long
 clip_min_y = 0
 clip_max_y = Size_Screen_Y - 1
 clip_min_x = 0
-clip_max_x = Size_Screen_X 'not (-1) because rounding rule drops one pixel on right
+clip_max_x = Size_Screen_X ' not (-1) because rounding rule drops one pixel on right
 
 ' Fog
 Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate As Single
@@ -153,7 +153,7 @@ Dim Shared Fog_color As Long
 Dim Shared Fog_R As Long, Fog_G As Long, Fog_B As Long
 Fog_near = 50.0
 Fog_far = 110.0
-Fog_rate = 1 / (Fog_far - Fog_near)
+Fog_rate = 1.0 / (Fog_far - Fog_near)
 
 Fog_color = _RGB32(47, 78, 105)
 Fog_R = _Red(Fog_color)
@@ -180,8 +180,8 @@ Next refIndex
 
 ' These T1 Texture characteristics are read later on during drawing.
 Dim Shared T1_ImageHandle As Long
-Dim Shared T1_width As Integer, T1_height As Integer
-Dim Shared T1_width_AND As Integer, T1_height_AND As Integer
+Dim Shared T1_width As Integer, T1_width_MASK As Integer
+Dim Shared T1_height As Integer, T1_height_MASK As Integer
 Dim Shared T1_Filter_Selection As Integer
 Dim Shared T1_mblock As _MEM
 Dim Shared T1_Alpha_Threshold As Integer
@@ -198,8 +198,8 @@ T1_option_no_backface_cull = 16 'constant
 
 ' Later optimization requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
-T1_width = 16: T1_width_AND = T1_width - 1
-T1_height = 16: T1_height_AND = T1_height - 1
+T1_width = 16: T1_width_MASK = T1_width - 1
+T1_height = 16: T1_height_MASK = T1_height - 1
 
 T1_mblock = _MemImage(TextureCatalog(0))
 T1_Alpha_Threshold = 250 ' below this alpha channel value, do not update z buffer (0..255)
@@ -365,12 +365,13 @@ Dim halfHeight As Single
 halfWidth = Size_Screen_X / 2
 halfHeight = Size_Screen_Y / 2
 
-' Triangle Vertex List
+' Projected Screen Coordinate List
 Dim SX0 As Single, SY0 As Single
 Dim SX1 As Single, SY1 As Single
 Dim SX2 As Single, SY2 As Single
 Dim SX3 As Single, SY3 As Single
 
+' Triangle Vertex List
 Dim vertexA As vertex8
 Dim vertexB As vertex8
 Dim vertexC As vertex8
@@ -392,7 +393,7 @@ Dim ExitCode As Integer
 Dim Animate_Spin As Integer
 Dim Triangles_Drawn As Long
 Dim triCount As Integer
-Dim New_Triangles_Drawn As Long 'because of clipping
+Dim New_Triangles_Drawn As Long ' because of clipping
 Dim vMove_Player_Forward As vec3d
 
 
@@ -499,19 +500,19 @@ Do
             ' Load Vertex List for Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vattb0.u * pointProj0.w
             vertexA.v = vattb0.v * pointProj0.w
 
             vertexB.x = SX1
             vertexB.y = SY1
-            vertexB.w = pointProj1.w 'depth
+            vertexB.w = pointProj1.w ' depth
             vertexB.u = vattb1.u * pointProj1.w
             vertexB.v = vattb1.v * pointProj1.w
 
             vertexC.x = SX2
             vertexC.y = SY2
-            vertexC.w = pointProj2.w 'depth
+            vertexC.w = pointProj2.w ' depth
             vertexC.u = vattb2.u * pointProj2.w
             vertexC.v = vattb2.v * pointProj2.w
 
@@ -521,8 +522,8 @@ Do
             T1_ImageHandle = SkyBoxRef(sky(A).texture)
             T1_mblock = _MemImage(T1_ImageHandle)
             T1_options = sky(A).options
-            T1_width = _Width(T1_ImageHandle): T1_width_AND = T1_width - 1
-            T1_height = _Height(T1_ImageHandle): T1_height_AND = T1_height - 1
+            T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
+            T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
             TexturedNonlitTriangle vertexA, vertexB, vertexC
 
@@ -541,19 +542,19 @@ Do
             ' Reload Vertex List for Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vattb0.u * pointProj0.w
             vertexA.v = vattb0.v * pointProj0.w
 
             vertexB.x = SX2
             vertexB.y = SY2
-            vertexB.w = pointProj2.w 'depth
+            vertexB.w = pointProj2.w ' depth
             vertexB.u = vattb2.u * pointProj2.w
             vertexB.v = vattb2.v * pointProj2.w
 
             vertexC.x = SX3
             vertexC.y = SY3
-            vertexC.w = pointProj3.w 'depth
+            vertexC.w = pointProj3.w ' depth
             vertexC.u = vattb3.u * pointProj3.w
             vertexC.v = vattb3.v * pointProj3.w
 
@@ -632,8 +633,8 @@ Do
             ' Fill in Texture 1 data
             T1_ImageHandle = TextureCatalog(mesh(A).texture)
             T1_mblock = _MemImage(T1_ImageHandle)
-            T1_width = _Width(T1_ImageHandle): T1_width_AND = T1_width - 1
-            T1_height = _Height(T1_ImageHandle): T1_height_AND = T1_height - 1
+            T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
+            T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
             ' Slide to center, then Scale into viewport
             SX0 = (pointProj0.x + 1) * halfWidth
@@ -698,19 +699,19 @@ Do
                 ' Reload Vertex List for Textured triangle
                 vertexA.x = SX0
                 vertexA.y = SY0
-                vertexA.w = pointProj0.w 'depth
+                vertexA.w = pointProj0.w ' depth
                 vertexA.u = vattb0.u * pointProj0.w
                 vertexA.v = vattb0.v * pointProj0.w
 
                 vertexB.x = SX2
                 vertexB.y = SY2
-                vertexB.w = pointProj2.w 'depth
+                vertexB.w = pointProj2.w ' depth
                 vertexB.u = vattb2.u * pointProj2.w
                 vertexB.v = vattb2.v * pointProj2.w
 
                 vertexC.x = SX3
                 vertexC.y = SY3
-                vertexC.w = pointProj3.w 'depth
+                vertexC.w = pointProj3.w ' depth
                 vertexC.u = vattb3.u * pointProj3.w
                 vertexC.v = vattb3.v * pointProj3.w
 
@@ -739,7 +740,7 @@ Do
     Print "ESC to exit. ";
     Color _RGB32(233)
     Print "Arrow Keys Move. Q,Z Pitch."
-    Print "Spacebar jump. R to reset."
+    Print "Spacebar jump. V drop. R reset."
     Print "(N)ew Mesh Seed:"; Mesh_Seed
     Print "+FOV- Degrees:"; Frustum_FOV_deg
     Print "Triangles Drawn:"; Triangles_Drawn; "+"; New_Triangles_Drawn
@@ -779,6 +780,11 @@ Do
     If _KeyDown(32) Then
         ' Spacebar
         vCameraPsn.y = vCameraPsn.y + 0.2
+    End If
+
+    If _KeyDown(118) Or _KeyDown(86) Then
+        'V
+        vCameraPsn.y = vCameraPsn.y - 0.2
     End If
 
     If _KeyDown(19712) Then
@@ -1883,10 +1889,10 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                     If T1_options And T1_option_clamp_width Then
                         ' clamp
                         If cm5 < 0.0 Then cm5 = 0.0
-                        If cm5 >= T1_width_AND Then
+                        If cm5 >= T1_width_MASK Then
                             ' 15.0 and up
-                            cc = T1_width_AND
-                            cc1 = T1_width_AND
+                            cc = T1_width_MASK
+                            cc1 = T1_width_MASK
                         Else
                             ' 0 1 2 .. 13 14.999
                             cc = Int(cm5)
@@ -1894,25 +1900,25 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                         End If
                     Else
                         ' tile the texture
-                        cc = Int(cm5) And T1_width_AND
-                        cc1 = (cc + 1) And T1_width_AND
+                        cc = Int(cm5) And T1_width_MASK
+                        cc1 = (cc + 1) And T1_width_MASK
                     End If
 
                     If T1_options And T1_option_clamp_height Then
                         ' clamp
                         If rm5 < 0.0 Then rm5 = 0.0
-                        If rm5 >= T1_height_AND Then
+                        If rm5 >= T1_height_MASK Then
                             ' 15.0 and up
-                            rr = T1_height_AND
-                            rr1 = T1_height_AND
+                            rr = T1_height_MASK
+                            rr1 = T1_height_MASK
                         Else
                             rr = Int(rm5)
                             rr1 = rr + 1
                         End If
                     Else
                         ' tile
-                        rr = Int(rm5) And T1_height_AND
-                        rr1 = (rr + 1) And T1_height_AND
+                        rr = Int(rm5) And T1_height_MASK
+                        rr1 = (rr + 1) And T1_height_MASK
                     End If
 
                     'uv_0_0 = Texture1(cc, rr)
@@ -1990,7 +1996,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                         '----- End Inline Fog
 
                         If a0 < 255 Then
-                            ' alpha blend
+                            ' Alpha blend
                             Static pixel_existing As _Unsigned Long
                             Static pixel_alpha As Single
                             pixel_alpha = a0 / 255.0
@@ -2295,26 +2301,24 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                 cm5 = (tex_u * tex_z) - 0.5
                 rm5 = (tex_v * tex_z) - 0.5
 
-
                 ' clamp
                 If cm5 < 0.0 Then cm5 = 0.0
-                If cm5 >= T1_width_AND Then
+                If cm5 >= T1_width_MASK Then
                     ' 15.0 and up
-                    cc = T1_width_AND
-                    cc1 = T1_width_AND
+                    cc = T1_width_MASK
+                    cc1 = T1_width_MASK
                 Else
                     ' 0 1 2 .. 13 14.999
                     cc = Int(cm5)
                     cc1 = cc + 1
                 End If
 
-
                 ' clamp
                 If rm5 < 0.0 Then rm5 = 0.0
-                If rm5 >= T1_height_AND Then
+                If rm5 >= T1_height_MASK Then
                     ' 15.0 and up
-                    rr = T1_height_AND
-                    rr1 = T1_height_AND
+                    rr = T1_height_MASK
+                    rr1 = T1_height_MASK
                 Else
                     rr = Int(rm5)
                     rr1 = rr + 1
@@ -2359,7 +2363,6 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                 b0 = _Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11
                 '--- End Inline Texel Read
 
-
                 '----- No lighting or Fog
                 pixel_value = _RGB32(r0, g0, b0)
                 '----- End No lighting or Fog
@@ -2392,4 +2395,3 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
     Wend ' row
 
 End Sub
-

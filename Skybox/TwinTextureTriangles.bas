@@ -206,7 +206,7 @@ Dim Shared clip_min_x As Long, clip_max_x As Long
 clip_min_y = 0
 clip_max_y = Size_Screen_Y - 1
 clip_min_x = 0
-clip_max_x = Size_Screen_X 'not (-1) because rounding rule drops one pixel on right
+clip_max_x = Size_Screen_X ' not (-1) because rounding rule drops one pixel on right
 
 ' Fog
 Dim Shared Fog_near As Single, Fog_far As Single, Fog_rate As Single
@@ -472,7 +472,7 @@ Dim ExitCode As Integer
 Dim Animate_Spin As Integer
 Dim Triangles_Drawn As Long
 Dim triCount As Integer
-Dim New_Triangles_Drawn As Long 'because of clipping
+Dim New_Triangles_Drawn As Long ' because of clipping
 Dim vMove_Player_Forward As vec3d
 
 
@@ -580,19 +580,19 @@ Do
             ' Load Vertex List for Single Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vatr0.u * pointProj0.w
             vertexA.v = vatr0.v * pointProj0.w
 
             vertexB.x = SX1
             vertexB.y = SY1
-            vertexB.w = pointProj1.w 'depth
+            vertexB.w = pointProj1.w ' depth
             vertexB.u = vatr1.u * pointProj1.w
             vertexB.v = vatr1.v * pointProj1.w
 
             vertexC.x = SX2
             vertexC.y = SY2
-            vertexC.w = pointProj2.w 'depth
+            vertexC.w = pointProj2.w ' depth
             vertexC.u = vatr2.u * pointProj2.w
             vertexC.v = vatr2.v * pointProj2.w
 
@@ -621,19 +621,19 @@ Do
             ' Reload Vertex List for Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vatr0.u * pointProj0.w
             vertexA.v = vatr0.v * pointProj0.w
 
             vertexB.x = SX2
             vertexB.y = SY2
-            vertexB.w = pointProj2.w 'depth
+            vertexB.w = pointProj2.w ' depth
             vertexB.u = vatr2.u * pointProj2.w
             vertexB.v = vatr2.v * pointProj2.w
 
             vertexC.x = SX3
             vertexC.y = SY3
-            vertexC.w = pointProj3.w 'depth
+            vertexC.w = pointProj3.w ' depth
             vertexC.u = vatr3.u * pointProj3.w
             vertexC.v = vatr3.v * pointProj3.w
 
@@ -772,7 +772,7 @@ Do
             ' Load Vertex List for Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vatr0.u * pointProj0.w
             vertexA.v = vatr0.v * pointProj0.w
             vertexA.s = vatr0.s * pointProj0.w
@@ -783,7 +783,7 @@ Do
 
             vertexB.x = SX1
             vertexB.y = SY1
-            vertexB.w = pointProj1.w 'depth
+            vertexB.w = pointProj1.w ' depth
             vertexB.u = vatr1.u * pointProj1.w
             vertexB.v = vatr1.v * pointProj1.w
             vertexB.s = vatr1.s * pointProj1.w
@@ -795,7 +795,7 @@ Do
 
             vertexC.x = SX2
             vertexC.y = SY2
-            vertexC.w = pointProj2.w 'depth
+            vertexC.w = pointProj2.w ' depth
             vertexC.u = vatr2.u * pointProj2.w
             vertexC.v = vatr2.v * pointProj2.w
             vertexC.s = vatr2.s * pointProj2.w
@@ -831,7 +831,7 @@ Do
                 ' Reload Vertex List for Textured triangle
                 vertexA.x = SX0
                 vertexA.y = SY0
-                vertexA.w = pointProj0.w 'depth
+                vertexA.w = pointProj0.w ' depth
                 vertexA.u = vatr0.u * pointProj0.w
                 vertexA.v = vatr0.v * pointProj0.w
                 vertexA.s = vatr0.s * pointProj0.w
@@ -842,7 +842,7 @@ Do
 
                 vertexB.x = SX2
                 vertexB.y = SY2
-                vertexB.w = pointProj2.w 'depth
+                vertexB.w = pointProj2.w ' depth
                 vertexB.u = vatr2.u * pointProj2.w
                 vertexB.v = vatr2.v * pointProj2.w
                 vertexB.s = vatr2.s * pointProj2.w
@@ -853,7 +853,7 @@ Do
 
                 vertexC.x = SX3
                 vertexC.y = SY3
-                vertexC.w = pointProj3.w 'depth
+                vertexC.w = pointProj3.w ' depth
                 vertexC.u = vatr3.u * pointProj3.w
                 vertexC.v = vatr3.v * pointProj3.w
                 vertexC.s = vatr3.s * pointProj3.w
@@ -2739,7 +2739,6 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                 cm5 = (tex_u * tex_z) - 0.5
                 rm5 = (tex_v * tex_z) - 0.5
 
-
                 ' clamp
                 If cm5 < 0.0 Then cm5 = 0.0
                 If cm5 >= T1_width_MASK Then
@@ -2751,7 +2750,6 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                     cc = Int(cm5)
                     cc1 = cc + 1
                 End If
-
 
                 ' clamp
                 If rm5 < 0.0 Then rm5 = 0.0
