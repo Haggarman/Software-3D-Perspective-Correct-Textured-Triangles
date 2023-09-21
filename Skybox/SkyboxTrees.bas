@@ -1846,11 +1846,13 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
             End If
 
             ' Draw the Horizontal Scanline
+            tex_z = 1 / tex_w
             screen_address = screen_row_base + 4 * col
             zbuf_index = row * Size_Screen_X + col
             While col < draw_max_x
 
-                tex_z = 1 / tex_w
+                ' Check Z-Buffer early to see if we even need texture lookup and color combine
+                ' Note: Only solid (non-transparent) pixels update the Z-buffer
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
 
 
@@ -1992,7 +1994,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                                 fog_scale = (tex_z - Fog_near) * Fog_rate
                                 pixel_value = _RGB32((Fog_R - r0) * fog_scale + r0, (Fog_G - g0) * fog_scale + g0, (Fog_B - b0) * fog_scale + b0)
                             End If
-                        End If
+                        End If ' fog_far
                         '----- End Inline Fog
 
                         If a0 < 255 Then
@@ -2019,6 +2021,7 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
                 End If ' tex_z
                 zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
+                tex_z = 1 / tex_w
                 tex_u = tex_u + tex_u_step
                 tex_v = tex_v + tex_v_step
                 tex_r = tex_r + tex_r_step
@@ -2234,6 +2237,7 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x1
                 tex_w = tex_w1 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
                 tex_u = tex_u1 + prestep_x * tex_u_step
                 tex_v = tex_v1 + prestep_x * tex_v_step
 
@@ -2254,6 +2258,7 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x2
                 tex_w = tex_w2 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
                 tex_u = tex_u2 + prestep_x * tex_u_step
                 tex_v = tex_v2 + prestep_x * tex_v_step
 
@@ -2264,11 +2269,12 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
             End If
 
             ' Draw the Horizontal Scanline
+            ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
             screen_address = screen_row_base + 4 * col
             While col < draw_max_x
 
                 ' do not update Z Buffer
-                tex_z = 1 / tex_w
+                'tex_z = 1 / tex_w ' Optimization
 
                 '--- Begin Inline Texel Read
                 ' Originally function ReadTexel3Point& (ccol As Single, rrow As Single)
@@ -2371,6 +2377,7 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
                 'PSet (col, row), pixel_value
 
                 tex_w = tex_w + tex_w_step
+                tex_z = 1 / tex_w ' execution time for this can be absorbed when result not required immediately
                 tex_u = tex_u + tex_u_step
                 tex_v = tex_v + tex_v_step
                 screen_address = screen_address + 4

@@ -614,19 +614,19 @@ Do
             ' Load Vertex List for Single Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vatr0.u * pointProj0.w
             vertexA.v = vatr0.v * pointProj0.w
 
             vertexB.x = SX1
             vertexB.y = SY1
-            vertexB.w = pointProj1.w 'depth
+            vertexB.w = pointProj1.w ' depth
             vertexB.u = vatr1.u * pointProj1.w
             vertexB.v = vatr1.v * pointProj1.w
 
             vertexC.x = SX2
             vertexC.y = SY2
-            vertexC.w = pointProj2.w 'depth
+            vertexC.w = pointProj2.w ' depth
             vertexC.u = vatr2.u * pointProj2.w
             vertexC.v = vatr2.v * pointProj2.w
 
@@ -655,19 +655,19 @@ Do
             ' Reload Vertex List for Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vatr0.u * pointProj0.w
             vertexA.v = vatr0.v * pointProj0.w
 
             vertexB.x = SX2
             vertexB.y = SY2
-            vertexB.w = pointProj2.w 'depth
+            vertexB.w = pointProj2.w ' depth
             vertexB.u = vatr2.u * pointProj2.w
             vertexB.v = vatr2.v * pointProj2.w
 
             vertexC.x = SX3
             vertexC.y = SY3
-            vertexC.w = pointProj3.w 'depth
+            vertexC.w = pointProj3.w ' depth
             vertexC.u = vatr3.u * pointProj3.w
             vertexC.v = vatr3.v * pointProj3.w
 
@@ -828,7 +828,7 @@ Do
             ' Load Vertex List for Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vatr0.u * pointProj0.w
             vertexA.v = vatr0.v * pointProj0.w
             vertexA.s = vatr0.s * pointProj0.w
@@ -839,7 +839,7 @@ Do
 
             vertexB.x = SX1
             vertexB.y = SY1
-            vertexB.w = pointProj1.w 'depth
+            vertexB.w = pointProj1.w ' depth
             vertexB.u = vatr1.u * pointProj1.w
             vertexB.v = vatr1.v * pointProj1.w
             vertexB.s = vatr1.s * pointProj1.w
@@ -851,7 +851,7 @@ Do
 
             vertexC.x = SX2
             vertexC.y = SY2
-            vertexC.w = pointProj2.w 'depth
+            vertexC.w = pointProj2.w ' depth
             vertexC.u = vatr2.u * pointProj2.w
             vertexC.v = vatr2.v * pointProj2.w
             vertexC.s = vatr2.s * pointProj2.w
@@ -887,7 +887,7 @@ Do
                 ' Reload Vertex List for Textured triangle
                 vertexA.x = SX0
                 vertexA.y = SY0
-                vertexA.w = pointProj0.w 'depth
+                vertexA.w = pointProj0.w ' depth
                 vertexA.u = vatr0.u * pointProj0.w
                 vertexA.v = vatr0.v * pointProj0.w
                 vertexA.s = vatr0.s * pointProj0.w
@@ -898,7 +898,7 @@ Do
 
                 vertexB.x = SX2
                 vertexB.y = SY2
-                vertexB.w = pointProj2.w 'depth
+                vertexB.w = pointProj2.w ' depth
                 vertexB.u = vatr2.u * pointProj2.w
                 vertexB.v = vatr2.v * pointProj2.w
                 vertexB.s = vatr2.s * pointProj2.w
@@ -909,7 +909,7 @@ Do
 
                 vertexC.x = SX3
                 vertexC.y = SY3
-                vertexC.w = pointProj3.w 'depth
+                vertexC.w = pointProj3.w ' depth
                 vertexC.u = vatr3.u * pointProj3.w
                 vertexC.v = vatr3.v * pointProj3.w
                 vertexC.s = vatr3.s * pointProj3.w

@@ -604,19 +604,19 @@ Do
             ' Load Vertex List for Single Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vatr0.u * pointProj0.w
             vertexA.v = vatr0.v * pointProj0.w
 
             vertexB.x = SX1
             vertexB.y = SY1
-            vertexB.w = pointProj1.w 'depth
+            vertexB.w = pointProj1.w ' depth
             vertexB.u = vatr1.u * pointProj1.w
             vertexB.v = vatr1.v * pointProj1.w
 
             vertexC.x = SX2
             vertexC.y = SY2
-            vertexC.w = pointProj2.w 'depth
+            vertexC.w = pointProj2.w ' depth
             vertexC.u = vatr2.u * pointProj2.w
             vertexC.v = vatr2.v * pointProj2.w
 
@@ -645,19 +645,19 @@ Do
             ' Reload Vertex List for Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vatr0.u * pointProj0.w
             vertexA.v = vatr0.v * pointProj0.w
 
             vertexB.x = SX2
             vertexB.y = SY2
-            vertexB.w = pointProj2.w 'depth
+            vertexB.w = pointProj2.w ' depth
             vertexB.u = vatr2.u * pointProj2.w
             vertexB.v = vatr2.v * pointProj2.w
 
             vertexC.x = SX3
             vertexC.y = SY3
-            vertexC.w = pointProj3.w 'depth
+            vertexC.w = pointProj3.w ' depth
             vertexC.u = vatr3.u * pointProj3.w
             vertexC.v = vatr3.v * pointProj3.w
 
@@ -818,7 +818,7 @@ Do
             ' Load Vertex List for Textured triangle
             vertexA.x = SX0
             vertexA.y = SY0
-            vertexA.w = pointProj0.w 'depth
+            vertexA.w = pointProj0.w ' depth
             vertexA.u = vatr0.u * pointProj0.w
             vertexA.v = vatr0.v * pointProj0.w
             vertexA.s = vatr0.s * pointProj0.w
@@ -829,7 +829,7 @@ Do
 
             vertexB.x = SX1
             vertexB.y = SY1
-            vertexB.w = pointProj1.w 'depth
+            vertexB.w = pointProj1.w ' depth
             vertexB.u = vatr1.u * pointProj1.w
             vertexB.v = vatr1.v * pointProj1.w
             vertexB.s = vatr1.s * pointProj1.w
@@ -841,7 +841,7 @@ Do
 
             vertexC.x = SX2
             vertexC.y = SY2
-            vertexC.w = pointProj2.w 'depth
+            vertexC.w = pointProj2.w ' depth
             vertexC.u = vatr2.u * pointProj2.w
             vertexC.v = vatr2.v * pointProj2.w
             vertexC.s = vatr2.s * pointProj2.w
@@ -877,7 +877,7 @@ Do
                 ' Reload Vertex List for Textured triangle
                 vertexA.x = SX0
                 vertexA.y = SY0
-                vertexA.w = pointProj0.w 'depth
+                vertexA.w = pointProj0.w ' depth
                 vertexA.u = vatr0.u * pointProj0.w
                 vertexA.v = vatr0.v * pointProj0.w
                 vertexA.s = vatr0.s * pointProj0.w
@@ -888,7 +888,7 @@ Do
 
                 vertexB.x = SX2
                 vertexB.y = SY2
-                vertexB.w = pointProj2.w 'depth
+                vertexB.w = pointProj2.w ' depth
                 vertexB.u = vatr2.u * pointProj2.w
                 vertexB.v = vatr2.v * pointProj2.w
                 vertexB.s = vatr2.s * pointProj2.w
@@ -899,7 +899,7 @@ Do
 
                 vertexC.x = SX3
                 vertexC.y = SY3
-                vertexC.w = pointProj3.w 'depth
+                vertexC.w = pointProj3.w ' depth
                 vertexC.u = vatr3.u * pointProj3.w
                 vertexC.v = vatr3.v * pointProj3.w
                 vertexC.s = vatr3.s * pointProj3.w
@@ -2373,13 +2373,13 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
             End If ' LOD_mode 2
 
             ' Draw the Horizontal Scanline
+            tex_z = 1 / tex_w
             screen_address = screen_row_base + 4 * col
             zbuf_index = row * Size_Screen_X + col
             While col < draw_max_x
 
                 ' Check Z-Buffer early to see if we even need texture lookup and color combine
                 ' Note: Only solid (non-transparent) pixels update the Z-buffer
-                tex_z = 1 / tex_w
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
 
                     ' Level of Detail calculation
@@ -2742,6 +2742,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                 End If ' tex_z
                 zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
+                tex_z = 1 / tex_w
                 tex_u = tex_u + tex_u_step
                 tex_v = tex_v + tex_v_step
                 tex_r = tex_r + tex_r_step
@@ -2963,6 +2964,7 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x1
                 tex_w = tex_w1 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
                 tex_u = tex_u1 + prestep_x * tex_u_step
                 tex_v = tex_v1 + prestep_x * tex_v_step
 
@@ -2983,6 +2985,7 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x2
                 tex_w = tex_w2 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
                 tex_u = tex_u2 + prestep_x * tex_u_step
                 tex_v = tex_v2 + prestep_x * tex_v_step
 
@@ -2993,11 +2996,12 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
             End If
 
             ' Draw the Horizontal Scanline
+            ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
             screen_address = screen_row_base + 4 * col
             While col < draw_max_x
 
-                ' do not update Z Buffer
-                tex_z = 1 / tex_w
+                ' intentionally not updating or comparing Z Buffer
+                'tex_z = 1 / tex_w ' Optimization
 
                 '--- Begin Inline Texel Read
                 ' Originally function ReadTexel3Point& (ccol As Single, rrow As Single)
@@ -3030,7 +3034,6 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                 cm5 = (tex_u * tex_z) - 0.5
                 rm5 = (tex_v * tex_z) - 0.5
 
-
                 ' clamp
                 If cm5 < 0.0 Then cm5 = 0.0
                 If cm5 >= T1_width_MASK Then
@@ -3042,7 +3045,6 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                     cc = Int(cm5)
                     cc1 = cc + 1
                 End If
-
 
                 ' clamp
                 If rm5 < 0.0 Then rm5 = 0.0
@@ -3102,6 +3104,7 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                 'PSet (col, row), pixel_value
 
                 tex_w = tex_w + tex_w_step
+                tex_z = 1 / tex_w ' execution time for this can be absorbed when result not required immediately
                 tex_u = tex_u + tex_u_step
                 tex_v = tex_v + tex_v_step
                 screen_address = screen_address + 4
