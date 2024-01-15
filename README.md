@@ -170,7 +170,7 @@ The winding order of the triangle's vertexes determines which side is the front 
 
 If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So flagging and then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
 
-## Texture Filters
+## Texture Sample Filters
 ### Texture Magnification
  The following texel filters are selectable in the examples that showcase them:
 ID | Name | Description
@@ -181,7 +181,7 @@ ID | Name | Description
 3 | Bilinear Float | The standard blurry 4-point sampling written without tricks.
  
 ### 3 Point?
- I have always wondered about the "rupee" 3-Point interpolation of the N64. An optimized version can be seen in the function ReadTexel3Point().
+ I have always wondered about the "rupee" 3-Point interpolation of the N64. Its creator calls it triangle (triangular?) texture sampling. An optimized version can be seen in the function ReadTexel3Point().
  
  ![3 point interpolation](https://user-images.githubusercontent.com/96515734/219922319-bf7cebb7-323c-40a0-bf2a-a236b81cd49f.png)
  
@@ -231,6 +231,7 @@ Nothing is really preventing the U or V texel coordinates from going outside of 
 
 1. Tile - Texture is regularly repeated. The bitwise AND function is used to keep only the lower significant bits.
 2. Clamp - Texture coordinates are clamped to the min and max boundaries of the texture.
+3. Mirror - (uncommon) Texture coordinates fold back symmetrically. For example 2 texels above the maximum, coordinate becomes maximum - 2.
 
 A program named *TextureWrapOptions.bas* in the Concepts folder was used to develop the Tile versus Clamp options. It draws a 2D visual as the options are changed by pressing number keys on the keyboard.
 
@@ -242,6 +243,71 @@ A program named *TextureWrapOptions.bas* in the Concepts folder was used to deve
  At the time of writing the code, I could not arrive at a rational reason why fog tables existed, so just the linear gradient is implemented here for simplicity sake. For different batches of triangles with different visual rendering requirements, the depths *fog_near* and *fog_far* could be adjusted accordingly.
  
  I have since learned that if the W value is used instead of the Z value for distance from the viewer, fog calculation becomes a non-linear function. So a lookup table is required to re-linearize. I have also learned that this so-called table fog was a vendor-specific implementation (3dfx). Although a few competitor chips did mostly achieve equivalency for a short while, table fog was dropped from future models in favor of vertex alpha-channel fog. The reason for that is seeing unsatisfactory or inconsistent results depending on the precision and representation (fixed or floating point) of the depth buffer. A fog table must be recalculated based on the precision of the depth buffer. Applications or games that did not, or could not, have this adjustment programmed in experienced wildly different fog results.
+
+## Mipmapping
+
+ Mipmapping is a solution to the resulting visual noise (aliasing) when rendering a large texture onto a comparatively smaller triangle. High contrast textures fare the worst. For example, imagine the terrible interference patterns a fence texture like |||| would render out to when vanishing off into the distance.
+ 
+ In technical terms, texture sample aliasing occurs when the delta change in texel coordinates between adjacent screen pixels is greater than one. Meaning that entire texture cells are being skipped and not contributing to the color.
+
+### Definitions
+
+ M.I.P. stands for *multum in parvo*. Academics like latin because they must do something with this otherwise useless language they learned. Many in the bundle. Basically you have a stack of 2 or more texture maps you can look at.
+ 
+ A complete mipmap set has each subsequent textures at half the dimension of the one preceding it.
+ 
+ For example, index 0 could be a 64x64 texture, index 1 is then 32x32, index 2 is 16x16, index 3 is 8x8, index 4 is 4x4, index 5 is 2x2, and index 6 is 1x1. Just an example. Indexes don't define the dimensions, just the lineup.
+
+ A full mipmap stackup is often referred to as a Pyramid for obvious reasons due to its shape. For a given size base texture, a mipmap Pyramid takes 4/3 more storage memory.
+ 
+### Level of Detail (LOD)
+
+ Now that you have a stack of at least two texture maps (a mipmap), how do you choose which one to use? If you said, distance from the viewer you're on the wrong track.
+ 
+ If we were to display a triangle at the exact 1:1 ratio where one onscreen pixel maps to one texel, LOD = 0.
+ If one pixel maps to the area of 4 texels, LOD = 1.
+ If one pixel maps to 16 texels, LOD = 2.
+ And so on.
+ 
+ So it is more to do with how cleanly a texel maps onto a pixel, than distance. One could have different sized triangles at the same Z distance, with the same texture and same (U,V) vertex attributes, but they would demand different LOD levels.
+ 
+ Think about rendering a certain text character like 'A' in size 8 font and again in size 120 font. You'd want both to look nice and not be pixellated.
+ 
+ It is correct, however, that a given sized triangle will increase its average LOD when travelling further away from the viewer due to perspective projection.
+ 
+### Calculating LOD
+
+ It takes entire articles to explain why, but let's simplify with this recipe:
+ 1. We're rendering one pixel (X, Y) on a triangle.
+ 2. When looking one pixel to the right (X+1, Y), by how much do the U and V texture sample coordinates change? Use pythagorean distance (delta_U * delta_U + delta_V * delta_V).
+ 3. When looking one pixel down (X, Y+1), by how much do the U and V texture sample coordinates change? Use pythagorean distance (delta_U * delta_U + delta_V * delta_V).
+ 4. Pick the larger of the two numbers from either step 2 or from step 3. Calculate its square root.
+ 5. Now take the base 2 logarithm (LOG2) from step 4. The whole number is the texture index to use. This index is given the special name: Level Of Detail.
+ 6. Limit LOD to a reasonable range. Between 0 and 7 is common. If you only have 4 textures, limit it between 0 and 3. Let the programmer configure what min and max are.
+ 7. Optional: The fractional portion of step 5 is the interpolation value between two independent samples from texture LOD and texture LOD+1.
+
+ To summarize, LOD is the index number of what texture map to use in a set of mipmap textures.
+
+### Mip map interpolation
+ Plug your noise and say it in a really snobby voice: Tri-Linear Mipmap Interpolation (TLMMI).
+ 
+ Using an integer LOD to select only one texture map isn't enough for the highest quality graphics. You actually can see the jump from one texture to the next plain as day, just like you can see the jump from one texel to the next when using nearest point sampling.
+ 
+ Blending is needed. The visually optimal ideal is to straddle two textures with index int(LOD) and int(LOD) + 1.
+ 
+ Recall the bilinear texture sample filter requires 4 texel reads, so double that to get 8 reads per pixel for TLMMI. Unless you had a Voodoo 2 graphics card with two T-REX samplers, this cuts the fill rate by a little over half. And if you have a S3 ViRGE... all I can say is oof.
+ 
+ So in the end, the fractional LOD portion is used in yet another round of interpolation between two bilinear interpolated RGB values, to reach the final pixel color values. Remember your adjectives: mono = 1, bi = 2, tri = 3.
+ 
+ One could use 5 texel reads on the S3 ViRGE instead of 8. It could be configured so that the larger texture gets bilinear sampling, and the smaller texture gets nearest point sampling. And then combine the two to result in a modified tri-linear mipmap interpolation.
+ 
+### Why do I feel mip mapping is overrated? 
+ 
+1. Unnecessary: Due to memory size limitations, textures weren't very large in this era. A good majority of the time a small texture was being stretched (magnified) onto a larger triangle.
+2. Temporal Blending: When in motion, the hit and missed texels average out over time. Most interesting 3D games involve exploring a huge world.
+3. Shimmering: On a hot sunny day, our human visual system already deals well with the shimmering lensing distortion of objects off in the distance caused by heated air currents. Undersampling kind of mimics this.
+4. Low resolution: NTSC and VGA analog signals have intrinsic blending (low pass filtering). Remember we're talking 320x240 to 640x480 resolutions being upscaled here.
+5. Performance: Mip mapping is slower than not doing it. It was already a battle between looking nice and frames per second. It was common to be in the 12 to 20 fps range.
 
 ## Retrospective
 ### Introduction
