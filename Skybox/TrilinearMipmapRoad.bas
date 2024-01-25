@@ -1,12 +1,12 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Road"
+_Title "Tri-Linear Mipmap Road 124"
 ' 2024 Haggarman
 ' Well I finally made it here. Trilinear Mip Mapping.
 ' Toggle false colors with (F) and move around with the arrow keys.
 ' (M)ode 0 = no mipmap
 '        1 = The academic per-pixel LOD calculation, requiring a square root and base 2 logarithm. SLOW but correct.
 '        2 = Slightly faster lookup table for texture mapper coordinate scale. Still using log2f() and square roots like #1.
-'        3 = Per-Pixel LOD avoiding a square root by choosing the highest magnitude delta out of the four of them.
+'        3 = Something I apparently invented. Per-Pixel LOD avoiding a square root and avoiding a log2f(). LOD_fraction curve is bent due to using LOD squared, but not very noticeable.
 '        4 = No square root, no log2f. Explained here: https://github.com/gonetz/GLideN64/wiki/Level-of-detail-emulation:-lod-per-pixel-calculation,-tile-selection-and-third-axis-interpolation-factor-computation.
 '            ...yes include period when copying that link
 
@@ -2363,6 +2363,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                 LOD_coord_scale1 = 1.0
                                 LOD_coord_scale3 = 1.0
 
+
                             Case 1:
                                 ' The Academic Per-Pixel Horizontal LOD calculation.
 
@@ -2540,85 +2541,97 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
 
                             Case 3:
-                                ' SGI avoid square root mode 1-17-2024
+                                ' I think I invented this one.
+                                ' No square root, no base 2 logarithm, LOD_fraction is approximated from LOD_squared.
 
                                 ' Horizontal LOD
+                                ' How much do the texel (U, V) coordinates change when going one pixel to the right?
                                 LOD_u00 = (tex_u * tex_z)
                                 LOD_u01 = ((tex_u + tex_u_step) / (tex_w + tex_w_step))
 
                                 LOD_v00 = (tex_v * tex_z)
                                 LOD_v01 = ((tex_v + tex_v_step) / (tex_w + tex_w_step))
 
-                                LODX_delta_u = Abs(LOD_u01 - LOD_u00)
-                                LODX_delta_v = Abs(LOD_v01 - LOD_v00)
+                                LODX_delta_u = LOD_u01 - LOD_u00
+                                LODX_delta_v = LOD_v01 - LOD_v00
+
+                                ' Pythagoras distance formula but without the square root. This also makes it always positive.
+                                LOD_horizontal_squared = LODX_delta_v * LODX_delta_v + LODX_delta_u * LODX_delta_u
+
 
                                 ' Vertical LOD
                                 LOD_u10 = LOD_next_uoz * LOD_next_z
                                 LOD_v10 = LOD_next_voz * LOD_next_z
 
-                                LODY_delta_u = Abs(LOD_u10 - LOD_u00)
-                                LODY_delta_v = Abs(LOD_v10 - LOD_v00)
+                                ' Pythagoras distance formula without the square root.
+                                LODY_delta_u = LOD_u10 - LOD_u00
+                                LODY_delta_v = LOD_v10 - LOD_v00
+                                LOD_vertical_squared = LODY_delta_v * LODY_delta_v + LODY_delta_u * LODY_delta_u
+
+                                ' Pick the largest of the two LODs
+                                LOD_squared = LOD_vertical_squared
+                                If (LOD_squared < LOD_horizontal_squared) Or (LOD_vertical_failure = 1) Then LOD_squared = LOD_horizontal_squared
 
 
-                                ' Find the highest magnitude 1-17-2024
-                                LOD_float = LODX_delta_v
-                                If LODX_delta_u > LOD_float Then LOD_float = LODX_delta_u
-                                If LODY_delta_u > LOD_float Then LOD_float = LODY_delta_u
-                                If LODY_delta_v > LOD_float Then LOD_float = LODY_delta_v
-
-                                If LOD_float > 1.0 Then
-                                    LOD_float = log2f(LOD_float)
-                                    LOD_tile1 = Int(LOD_float)
-                                    LOD_fraction = LOD_float - LOD_tile1
-
-                                    If LOD_tile1 > LOD_max Then
-                                        LOD_tile1 = LOD_max
-                                        LOD_tile3 = LOD_max
-                                    Else
-                                        LOD_tile3 = LOD_tile1 + 1
-                                        If LOD_tile3 > LOD_max Then LOD_tile3 = LOD_max
-
-                                        If LOD_tile3 <> LOD_tile1 Then
-                                            T3_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_tile3)
-                                            T3_mblock = _MemImage(T3_ImageHandle)
-                                            T3_width = _Width(T3_ImageHandle): T3_width_MASK = T3_width - 1
-                                            T3_height = _Height(T3_ImageHandle): T3_height_MASK = T3_height - 1
-                                        End If
-
-                                    End If
-
-                                    Select Case LOD_tile1
-                                        Case 0:
-                                            LOD_coord_scale1 = 1.0
-                                            LOD_coord_scale3 = 0.5
-                                        Case 1:
-                                            LOD_coord_scale1 = 0.5
-                                            LOD_coord_scale3 = 0.25
-                                        Case 2:
-                                            LOD_coord_scale1 = 0.25
-                                            LOD_coord_scale3 = 0.125
-                                        Case 3:
-                                            LOD_coord_scale1 = 0.125
-                                            LOD_coord_scale3 = 0.0625
-                                        Case 4:
-                                            LOD_coord_scale1 = 0.0625
-                                            LOD_coord_scale3 = 0.03125
-                                        Case 5:
-                                            LOD_coord_scale1 = 0.03125
-                                            LOD_coord_scale3 = 0.015625
-                                        Case 6:
-                                            LOD_coord_scale1 = 0.015625
-                                            LOD_coord_scale3 = 0.0078125
-                                        Case 7:
-                                            LOD_coord_scale1 = 0.0078125
-                                            LOD_coord_scale3 = 0.00390625
-                                    End Select
-
-                                Else
-                                    ' No LOD when magnifying
+                                ' Threshold lookup tables.
+                                ' The bend of the LOD fraction curve is not perfect but visually close enough.
+                                ' Yes it ranges from 0 to 0.9999
+                                If LOD_squared < 1.0 Then
+                                    '1*1
+                                    LOD_fraction = 0.0
+                                    LOD_coord_scale1 = 1.0
+                                    LOD_coord_scale3 = 1.0
                                     LOD_tile1 = 0
                                     LOD_tile3 = 0
+                                ElseIf LOD_squared < 4.0 Then
+                                    ' 2*2
+                                    LOD_fraction = (LOD_squared - 1.0) / (4.0 - 1.0)
                                     LOD_coord_scale1 = 1.0
+                                    LOD_coord_scale3 = 0.5
+                                    LOD_tile1 = 0
+                                    LOD_tile3 = 1
+                                ElseIf LOD_squared < 16.0 Then
+                                    ' 4*4
+                                    LOD_fraction = (LOD_squared - 4.0) / (16.0 - 4.0)
+                                    LOD_coord_scale1 = 0.5
+                                    LOD_coord_scale3 = 0.25
+                                    LOD_tile1 = 1
+                                    LOD_tile3 = 2
+                                ElseIf LOD_squared < 64.0 Then
+                                    ' 8*8
+                                    LOD_fraction = (LOD_squared - 16.0) / (64.0 - 16.0)
+                                    LOD_coord_scale1 = 0.25
+                                    LOD_coord_scale3 = 0.125
+                                    LOD_tile1 = 2
+                                    LOD_tile3 = 3
+                                ElseIf LOD_squared < 256.0 Then
+                                    ' 16*16
+                                    LOD_fraction = (LOD_squared - 64.0) / (256.0 - 64.0)
+                                    LOD_coord_scale1 = 0.125
+                                    LOD_coord_scale3 = 0.0625
+                                    LOD_tile1 = 3
+                                    LOD_tile3 = 4
+                                ElseIf LOD_squared < 1024.0 Then
+                                    ' 32*32
+                                    LOD_fraction = (LOD_squared - 256.0) / (1024.0 - 256.0)
+                                    LOD_coord_scale1 = 0.0625
+                                    LOD_coord_scale3 = 0.03125
+                                    LOD_tile1 = 4
+                                    LOD_tile3 = 5
+                                Else
+                                    ' 64*64
+                                    LOD_fraction = 1.0
+                                    LOD_coord_scale1 = 0.03125
+                                    LOD_coord_scale3 = 0.03125
+                                    LOD_tile1 = 5
+                                    LOD_tile3 = 5
+                                End If
+
+                                If LOD_tile3 <> LOD_tile1 Then
+                                    T3_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_tile3)
+                                    T3_mblock = _MemImage(T3_ImageHandle)
+                                    T3_width = _Width(T3_ImageHandle): T3_width_MASK = T3_width - 1
+                                    T3_height = _Height(T3_ImageHandle): T3_height_MASK = T3_height - 1
                                 End If
 
                                 ' Because LOD changes up or down, these T1 numbers need to be set again.
@@ -2661,7 +2674,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                     ' In reality on N64 this is a "bitfield find first one" fixed-point operation.
                                     '  where the highest bit number set to 1 gives the tile1 index,
                                     '  and the bits underneath that are the fractional part.
-                                    ' LOD_fraction = Sqr(LOD_squared) / (2 ^ LOD_tile1) - 1.0 ' linear
+                                    ' LOD_fraction = LOD / (2 ^ LOD_tile1) - 1.0 ' linear approximation
                                     If LOD_float >= 128.0 Then
                                         LOD_tile1 = 7
                                         LOD_fraction = LOD_float / 128.0 - 1.0
