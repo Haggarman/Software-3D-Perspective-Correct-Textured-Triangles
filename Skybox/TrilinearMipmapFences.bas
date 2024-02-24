@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Road 128"
+_Title "Tri-Linear Mipmap Fences 136"
 ' 2024 Haggarman
 ' Well I finally made it here. Trilinear Mip Mapping.
 ' Toggle false colors with (F) and move around with the arrow keys.
@@ -61,14 +61,16 @@ Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
 Dim Shared Size_Render_X As Integer, Size_Render_Y As Integer
 Dim Shared Road_Count As Integer
 Dim Shared Tree_Count As Integer
+Dim Shared Wall_Count As Integer
 
 ' MODIFY THESE if you want.
-Tree_Count = 300 ' number of trees
-Road_Count = 300 ' number of road squares
-Size_Screen_X = 1024
-Size_Screen_Y = 768
-Size_Render_X = Size_Screen_X \ 2 ' render size
-Size_Render_Y = Size_Screen_Y \ 2
+Tree_Count = 400 ' number of trees
+Road_Count = 400 ' number of road squares
+Wall_Count = 400 ' number of sidewall squares
+Size_Screen_X = 1200
+Size_Screen_Y = 900
+Size_Render_X = Size_Screen_X \ 3 ' render size
+Size_Render_Y = Size_Screen_Y \ 3
 
 DISP_IMAGE = _NewImage(Size_Screen_X, Size_Screen_Y, 32)
 Screen DISP_IMAGE
@@ -243,7 +245,7 @@ Fog_B = _Blue(Fog_color)
 
 ' Load textures from file
 Dim Shared TextureCatalog_lastIndex As Integer
-TextureCatalog_lastIndex = 14
+TextureCatalog_lastIndex = 20
 Dim Shared TextureCatalog(TextureCatalog_lastIndex) As Long
 TextureCatalog(0) = _LoadImage("Origin16x16.png", 32)
 TextureCatalog(1) = _LoadImage("DU_BEG_TreeFir2.png", 32)
@@ -260,6 +262,12 @@ TextureCatalog(11) = _LoadImage("MMF_Road2.png", 32)
 TextureCatalog(12) = _LoadImage("MMF_Road3.png", 32)
 TextureCatalog(13) = _LoadImage("MMF_Road4.png", 32)
 TextureCatalog(14) = _LoadImage("MMF_Road5.png", 32)
+TextureCatalog(15) = _LoadImage("MM_SmallWall0.png", 32)
+TextureCatalog(16) = _LoadImage("MM_SmallWall1.png", 32)
+TextureCatalog(17) = _LoadImage("MM_SmallWall2.png", 32)
+TextureCatalog(18) = _LoadImage("MM_SmallWall3.png", 32)
+TextureCatalog(19) = _LoadImage("MM_SmallWall4.png", 32)
+TextureCatalog(20) = _LoadImage("MM_SmallWall5.png", 32)
 
 
 ' Error _LoadImage returns -1 as an invalid handle if it cannot load the image.
@@ -323,7 +331,7 @@ T2_Offset_T = 0.0
 Dim Shared LOD_mode As Integer
 Dim Shared LOD_max As Integer
 
-LOD_mode = 1
+LOD_mode = 3
 LOD_max = 0 ' 0 is the base level texture (largest)
 
 ' Load the Mesh
@@ -331,14 +339,17 @@ Dim Triangles_In_A_Tree
 Triangles_In_A_Tree = 4
 
 Dim Triangles_In_A_Road
-Triangles_In_A_Road = 2
+Triangles_In_A_Road = 3
+
+Dim Triangles_In_A_Wall
+Triangles_In_A_Wall = 2
 
 Dim Shared Mesh_Last_Element As Integer
-Mesh_Last_Element = (Tree_Count * Triangles_In_A_Tree) + (Road_Count * Triangles_In_A_Road) - 1
+Mesh_Last_Element = (Wall_Count * Triangles_In_A_Wall) + (Tree_Count * Triangles_In_A_Tree) + (Road_Count * Triangles_In_A_Road) - 1
 Dim Shared mesh(Mesh_Last_Element) As triangle
 
 Dim Shared Mesh_Seed As Long
-Mesh_Seed = 97 ' map 97 is twisted
+Mesh_Seed = 152 ' mildly interesting
 MakeMesh Mesh_Seed
 
 
@@ -442,8 +453,8 @@ Dim tri_normal As vec3d
 
 ' Part 2-2
 Dim vCameraPsn As vec3d ' location of camera in world space
-vCameraPsn.x = -5.0
-vCameraPsn.y = 0.2
+vCameraPsn.x = 0.0
+vCameraPsn.y = 0.0
 vCameraPsn.z = 0.0
 
 Dim cameraRay As vec3d
@@ -764,7 +775,13 @@ Do
                 vatr1.r = 0.0: vatr1.g = 0.0: vatr1.b = 0.0
                 vatr2.r = 0.0: vatr2.g = 0.0: vatr2.b = 0.0
 
-                LOD_max = 0
+                If mesh(A).texture1 = 15 Then
+                    LOD_max = 5
+                    T1_Alpha_Threshold = 128
+                Else
+                    LOD_max = 0
+                    T1_Alpha_Threshold = 250
+                End If
             End If
 
 
@@ -957,7 +974,7 @@ Do
     Print "+FOV- Degrees:"; Frustum_FOV_deg
     Print "Triangles Drawn:"; Triangles_Drawn; "+"; New_Triangles_Drawn
 
-    _Limit 30
+    _Limit 60
     _Display
 
     KeyNow = UCase$(InKey$)
@@ -1164,19 +1181,6 @@ Sub MakeMesh (seed As Long)
     noise = 0.0
     lastNoise = 0.0
 
-    Dim T1c As Long
-    Dim T1w As Long
-    Dim T1h As Long
-    T1c = 3 ' road mipmap level 0
-    T1w = _Width(TextureCatalog(T1c))
-    T1h = _Height(TextureCatalog(T1c))
-
-    Dim T2c As Long
-    Dim T2w As Long
-    Dim T2h As Long
-    T2c = 2 ' street light
-    T2w = _Width(TextureCatalog(T2c)) * 2
-    T2h = _Height(TextureCatalog(T2c)) * 2
 
     Dim road_angle As Single
     Dim road_curve As Single
@@ -1192,15 +1196,16 @@ Sub MakeMesh (seed As Long)
     Dim road_r As vec3d
     Dim road_left0 As vec3d, road_right0 As vec3d
     Dim road_left1 As vec3d, road_right1 As vec3d
+    Dim road_left_midpoint As vec3d, road_right_midpoint As vec3d
 
     Dim road_pa0 As Single, road_pa1 As Single
     Dim road_m44(3, 3) As Single
 
-    road_left0.x = -5.0
+    road_left0.x = -10.0
     road_left0.y = -2.0
     road_left0.z = 0.0
 
-    road_right0.x = 5.0
+    road_right0.x = 10.0
     road_right0.y = -2.0
     road_right0.z = 0.0
 
@@ -1215,6 +1220,14 @@ Sub MakeMesh (seed As Long)
 
     Dim remaining_trees As Integer
     remaining_trees = Tree_Count
+
+    Dim remaining_walls As Integer
+    remaining_walls = Wall_Count
+
+    Dim wall_type As Long
+    Dim wall_repeat As Long
+    wall_type = 4
+    wall_repeat = 2
 
     Randomize Using seed
 
@@ -1233,97 +1246,54 @@ Sub MakeMesh (seed As Long)
         thing_offset = Rnd - 0.54
 
         ' 2D rotation of left curb
-        road_p.x = -5.0
+        road_p.x = -10.0
         road_p.y = 0.0
         road_p.z = 10.0
         Multiply_Vector3_Matrix4 road_p, road_m44(), road_r
         road_left1.x = road_px0 + road_r.x
         road_left1.y = road_left0.y + thing_offset
         road_left1.z = road_pz0 + road_r.z
+        Vector3_Lerp road_left0, road_left1, 0.5, road_left_midpoint
 
         ' 2D rotation of right curb
-        road_p.x = 5.0
+        road_p.x = 10.0
         road_p.y = 0.0
         road_p.z = 10.0
         Multiply_Vector3_Matrix4 road_p, road_m44(), road_r
         road_right1.x = road_px0 + road_r.x
         road_right1.y = road_right0.y + thing_offset
         road_right1.z = road_pz0 + road_r.z
+        Vector3_Lerp road_right0, road_right1, 0.5, road_right_midpoint
 
-        ' Triangle 1 of 2
-        mesh(A).x0 = road_left1.x
-        mesh(A).y0 = road_left1.y
-        mesh(A).z0 = road_left1.z
+        ' Insert side wall
+        Select Case wall_type
+            Case 0:
+                '
+            Case 1:
+                SpawnLeftWall A, remaining_walls, road_left0, road_left1
 
-        mesh(A).x1 = road_right1.x
-        mesh(A).y1 = road_right1.y
-        mesh(A).z1 = road_right1.z
+            Case 2:
+                SpawnRightWall A, remaining_walls, road_right0, road_right1
 
-        mesh(A).x2 = road_left0.x
-        mesh(A).y2 = road_left0.y
-        mesh(A).z2 = road_left0.z
+            Case 3:
+                SpawnLeftWall A, remaining_walls, road_left0, road_left1
+                SpawnRightWall A, remaining_walls, road_right0, road_right1
 
-        mesh(A).texture1 = T1c
-        mesh(A).texture2 = T2c
-        mesh(A).options = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel
+            Case 4:
+                SpawnPineTree A, remaining_trees, road_right_midpoint
 
-        mesh(A).u0 = 0
-        mesh(A).v0 = 0
-        mesh(A).u1 = T1w
-        mesh(A).v1 = 0
-        mesh(A).u2 = 0
-        mesh(A).v2 = T1h
+            Case 5:
+                SpawnPineTree A, remaining_trees, road_left_midpoint
 
-        mesh(A).s0 = 0
-        mesh(A).t0 = 0
-        mesh(A).s1 = T2w
-        mesh(A).t1 = 0
-        mesh(A).s2 = 0
-        mesh(A).t2 = T2h
-        If streetlight_type = 0 Then
-            mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
+        End Select
+
+        If road_curve > 0 Then
+            SpawnRoadCurveLeft A, streetlight_type, road_left0, road_left_midpoint, road_left1, road_right0, road_right_midpoint, road_right1
+        ElseIf road_curve < 0 Then
+            SpawnRoadCurveRight A, streetlight_type, road_left0, road_left_midpoint, road_left1, road_right0, road_right_midpoint, road_right1
+        Else
+            SpawnRoad A, streetlight_type, road_left0, road_left_midpoint, road_left1, road_right0, road_right_midpoint, road_right1
         End If
-
-        A = A + 1
-
-        ' Triangle 2 of 2
-        mesh(A).x0 = road_right1.x
-        mesh(A).y0 = road_right1.y
-        mesh(A).z0 = road_right1.z
-
-        mesh(A).x1 = road_right0.x
-        mesh(A).y1 = road_right0.y
-        mesh(A).z1 = road_right0.z
-
-        mesh(A).x2 = road_left0.x
-        mesh(A).y2 = road_left0.y
-        mesh(A).z2 = road_left0.z
-
-        mesh(A).texture1 = T1c
-        mesh(A).texture2 = T2c
-        mesh(A).options = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel
-
-        mesh(A).u0 = T1w
-        mesh(A).v0 = 0
-        mesh(A).u1 = T1w
-        mesh(A).v1 = T1h
-        mesh(A).u2 = 0
-        mesh(A).v2 = T1h
-
-        mesh(A).s0 = T2w
-        mesh(A).t0 = 0
-        mesh(A).s1 = T2w
-        mesh(A).t1 = T2h
-        mesh(A).s2 = 0
-        mesh(A).t2 = T2h
-        If streetlight_type = 0 Then
-            mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
-        End If
-
-        A = A + 1
-
-        ' Insert a tree
-        SpawnTree A, remaining_trees, road_right1
 
         ' Save previous values
         road_px0 = road_px1
@@ -1336,8 +1306,13 @@ Sub MakeMesh (seed As Long)
         road_repeat = road_repeat - 1
         If road_repeat <= 0 Then
             'INT(RND * (max% - min% + 1)) + min%
-            road_curve = 3 * Int(Rnd * (5.0 + 5.0 + 1)) - 5.0
-            road_repeat = Int(Rnd * 5.0) + 1
+            road_curve = 1.75 * Int(Rnd * (5.0 + 5.0 + 1)) - 5.0
+            road_repeat = Int(Rnd * 6.0) + 1
+            If road_curve = 0 Then
+                'prefer straight stretches
+                road_repeat = 4.0 ^ road_repeat
+            End If
+
         End If
 
         streetlight_repeat = streetlight_repeat - 1
@@ -1350,20 +1325,575 @@ Sub MakeMesh (seed As Long)
             streetlight_repeat = Int(Rnd * 10.0) + 1
         End If
 
+        wall_repeat = wall_repeat - 1
+        If wall_repeat <= 0 Then
+            wall_repeat = Int(Rnd * 5.0) + 1
+            wall_type = Int(Rnd * 6.0)
+        End If
+
+        ' force a wall on a curve
+        If road_curve >= 3 Then
+            wall_type = 2
+            wall_repeat = 1
+        ElseIf road_curve <= -3 Then
+            wall_type = 1
+            wall_repeat = 1
+        End If
+
         road_angle = road_angle + road_curve
     Next thing
 End Sub
 
+Sub SpawnRoad (A As Integer, streetlight As Long, left00 As vec3d, left05 As vec3d, left10 As vec3d, right00 As vec3d, right05 As vec3d, right10 As vec3d)
+    Dim T1c As Long
+    Dim T1w As Long
+    Dim T1h As Long
+    Dim T1o As Long
+    T1c = 3 ' road mipmap level 0
+    T1w = _Width(TextureCatalog(T1c))
+    T1h = _Height(TextureCatalog(T1c))
+    T1o = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel
 
-Sub SpawnTree (A As Integer, remain As Integer, center As vec3d)
+    Dim T2c As Long
+    Dim T2w As Long
+    Dim T2h As Long
+    T2c = 2 ' street light
+    T2w = _Width(TextureCatalog(T2c)) * 4
+    T2h = _Height(TextureCatalog(T2c)) * 2
+
+    ' Triangle 1 of 2
+    mesh(A).x0 = left10.x
+    mesh(A).y0 = left10.y
+    mesh(A).z0 = left10.z
+
+    mesh(A).x1 = right10.x
+    mesh(A).y1 = right10.y
+    mesh(A).z1 = right10.z
+
+    mesh(A).x2 = left00.x
+    mesh(A).y2 = left00.y
+    mesh(A).z2 = left00.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T2c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = 0
+    mesh(A).u1 = T1w
+    mesh(A).v1 = 0
+    mesh(A).u2 = 0
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = 0
+    mesh(A).t0 = 0
+    mesh(A).s1 = T2w
+    mesh(A).t1 = 0
+    mesh(A).s2 = 0
+    mesh(A).t2 = T2h
+    If streetlight = 0 Then
+        mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
+    End If
+    A = A + 1
+
+    ' Triangle 2 of 2
+    mesh(A).x0 = right10.x
+    mesh(A).y0 = right10.y
+    mesh(A).z0 = right10.z
+
+    mesh(A).x1 = right00.x
+    mesh(A).y1 = right00.y
+    mesh(A).z1 = right00.z
+
+    mesh(A).x2 = left00.x
+    mesh(A).y2 = left00.y
+    mesh(A).z2 = left00.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T2c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = T1w
+    mesh(A).v0 = 0
+    mesh(A).u1 = T1w
+    mesh(A).v1 = T1h
+    mesh(A).u2 = 0
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = T2w
+    mesh(A).t0 = 0
+    mesh(A).s1 = T2w
+    mesh(A).t1 = T2h
+    mesh(A).s2 = 0
+    mesh(A).t2 = T2h
+    If streetlight = 0 Then
+        mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
+    End If
+    A = A + 1
+End Sub
+
+Sub SpawnRoadCurveLeft (A As Integer, streetlight As Long, left00 As vec3d, left05 As vec3d, left10 As vec3d, right00 As vec3d, right05 As vec3d, right10 As vec3d)
+    Dim T1c As Long
+    Dim T1w As Long
+    Dim T1h As Long
+    Dim T1o As Long
+    T1c = 3 ' road mipmap level 0
+    T1w = _Width(TextureCatalog(T1c))
+    T1h = _Height(TextureCatalog(T1c))
+    T1o = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel
+
+    Dim T2c As Long
+    Dim T2w As Long
+    Dim T2h As Long
+    T2c = 2 ' street light
+    T2w = _Width(TextureCatalog(T2c)) * 4
+    T2h = _Height(TextureCatalog(T2c)) * 2
+
+    ' Triangle 1 of 3
+    mesh(A).x0 = left00.x
+    mesh(A).y0 = left00.y
+    mesh(A).z0 = left00.z
+
+    mesh(A).x1 = right05.x
+    mesh(A).y1 = right05.y
+    mesh(A).z1 = right05.z
+
+    mesh(A).x2 = right00.x
+    mesh(A).y2 = right00.y
+    mesh(A).z2 = right00.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T2c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = T1h
+    mesh(A).u1 = T1w
+    mesh(A).v1 = T1h * 0.5
+    mesh(A).u2 = T1w
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = 0
+    mesh(A).t0 = T2h
+    mesh(A).s1 = T2w
+    mesh(A).t1 = T2h * 0.5
+    mesh(A).s2 = T2w
+    mesh(A).t2 = T2h
+    If streetlight = 0 Then
+        mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
+    End If
+    A = A + 1
+
+    ' Triangle 2 of 3
+    mesh(A).x0 = left10.x
+    mesh(A).y0 = left10.y
+    mesh(A).z0 = left10.z
+
+    mesh(A).x1 = right05.x
+    mesh(A).y1 = right05.y
+    mesh(A).z1 = right05.z
+
+    mesh(A).x2 = left00.x
+    mesh(A).y2 = left00.y
+    mesh(A).z2 = left00.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T2c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = 0
+    mesh(A).u1 = T1w
+    mesh(A).v1 = T1h * 0.5
+    mesh(A).u2 = 0
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = 0
+    mesh(A).t0 = 0
+    mesh(A).s1 = T2w
+    mesh(A).t1 = T2h * 0.5
+    mesh(A).s2 = 0
+    mesh(A).t2 = T2h
+    If streetlight = 0 Then
+        mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
+    End If
+    A = A + 1
+
+    ' Triangle 3 of 3
+    mesh(A).x0 = left10.x
+    mesh(A).y0 = left10.y
+    mesh(A).z0 = left10.z
+
+    mesh(A).x1 = right10.x
+    mesh(A).y1 = right10.y
+    mesh(A).z1 = right10.z
+
+    mesh(A).x2 = right05.x
+    mesh(A).y2 = right05.y
+    mesh(A).z2 = right05.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T2c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = 0
+    mesh(A).u1 = T1w
+    mesh(A).v1 = 0
+    mesh(A).u2 = T1w
+    mesh(A).v2 = T1h * 0.5
+
+    mesh(A).s0 = 0
+    mesh(A).t0 = 0
+    mesh(A).s1 = T2w
+    mesh(A).t1 = 0
+    mesh(A).s2 = T2w
+    mesh(A).t2 = T2h * 0.5
+    If streetlight = 0 Then
+        mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
+    End If
+    A = A + 1
+End Sub
+
+
+Sub SpawnRoadCurveRight (A As Integer, streetlight As Long, left00 As vec3d, left05 As vec3d, left10 As vec3d, right00 As vec3d, right05 As vec3d, right10 As vec3d)
+    Dim T1c As Long
+    Dim T1w As Long
+    Dim T1h As Long
+    Dim T1o As Long
+    T1c = 3 ' road mipmap level 0
+    T1w = _Width(TextureCatalog(T1c))
+    T1h = _Height(TextureCatalog(T1c))
+    T1o = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel
+
+    Dim T2c As Long
+    Dim T2w As Long
+    Dim T2h As Long
+    T2c = 2 ' street light
+    T2w = _Width(TextureCatalog(T2c)) * 4
+    T2h = _Height(TextureCatalog(T2c)) * 2
+
+    ' Triangle 1 of 3
+    mesh(A).x0 = left05.x
+    mesh(A).y0 = left05.y
+    mesh(A).z0 = left05.z
+
+    mesh(A).x1 = right00.x
+    mesh(A).y1 = right00.y
+    mesh(A).z1 = right00.z
+
+    mesh(A).x2 = left00.x
+    mesh(A).y2 = left00.y
+    mesh(A).z2 = left00.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T2c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = T1h * 0.5
+    mesh(A).u1 = T1w
+    mesh(A).v1 = T1h
+    mesh(A).u2 = 0
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = 0
+    mesh(A).t0 = T2h * 0.5
+    mesh(A).s1 = T2w
+    mesh(A).t1 = T2h
+    mesh(A).s2 = 0
+    mesh(A).t2 = T2h
+    If streetlight = 0 Then
+        mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
+    End If
+    A = A + 1
+
+    ' Triangle 2 of 3
+    mesh(A).x0 = left05.x
+    mesh(A).y0 = left05.y
+    mesh(A).z0 = left05.z
+
+    mesh(A).x1 = right10.x
+    mesh(A).y1 = right10.y
+    mesh(A).z1 = right10.z
+
+    mesh(A).x2 = right00.x
+    mesh(A).y2 = right00.y
+    mesh(A).z2 = right00.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T2c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = T1h * 0.5
+    mesh(A).u1 = T1w
+    mesh(A).v1 = 0
+    mesh(A).u2 = T1w
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = 0
+    mesh(A).t0 = T2h * 0.5
+    mesh(A).s1 = T2w
+    mesh(A).t1 = 0
+    mesh(A).s2 = T2w
+    mesh(A).t2 = T2h
+    If streetlight = 0 Then
+        mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
+    End If
+    A = A + 1
+
+    ' Triangle 3 of 3
+    mesh(A).x0 = left10.x
+    mesh(A).y0 = left10.y
+    mesh(A).z0 = left10.z
+
+    mesh(A).x1 = right10.x
+    mesh(A).y1 = right10.y
+    mesh(A).z1 = right10.z
+
+    mesh(A).x2 = left05.x
+    mesh(A).y2 = left05.y
+    mesh(A).z2 = left05.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T2c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = 0
+    mesh(A).u1 = T1w
+    mesh(A).v1 = 0
+    mesh(A).u2 = 0
+    mesh(A).v2 = T1h * 0.5
+
+    mesh(A).s0 = 0
+    mesh(A).t0 = 0
+    mesh(A).s1 = T2w
+    mesh(A).t1 = 0
+    mesh(A).s2 = 0
+    mesh(A).t2 = T2h * 0.5
+    If streetlight = 0 Then
+        mesh(A).options = mesh(A).options Or T2_option_disable_RGBA
+    End If
+    A = A + 1
+End Sub
+
+
+Sub SpawnLeftWall (A As Integer, remain As Integer, left0 As vec3d, left1 As vec3d)
+    Dim p0 As vec3d
+    Dim p1 As vec3d
+
+    If remain <= 0 Then Exit Sub
+    remain = remain - 1
+
+    p0.x = left0.x
+    p0.y = left0.y
+    p0.z = left0.z
+
+    p1.x = left1.x
+    p1.y = left1.y
+    p1.z = left1.z
+
+    ' texture
+    Dim T1c As Long
+    Dim T1w As Long
+    Dim T1h As Long
+    Dim T1o As Long
+    T1c = 15 ' metal pipe fence thing
+    T1w = _Width(TextureCatalog(T1c))
+    T1h = _Height(TextureCatalog(T1c))
+    T1o = T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull Or T2_option_disable_RGBA
+
+    Dim fenceheight As Single
+    fenceheight = 5.0
+
+    ' post near
+    mesh(A).x0 = p0.x
+    mesh(A).y0 = p0.y + fenceheight
+    mesh(A).z0 = p0.z
+
+    mesh(A).x1 = p1.x
+    mesh(A).y1 = p1.y + fenceheight
+    mesh(A).z1 = p1.z
+
+    mesh(A).x2 = p0.x
+    mesh(A).y2 = p0.y
+    mesh(A).z2 = p0.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T1c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = 0
+    mesh(A).u1 = T1w
+    mesh(A).v1 = 0
+    mesh(A).u2 = 0
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = mesh(A).u0
+    mesh(A).t0 = mesh(A).v0
+    mesh(A).s1 = mesh(A).u1
+    mesh(A).t1 = mesh(A).v1
+    mesh(A).s2 = mesh(A).u2
+    mesh(A).t2 = mesh(A).v2
+
+    A = A + 1
+
+
+    ' post far
+    mesh(A).x0 = p1.x
+    mesh(A).y0 = p1.y + fenceheight
+    mesh(A).z0 = p1.z
+
+    mesh(A).x1 = p1.x
+    mesh(A).y1 = p1.y
+    mesh(A).z1 = p1.z
+
+    mesh(A).x2 = p0.x
+    mesh(A).y2 = p0.y
+    mesh(A).z2 = p0.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T1c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = T1w
+    mesh(A).v0 = 0
+    mesh(A).u1 = T1w
+    mesh(A).v1 = T1h
+    mesh(A).u2 = 0
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = mesh(A).u0
+    mesh(A).t0 = mesh(A).v0
+    mesh(A).s1 = mesh(A).u1
+    mesh(A).t1 = mesh(A).v1
+    mesh(A).s2 = mesh(A).u2
+    mesh(A).t2 = mesh(A).v2
+
+    A = A + 1
+
+End Sub
+
+Sub SpawnRightWall (A As Integer, remain As Integer, right0 As vec3d, right1 As vec3d)
+    Dim p0 As vec3d
+    Dim p1 As vec3d
+
+    If remain <= 0 Then Exit Sub
+    remain = remain - 1
+
+    p0.x = right0.x
+    p0.y = right0.y
+    p0.z = right0.z
+
+    p1.x = right1.x
+    p1.y = right1.y
+    p1.z = right1.z
+
+    ' texture
+    Dim T1c As Long
+    Dim T1w As Long
+    Dim T1h As Long
+    Dim T1o As Long
+    T1c = 15 ' metal pipe fence thing
+    T1w = _Width(TextureCatalog(T1c))
+    T1h = _Height(TextureCatalog(T1c))
+    T1o = T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull Or T2_option_disable_RGBA
+
+    Dim fenceheight As Single
+    fenceheight = 5.0
+
+    ' post near
+    mesh(A).x0 = p1.x
+    mesh(A).y0 = p1.y + fenceheight
+    mesh(A).z0 = p1.z
+
+    mesh(A).x1 = p0.x
+    mesh(A).y1 = p0.y + fenceheight
+    mesh(A).z1 = p0.z
+
+    mesh(A).x2 = p0.x
+    mesh(A).y2 = p0.y
+    mesh(A).z2 = p0.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T1c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = 0
+    mesh(A).u1 = T1w
+    mesh(A).v1 = 0
+    mesh(A).u2 = T1w
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = mesh(A).u0
+    mesh(A).t0 = mesh(A).v0
+    mesh(A).s1 = mesh(A).u1
+    mesh(A).t1 = mesh(A).v1
+    mesh(A).s2 = mesh(A).u2
+    mesh(A).t2 = mesh(A).v2
+
+    A = A + 1
+
+
+    ' post far
+    mesh(A).x0 = p1.x
+    mesh(A).y0 = p1.y + fenceheight
+    mesh(A).z0 = p1.z
+
+    mesh(A).x1 = p0.x
+    mesh(A).y1 = p0.y
+    mesh(A).z1 = p0.z
+
+    mesh(A).x2 = p1.x
+    mesh(A).y2 = p1.y
+    mesh(A).z2 = p1.z
+
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T1c
+    mesh(A).options = T1o
+
+    mesh(A).u0 = 0
+    mesh(A).v0 = 0
+    mesh(A).u1 = T1w
+    mesh(A).v1 = T1h
+    mesh(A).u2 = 0
+    mesh(A).v2 = T1h
+
+    mesh(A).s0 = mesh(A).u0
+    mesh(A).t0 = mesh(A).v0
+    mesh(A).s1 = mesh(A).u1
+    mesh(A).t1 = mesh(A).v1
+    mesh(A).s2 = mesh(A).u2
+    mesh(A).t2 = mesh(A).v2
+
+    A = A + 1
+
+End Sub
+
+Sub SpawnPineTree (A As Integer, remain As Integer, center As vec3d)
     Static psn As vec3d
+
+    If remain <= 0 Then Exit Sub
+    remain = remain - 1
 
     psn.x = center.x
     psn.y = center.y
     psn.z = center.z
 
-    remain = remain - 1
-    If remain <= 0 Then Exit Sub
+
+    ' texture
+    Dim T1c As Long
+    Dim T1w As Long
+    Dim T1h As Long
+    Dim T1o As Long
+    T1c = 1 ' pine tree
+    T1w = _Width(TextureCatalog(T1c))
+    T1h = _Height(TextureCatalog(T1c))
+    T1o = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull Or T2_option_disable_RGBA
 
     ' X plane
     mesh(A).x0 = -2.0 + psn.x
@@ -1378,22 +1908,23 @@ Sub SpawnTree (A As Integer, remain As Integer, center As vec3d)
     mesh(A).y2 = 0.0 + psn.y
     mesh(A).z2 = psn.z
 
-    mesh(A).texture1 = 1
-    mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull Or T2_option_disable_RGBA
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T1c
+    mesh(A).options = T1o
 
     mesh(A).u0 = 0
     mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture1))
+    mesh(A).u1 = T1w
     mesh(A).v1 = 0
     mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture1))
+    mesh(A).v2 = T1h
 
     mesh(A).s0 = 0
     mesh(A).t0 = 0
-    mesh(A).s1 = _Width(TextureCatalog(mesh(A).texture2))
+    mesh(A).s1 = T1w
     mesh(A).t1 = 0
     mesh(A).s2 = 0
-    mesh(A).t2 = _Height(TextureCatalog(mesh(A).texture2))
+    mesh(A).t2 = T1h
 
     A = A + 1
 
@@ -1410,22 +1941,23 @@ Sub SpawnTree (A As Integer, remain As Integer, center As vec3d)
     mesh(A).y2 = 0.0 + psn.y
     mesh(A).z2 = psn.z
 
-    mesh(A).texture1 = 1
-    mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull Or T2_option_disable_RGBA
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T1c
+    mesh(A).options = T1o
 
-    mesh(A).u0 = _Width(TextureCatalog(mesh(A).texture1))
+    mesh(A).u0 = T1w
     mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture1))
-    mesh(A).v1 = _Height(TextureCatalog(mesh(A).texture1))
+    mesh(A).u1 = T1w
+    mesh(A).v1 = T1h
     mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture1))
+    mesh(A).v2 = T1h
 
-    mesh(A).s0 = _Width(TextureCatalog(mesh(A).texture2))
+    mesh(A).s0 = T1w
     mesh(A).t0 = 0
-    mesh(A).s1 = _Width(TextureCatalog(mesh(A).texture2))
-    mesh(A).t1 = _Height(TextureCatalog(mesh(A).texture2))
+    mesh(A).s1 = T1w
+    mesh(A).t1 = T1h
     mesh(A).s2 = 0
-    mesh(A).t2 = _Height(TextureCatalog(mesh(A).texture2))
+    mesh(A).t2 = T1h
 
     A = A + 1
 
@@ -1443,22 +1975,23 @@ Sub SpawnTree (A As Integer, remain As Integer, center As vec3d)
     mesh(A).y2 = 0.0 + psn.y
     mesh(A).z2 = -2.0 + psn.z
 
-    mesh(A).texture1 = 1
-    mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull Or T2_option_disable_RGBA
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T1c
+    mesh(A).options = T1o
 
     mesh(A).u0 = 0
     mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture1))
+    mesh(A).u1 = T1w
     mesh(A).v1 = 0
     mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture1))
+    mesh(A).v2 = T1h
 
     mesh(A).s0 = 0
     mesh(A).t0 = 0
-    mesh(A).s1 = _Width(TextureCatalog(mesh(A).texture2))
+    mesh(A).s1 = T1w
     mesh(A).t1 = 0
     mesh(A).s2 = 0
-    mesh(A).t2 = _Height(TextureCatalog(mesh(A).texture2))
+    mesh(A).t2 = T1h
 
     A = A + 1
 
@@ -1475,22 +2008,23 @@ Sub SpawnTree (A As Integer, remain As Integer, center As vec3d)
     mesh(A).y2 = 0.0 + psn.y
     mesh(A).z2 = -2.0 + psn.z
 
-    mesh(A).texture1 = 1
-    mesh(A).options = T1_option_clamp_width Or T1_option_clamp_height Or T1_option_alpha_channel Or T1_option_no_backface_cull Or T2_option_disable_RGBA
+    mesh(A).texture1 = T1c
+    mesh(A).texture2 = T1c
+    mesh(A).options = T1o
 
-    mesh(A).u0 = _Width(TextureCatalog(mesh(A).texture1))
+    mesh(A).u0 = T1w
     mesh(A).v0 = 0
-    mesh(A).u1 = _Width(TextureCatalog(mesh(A).texture1))
-    mesh(A).v1 = _Height(TextureCatalog(mesh(A).texture1))
+    mesh(A).u1 = T1w
+    mesh(A).v1 = T1h
     mesh(A).u2 = 0
-    mesh(A).v2 = _Height(TextureCatalog(mesh(A).texture1))
+    mesh(A).v2 = T1h
 
-    mesh(A).s0 = _Width(TextureCatalog(mesh(A).texture2))
+    mesh(A).s0 = T1w
     mesh(A).t0 = 0
-    mesh(A).s1 = _Width(TextureCatalog(mesh(A).texture2))
-    mesh(A).t1 = _Height(TextureCatalog(mesh(A).texture2))
+    mesh(A).s1 = T1w
+    mesh(A).t1 = T1h
     mesh(A).s2 = 0
-    mesh(A).t2 = _Height(TextureCatalog(mesh(A).texture2))
+    mesh(A).t2 = T1h
 
     A = A + 1
 End Sub
@@ -1782,6 +2316,12 @@ Sub Vector3_Normalize (io As vec3d)
         io.y = io.y / length
         io.z = io.z / length
     End If
+End Sub
+
+Sub Vector3_Lerp (p0 As vec3d, p1 As vec3d, ratio As Single, o As vec3d)
+    o.x = (p1.x - p0.x) * ratio + p0.x
+    o.y = (p1.y - p0.y) * ratio + p0.y
+    o.z = (p1.z - p0.z) * ratio + p0.z
 End Sub
 
 Sub Vector3_Mul (left As vec3d, scale As Single, o As vec3d)
@@ -2566,7 +3106,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                 LOD_vertical_squared = LODY_delta_v * LODY_delta_v + LODY_delta_u * LODY_delta_u
 
                                 ' Pick the largest of the two LODs
-                                LOD_squared = LOD_vertical_squared
+                                LOD_squared = LOD_vertical_squared / 8 ' test 2-17-2024
                                 If (LOD_squared < LOD_horizontal_squared) Or (LOD_vertical_failure = 1) Then LOD_squared = LOD_horizontal_squared
 
 
