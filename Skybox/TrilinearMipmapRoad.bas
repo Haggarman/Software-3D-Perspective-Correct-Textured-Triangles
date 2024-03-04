@@ -14,8 +14,8 @@ _Title "Tri-Linear Mipmap Road 128"
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
 '
-'  2/23/2023 - Improved alpha blending
-'  1/22/2023 - LOD using no square root and no log2f()
+'  2/23/2024 - Improved alpha blending
+'  1/22/2024 - LOD using no square root and no log2f()
 '  6/07/2023 - Trilinear Mipmap Interpolation
 '  6/04/2023 - Mipmap Vertical LOD calculated
 '  5/27/2023 - Level of Detail Texture Mipmap
@@ -442,8 +442,8 @@ Dim tri_normal As vec3d
 
 ' Part 2-2
 Dim vCameraPsn As vec3d ' location of camera in world space
-vCameraPsn.x = -5.0
-vCameraPsn.y = 0.2
+vCameraPsn.x = 0.0
+vCameraPsn.y = 0.0
 vCameraPsn.z = 0.0
 
 Dim cameraRay As vec3d
@@ -469,14 +469,14 @@ Dim matCamera(3, 3) As Single
 
 
 ' Directional light 1-17-2023
-Dim vLightDir As vec3d
-vLightDir.x = -0.5
-vLightDir.y = 0.6 ' +Y is now up
-vLightDir.z = 0.4
-Vector3_Normalize vLightDir
+Dim vSunDir As vec3d
+vSunDir.x = -0.5
+vSunDir.y = 0.4375 ' +Y is up
+vSunDir.z = 1.0
+Vector3_Normalize vSunDir
 Dim Shared Light_Directional As Single
 Dim Shared Light_AmbientVal As Single
-Light_AmbientVal = 0.3
+Light_AmbientVal = 0.45
 
 
 ' Screen Scaling
@@ -783,7 +783,7 @@ Do
             ProjectMatrixVector4 pointView2, matProj(), pointProj2
 
             ' Directional light 1-17-2023
-            Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
+            Light_Directional = Vector3_DotProduct!(tri_normal, vSunDir)
             If dotProductCam > 0.0 Then
                 ' front face
                 If Light_Directional < 0.0 Then Light_Directional = 0.0
@@ -3149,9 +3149,12 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             pixel_alpha = a0 / 255.0
                             pixel_existing = _MemGet(screen_mem_info, screen_address, _Unsigned Long)
 
-                            pixel_value = _RGB32((1.0 - pixel_alpha) *   _Red32(pixel_existing) + pixel_alpha *   _red32(pixel_value), _
-                                                 (1.0 - pixel_alpha) * _Green32(pixel_existing) + pixel_alpha * _green32(pixel_value), _
-                                                 (1.0 - pixel_alpha) *  _Blue32(pixel_existing) + pixel_alpha *  _blue32(pixel_value))
+                            pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
+                                                 (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
+                                                 ( _Blue32(pixel_value) - _Blue32(pixel_existing))  * pixel_alpha +  _blue32(pixel_existing))
+
+                            ' x = (p1 - p0) * ratio + p0 is equivalent to
+                            ' x = (1.0 - ratio) * p0 + ratio * p1
                         End If
 
                         ' Update the Z-Buffer, with a small bias

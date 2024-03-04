@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Fences 136"
+_Title "Tri-Linear Mipmap Fences 137"
 ' 2024 Haggarman
 ' Well I finally made it here. Trilinear Mip Mapping.
 ' Toggle false colors with (F) and move around with the arrow keys.
@@ -14,8 +14,9 @@ _Title "Tri-Linear Mipmap Fences 136"
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
 '
-'  2/23/2023 - Improved alpha blending
-'  1/22/2023 - LOD using no square root and no log2f()
+'  3/02/2024 - LOD aspect ratio
+'  2/23/2024 - Improved alpha blending
+'  1/22/2024 - LOD using no square root and no log2f()
 '  6/07/2023 - Trilinear Mipmap Interpolation
 '  6/04/2023 - Mipmap Vertical LOD calculated
 '  5/27/2023 - Level of Detail Texture Mipmap
@@ -330,9 +331,13 @@ T2_Offset_T = 0.0
 ' Mipmap Level of Detail
 Dim Shared LOD_mode As Integer
 Dim Shared LOD_max As Integer
+Dim Shared LOD_aspect_vertical As Single ' vertical / horizontal
+Dim Shared LOD_aspect_squared As Single
 
 LOD_mode = 3
 LOD_max = 0 ' 0 is the base level texture (largest)
+LOD_aspect_vertical = 0.25 ' LOD calculation acts like the textures are 1/4 as tall than as wide. Value chosen based on expected grazing angle of the texture.
+LOD_aspect_squared = LOD_aspect_vertical * LOD_aspect_vertical
 
 ' Load the Mesh
 Dim Triangles_In_A_Tree
@@ -480,14 +485,14 @@ Dim matCamera(3, 3) As Single
 
 
 ' Directional light 1-17-2023
-Dim vLightDir As vec3d
-vLightDir.x = -0.5
-vLightDir.y = 0.6 ' +Y is now up
-vLightDir.z = 0.4
-Vector3_Normalize vLightDir
+Dim vSunDir As vec3d
+vSunDir.x = -0.5
+vSunDir.y = 0.4375 ' +Y is up
+vSunDir.z = 1.0
+Vector3_Normalize vSunDir
 Dim Shared Light_Directional As Single
 Dim Shared Light_AmbientVal As Single
-Light_AmbientVal = 0.3
+Light_AmbientVal = 0.45
 
 
 ' Screen Scaling
@@ -800,7 +805,7 @@ Do
             ProjectMatrixVector4 pointView2, matProj(), pointProj2
 
             ' Directional light 1-17-2023
-            Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
+            Light_Directional = Vector3_DotProduct!(tri_normal, vSunDir)
             If dotProductCam > 0.0 Then
                 ' front face
                 If Light_Directional < 0.0 Then Light_Directional = 0.0
@@ -2931,7 +2936,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                 ' Pick the largest of the two LODs
                                 ' You could keep both values, but anisotropic has not been invented yet in this time period.
                                 '
-                                LOD_squared = LOD_vertical_squared
+                                LOD_squared = LOD_vertical_squared * LOD_aspect_squared
                                 If (LOD_squared < LOD_horizontal_squared) Or (LOD_vertical_failure = 1) Then LOD_squared = LOD_horizontal_squared
 
                                 If LOD_squared > 1.0 Then
@@ -3005,7 +3010,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
 
                                 ' Pick the largest of the two LODs
-                                LOD_squared = LOD_vertical_squared
+                                LOD_squared = LOD_vertical_squared * LOD_aspect_squared
                                 If (LOD_squared < LOD_horizontal_squared) Or (LOD_vertical_failure = 1) Then LOD_squared = LOD_horizontal_squared
 
                                 If LOD_squared > 1.0 Then
@@ -3106,7 +3111,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                 LOD_vertical_squared = LODY_delta_v * LODY_delta_v + LODY_delta_u * LODY_delta_u
 
                                 ' Pick the largest of the two LODs
-                                LOD_squared = LOD_vertical_squared / 8 ' test 2-17-2024
+                                LOD_squared = LOD_vertical_squared * LOD_aspect_squared
                                 If (LOD_squared < LOD_horizontal_squared) Or (LOD_vertical_failure = 1) Then LOD_squared = LOD_horizontal_squared
 
 
@@ -3689,9 +3694,12 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             pixel_alpha = a0 / 255.0
                             pixel_existing = _MemGet(screen_mem_info, screen_address, _Unsigned Long)
 
-                            pixel_value = _RGB32((1.0 - pixel_alpha) *   _Red32(pixel_existing) + pixel_alpha *   _red32(pixel_value), _
-                                                 (1.0 - pixel_alpha) * _Green32(pixel_existing) + pixel_alpha * _green32(pixel_value), _
-                                                 (1.0 - pixel_alpha) *  _Blue32(pixel_existing) + pixel_alpha *  _blue32(pixel_value))
+                            pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
+                                                 (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
+                                                 ( _Blue32(pixel_value) - _Blue32(pixel_existing))  * pixel_alpha +  _blue32(pixel_existing))
+
+                            ' x = (p1 - p0) * ratio + p0 is equivalent to
+                            ' x = (1.0 - ratio) * p0 + ratio * p1
                         End If
 
                         ' Update the Z-Buffer, with a small bias
