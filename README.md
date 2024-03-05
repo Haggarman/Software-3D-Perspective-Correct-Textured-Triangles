@@ -21,9 +21,11 @@
  
  Floating point numbers are used for the sake of understanding. On early 3D accelerators there were many different fixed-point number combinations for the sake of speed and reduced transistor count. But all that bit shifting hinders understanding.
  
- I believe it would be much easier to translate this BASIC code to C-lang or Python, than it was for me to catch onto the nuances from other's example C++ code that was using STL std::list, templates and pointer tricks.
- 
  No dropping to assembly or using pokes!
+
+ Only one .bas file per program instead of hunting around multiple files. Use F2 within the editor to jump to a certain subroutine.
+
+ Expand upon the previous program, but do go back to earlier programs to refactor or consistently name variables.
 
 ## Capabilities
  Let's list what has currently been implemented or explored, Final Reality Advanced benchmark style.
@@ -66,6 +68,8 @@ Yes | Z-Fight Bias
   <dd>Integer Level of Detail (LOD) calculation selects which size road texture to draw.</dd>
  <dt>TrilinearMipmapRoad.bas</dt>
   <dd>The final boss. Realtime blend between two mipmap textures based on LOD fraction.</dd>
+ <dt>TrilinearMipmapFences.bas</dt>
+  <dd>An alpha-blended, alpha-masked, mipmapped fence to go alongside the road.</dd>
 </dl>
 
 ## Triangles
@@ -73,24 +77,28 @@ Yes | Z-Fight Bias
  The triangles are specified by vertexes A, B, and C. They are sorted by the triangle drawing subroutine so that A is always on top and C is always on the bottom. That still leaves two categories where the knee at B faces left or right. The triangle drawing subroutine also adjusts for this so that pixels are drawn from left to right.
  ![TrianglesABC](https://user-images.githubusercontent.com/96515734/220204499-62aaed3c-f1fe-4c07-9c64-1c61564219e7.PNG)
 ### DDA
- The DDA (Digital Difference Analyzer) algorithm is used to simultaneously step on whole number Y increments from point A to point C on the major edge, and from point A to point B on the minor edge. When the Minor Edge DDAs reach vertexBy, the start values and steps are recalculated to be from point B to point C. Note that this case also handles a flat-topped triangle where vertexBy = vertexAy.
- 
- DDA is a complicated name for a simple concept. Count from a start value to an end value by steps of 1. And then set up additional counter(s) that change in value along with those steps.
+ DDA (Digital Difference Analyzer) is a complicated name for a simple concept. Count from a start value to an end value by steps of 1. And then set up additional counter(s) that change in value along with those steps.
 
  Pseudocode example:
 ```
-Xm_start = 8.0
-Xm_step = -0.5
+X1_start = 8.0 'major edge
+X1_step = -0.5
 
-Xm_acc = Xm_start
+X2_start = 6.0 'minor edge
+X2_step = 0.25
+
+X1_acc = X1_start
+X2_acc = X2_start
 For Y = 1 to 10
-  do_something_with(Y, Xm_acc)
-  Xm_acc = Xm_acc + Xm_step
+  do_something_with(Y, X1_acc, X2_acc)
+  X1_acc = X1_acc + X1_step
+  X2_acc = X2_acc + X2_step
 Next Y
-
-// Values of Y      { 1,   2,   3,   4,   5,   6,   7,   8,   9,  10}
-// Values of Xm_acc { 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5, 4.0, 3.5}
 ```
+### DDA as Applied to Triangles
+ The DDA algorithm is used to simultaneously step on whole number Y increments from vertex Ax to vertex Cx on the major edge, and from vertex Ax to vertex Bx on the minor edge. When the Minor Edge DDA reaches vertex By, the minor edge start values and steps are recalculated to be from vertex Bx to vertex Cx. This process is often termed "edge walking". Note that for a flat-topped triangle where vertex By = vertex Ay, the minor edge recalculation is performed immediately.
+
+ Horizontal spans of pixels are drawn from Major edge X to Minor edge X-1. This process of writing to sequential memory addresses can be performed at the maximum speed of the video memory with a very efficient hardware-assisted pixel pipeline. The purpose of drawing up to but not including Minor edge X has to do with overdraw. Two triangles sharing two vertexes will have the pixels of the shared edge redrawn, wasting cycles. This is in fact so commonly encountered when drawing meshes, it has the term "rounding rule". The rounding rule for this rasterizer is to skip the rightmost and bottom pixels.
 ### Why use DDA?
  DDA was used because not all math operations complete in the same amount of time. In this case we are comparing repeated additions to an accumulator, versus multiply then divide operations.
  Addition requires significantly less circuitry than division. Division also requires multiple clocks whereas addition can complete in one clock. Multiplication is somewhere inbetween, but any multiplication that can be avoided helps speed.
@@ -101,7 +109,7 @@ Next Y
 ### Pre-stepping
  vertexAy is a floating point value but pixels are evenly spaced at integers. It is not okay to just round vertex coordinates to the nearest screen pixel integer, as in motion this causes vertex wobbling and unsightly seams between adjacent triangles.
  
- The start value of Y at point A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation.
+ The start value of Y at vertex A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation. This also holds true for the start of each horizontal span. The starting X is also rounded up to the next integer. The span attribute's starting X values are also interpolated ahead using the amount by which X was rounded up.
 
 ## Projection
 ### Core Concept
