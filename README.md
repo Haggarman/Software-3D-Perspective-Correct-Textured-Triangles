@@ -111,18 +111,77 @@ Next Y
  
  The start value of Y at vertex A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation. This also holds true for the start of each horizontal span. The starting X is also rounded up to the next integer. The span attribute's starting X values are also interpolated ahead using the amount by which X was rounded up.
 
+### Gouraud Shading
+ Gouraud shading is visual a step up from flat shading (flat as in the entire triangle having one same color). Gouraud is very fast, but it does not factor in depth. This can make for odd results under close scrutiny.
+
+ As mentioned above, each triangle vertex can have attributes. For example it is common to assign Red, Green, Blue primary color components to each of the 3 vertexes. DDA can be used to smoothly transition the color across the face of the triangle.
+
+ To try to explain this in the most simple way, it is calculated this way: Starting at vertex A, how much does the red color channel change when moving one pixel down? How much does red change when moving one pixel to the right? Repeat the calculations for green and blue channels respectively. Use these six values of delta Red per delta Y, delta Red per delta X, delta Green per delta Y, etc.  when drawing the triangle to affect the final color. For example the RGB values could be used directly for a non-textured colored triangle, or added to a color sampled from a texture, or multiplied with the texture color, or many other combinations.
+
 ## Projection
 ### Core Concept
-Projection is division. In order to project a 3D point (X, Y, Z) onto a 2D screen (X, Y) a division by Z is required: (X / Z, Y / Z). As Z becomes larger, the closer the projected point gets to the origin (X=0, Y=0). In art this is called the vanishing point. As an object gets further away in Z distance, it appears to shrink in size and approach the vanishing point.
+ Projection is division. In order to project a 3D point (X, Y, Z) onto a 2D screen (X, Y) a division by Z is required: (X / Z, Y / Z). As Z becomes larger, the closer the projected point gets to the origin (X=0, Y=0). In art this is called the vanishing point. As an object gets further away in Z distance, it appears to shrink in size and approach the vanishing point.
 
-The vanishing point is usually centered on the display screen. Doesn't have to be, but usually. So half the screen width is added to X, and half the screen height is added to Y. Otherwise you'd see 1/4 of the image you expected to see with the origin at the top left of the screen.
+ The vanishing point is usually centered on the display screen. Doesn't have to be, but usually. So half the screen width is added to X, and half the screen height is added to Y. Otherwise you'd see 1/4 of the image you expected to see with the origin at the top left of the screen.
+
+### Foward Projection
+ If for example we had a 16x16 texture (16 dots wide by 16 dots tall flat surface), after moving it somewhere in 3D space, we could forward project each of the 256 dots (X, Y, Z) coordinates using the projection equation:
+```
+ SX = D * X / Z + CX
+ SY = D * Y / Z + CY
+ 'note: D is a constant that represents the field of view
+ '      and (CX, CY) is the center of the screen.
+```
+ This definitely does work. But what ends up happening is with increasing Z distance, there will be many overlapping pixels. A pixel is drawn, and then most likely immediately overwrote.
+
+ Zooming in poses another problem. Viewed up close with low Z values, there will be gaps between those dots. This is solvable, and filling those diamonds in is something clever the 3DO console does.
+
+ But ultimately foward projection is an evolutionary dead end along with all other quad hardware.
+
+### Inverse Projection
+ The purpose of inverse projection is to visit each screen pixel within a triangle exactly once, casting a ray straight back to determine where it hits the texture, to determine the color of the pixel.
+
+ This gets rid of the overdraw problem, but introduces a new challenge. There is no way around needing to unproject at each and every pixel. As in requiring the same expensive divisions.
+
+### Projected Z is non-linear
+ To get the terminology clear, a "screen" is the two dimensional pixel grid that comprises what you see on your monitor. So the projection equation takes a 3D point and places it on the 2D screen.
+
+ Projection into screen space is non-linear. So it is not correct to give equal step changes to the Z depth when traversing from projected vertex to vertex of the triangle in screen space.
 
 ### Deep Perspective
-Division is expensive. The best we can do is use 1 / Z. The Inverse of Z has a special symbol: W.
+ Division is expensive. The best we can do is use 1 / Z. The Inverse of Z has a special symbol: W.
 
-W = 1 / Z
+ W = 1 / Z
 
-Two multiplications are faster than two divisions. Dividing X by Z and then Y by Z is slower than calculating W = 1 / Z, multiplying W times X, and multiplying W times Y. Further savings from bothering to calculate the inverse of Z will appear again when calculating texels.
+ Two multiplications by an inverse are already swifter than two divisions.
+
+### W Space
+ This gets a little bit abstract at this point, but would you agree that Z = 1 / 1 / Z ?
+ 
+ As in if we take the inverse of an inverse of a number, we get the same number back?
+
+ How about expressing this as Z = 1 / W, having previously calculated W = 1 / Z?
+
+ So to regain the depth Z, the inverse of the depth W can be taken.
+
+ But the point here is that W is linear when interpolating depth from vertex to vertex on the projected triangle.
+
+### Over Z
+ At some point back in the 20th century, someone mathing around had a eureka moment to express the vertex attributes per units of Z. For example, divide the blueness of VertexA and VertexB both by Z, then linearly interpolate, and then undo the "over Z" to get the blue value back. This gets beyond the visually incorrect but very fast Gouraud shading.
+ 
+ Or more importantly, this insight led to dividing the U and V texel coordinates each by Z before starting the drawing loops. Then using linear interpolation across the triangle. Multiplying U * Z and V * Z at each pixel to recover the true texel coordinate to sample.
+
+```
+ UoZ = U texel horizontal attribute / depth Z
+ VoZ = V texel vertical attribute / depth Z
+ OoZ = 1 / depth Z
+```
+ Dividing the vertex coordinates by Z makes it possible to then use DDA to achieve correct perspective projection when stepping from one pixel to the next.
+
+### Bottom Line
+ Being willing to dedicate huge amounts of silicon real estate to perform this 1 / 1 / Z algorithm is what separated true perspective projection graphics acceleration hardware from the more primitive affine transformation hardware.
+
+ Division is expensive, but overdraw of a pixel is ever so more. This is why reverse projection won.
 
 ## Clipping
 ### Near Frustum Clipping
