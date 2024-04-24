@@ -1,10 +1,12 @@
-## Language
- This collection of BASIC programs is written for the QB64 compiler.
- https://github.com/QB64-Phoenix-Edition/
 ## Description
- How were 3D triangles drawn by the first PC graphics accelerators in 1997? This was my deep dive into understanding the software algorithms involved in drawing triangles line by line. This is a software simulation only approach.
+ How were 3D triangles drawn by the first PC graphics accelerators in 1997? This was my deep dive into understanding the software algorithms involved in drawing triangles line by line.
  
- For extra fun there are blending operations like Fog, Vertex Color, and Directional/Ambient lighting.
+ This is a software simulation only approach. I do not seek to mimic exact hardware pipelines, command registers, or video memory controller implementations.
+### Era Applicable Cards
+- 3Dfx Voodoo 1 & 2
+- NVIDIA RIVA TNT
+- S3 ViRGE series
+- SGI Ultra 64 RDP
 ## Screenshots
  ![Textured Cube Plains 640](https://user-images.githubusercontent.com/96515734/224503609-ac961d99-c086-400e-b1f9-a1a8c639f918.PNG)
  ![Vertex Color Cube](https://user-images.githubusercontent.com/96515734/219141230-6d9a9d36-ec02-4c5a-94eb-a01773a02b5b.PNG)
@@ -14,18 +16,6 @@
  ![Skybox Long Tube 800](https://user-images.githubusercontent.com/96515734/224502776-09c13ed1-60a6-4074-a7d4-dd2b05e30085.png)
  ![Skybox Treess](https://user-images.githubusercontent.com/96515734/234192793-af9a3844-cfc6-4cdb-a988-e38d5a0ae531.PNG)
  ![Tri-Linear Mipmap Road](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/ee802200-7212-4442-bb50-ee5cc7a9e2e0)
-## Approach
- QBASIC was used because of the very quick edit-compile-test iterations. I wanted this exploration to be fun.
- 
- A verbose style of naming variables and keeping ideas separated per source code line is used.
- 
- Floating point numbers are used for the sake of understanding. On early 3D accelerators there were many different fixed-point number combinations for the sake of speed and reduced transistor count. But all that bit shifting hinders understanding.
- 
- No dropping to assembly or using pokes!
-
- Only one .bas file per program instead of hunting around multiple files. Use F2 within the editor to jump to a certain subroutine.
-
- Expand upon the previous program, but do go back to earlier programs to refactor or consistently name variables.
 
 ## Capabilities
  Let's list what has currently been implemented or explored, Final Reality Advanced benchmark style.
@@ -44,6 +34,25 @@ Yes | Additive alpha (lighten)
 Yes | Multiplicative alpha (darken)
 Yes | Subpixel accuracy
 Yes | Z-Fight Bias
+
+## Language
+ This collection of BASIC programs is written for the QB64 compiler.
+ https://github.com/QB64-Phoenix-Edition/
+
+## Approach
+ QBASIC was used because of the very quick edit-compile-test iterations. I wanted this exploration to be fun.
+
+ A verbose style of naming variables and keeping ideas separated per source code line is used.
+
+ Only one .bas file per program instead of hunting around multiple files. Use F2 within the editor to jump to a certain subroutine.
+
+ Floating point numbers are used for the sake of understanding. On early 3D accelerators there were many different fixed-point number combinations for the sake of speed and reduced transistor count. But all that bit shifting hinders understanding.
+
+ No dropping to assembly or using pokes!
+
+ Try to avoid external libraries unless performance is severely hindered and no alternatives exist.
+
+ Expand upon the previous program, but do go back to earlier programs to refactor or to consistently name variables.
 
 ## Programs sorted by complexity
  This table lists the rough order in which the programs were written. The programs features get more complicated further down the list.
@@ -79,18 +88,18 @@ Yes | Z-Fight Bias
 ### DDA
  DDA (Digital Difference Analyzer) is a complicated name for a simple concept. Count from a start value to an end value by steps of 1. And then set up additional counter(s) that change in value along with those steps.
 
- Pseudocode example:
+ Simplified example:
 ```
-X1_start = 8.0 'major edge
+X1_start = 8.0 'minor edge
 X1_step = -0.5
 
-X2_start = 6.0 'minor edge
+X2_start = 6.0 'major edge
 X2_step = 0.25
 
 X1_acc = X1_start
 X2_acc = X2_start
 For Y = 1 to 10
-  do_something_with(Y, X1_acc, X2_acc)
+  plot(Y, X1_acc, X2_acc)
   X1_acc = X1_acc + X1_step
   X2_acc = X2_acc + X2_step
 Next Y
@@ -252,7 +261,7 @@ ID | Name | Description
  
  ![3 point interpolation](https://user-images.githubusercontent.com/96515734/219922319-bf7cebb7-323c-40a0-bf2a-a236b81cd49f.png)
  
- I hope to be able to describe the math behind it.
+ I hope to be able to describe the math behind it clearly.
  
  When a rendered triangle is drawn larger than the size of the texture, the texture is sampled in-between the texels to magnify it more smoothly.
  
@@ -366,8 +375,18 @@ A program named *TextureWrapOptions.bas* in the Concepts folder was used to deve
  
  So in the end, the fractional LOD portion is used in yet another round of interpolation between two bilinear interpolated RGB values, to reach the final pixel color values. Remember your adjectives: mono = 1, bi = 2, tri = 3.
  
- One could use 5 texel reads on the S3 ViRGE instead of 8. It could be configured so that the larger texture gets bilinear sampling, and the smaller texture gets nearest point sampling. And then combine the two to result in a modified tri-linear mipmap interpolation.
+ One could use 5 texel reads on the S3 ViRGE instead of 8. It could be configured so that the larger texture gets bilinear sampling, and the smaller texture gets nearest point sampling. And then combine the two to result in a modified tri-linear mipmap interpolation. As for a visual description, it looks fuzzy but still better than the abrupt changes of not having any interpolation.
+
+### Limitations of mip mapping
+
+ Examining the road textures by moving the camera around, it becomes blurry rather soon into the distance. This is because the highest value of the 4 possible LOD numbers is determining what reduced size texture to sample.
  
+ Nice high-resolution vertical walls or horizontal ground surface textures that occupy the largest portions of texture memory will barely get used when LOD is performed this way.
+ 
+ This realization lead to two innovations not long after the graphics accelerators covered here.
+1. Lossy data compression can be used on the largest textures. For example store exact values every 4th texel and then some bitfields to shape the interpolation curve between them. A tiny bit more hardware but this could lead to a patent (groan).
+2. Keep the X and Y LODs separated for a 2 dimensional lookup of the texture. This is called Anisotropic texturing. In our program examples, this would work great for the road texture because it is often drawn crushed vertically but wide horizontally.
+
 ### Why do I feel mip mapping is overrated? 
  
 1. Unnecessary: Due to memory size limitations, textures weren't very large in this era. A good majority of the time a small texture was being stretched (magnified) onto a larger triangle.
@@ -387,7 +406,7 @@ A program named *TextureWrapOptions.bas* in the Concepts folder was used to deve
 In the end, both companies were sold off. But it's how they're remembered and celebrated, either famously or infamously.
 
 ### Quips
- Puffery: Did you know that ViRGE stands for Virtual Reality Graphics Engine? Which is complete and utterly laughable P.T. Barnum **SUCKER** level marketing? Reading the headlined features and benefits claimed in the official datasheet is entertainment alone, compared to how it benchmarks.
+ Puffery: Did you know that ViRGE stands for Virtual Reality Graphics Engine? Which is complete and utterly laughable P.T. Barnum **SUCKER** level marketing? Reading the headlined features and benefits claimed in the official datasheet is entertainment alone, compared to how it benchmarks. Truth be told, though, that the ViRGE draws very fast untextured triangles. Textures slow it down (it has no cache), Z-buffer slows it down further, and then TLMMI really slows it to a crawl.
 
  Worthless Patents: Untold time was spent on 16-bit Z-Buffers to cater to stingy manufacturers that wanted minimum viable product. *Hey, we noticed RAM is going to be very inexpensive soon, so what is the least amount of onboard RAM required?!* Is it really genius to think if you have 80-bit, 64-bit, or 32-bit floating point, that it is *possible* to have a 16-bit floating point number? But really, is that a good use of resources? By the time the Patent Lawyer's check clears, technology would have just moved on. The value of a company's patent portfolio is more about jumping out from the shadows and saying GOTCHA and hoping the competitor also made the same shortcut.
 
