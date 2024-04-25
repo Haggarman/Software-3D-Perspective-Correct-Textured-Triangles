@@ -1,19 +1,18 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Fences 137"
+_Title "Tri-Linear Mipmap Variants 145"
 ' 2024 Haggarman
-' Well I finally made it here. Trilinear Mip Mapping.
-' Toggle false colors with (F) and move around with the arrow keys.
-' (M)ode 0 = no mipmap
-'        1 = The academic per-pixel LOD calculation, requiring a square root and base 2 logarithm. SLOW but correct.
-'        2 = Slightly faster lookup table for texture mapper coordinate scale. Still using log2f() and square roots like #1.
-'        3 = Something I apparently invented. Per-Pixel LOD avoiding a square root and avoiding a log2f(). LOD_fraction curve is bent due to using LOD squared, but not very noticeable.
-'        4 = No square root, no log2f. Explained here: https://github.com/gonetz/GLideN64/wiki/Level-of-detail-emulation:-lod-per-pixel-calculation,-tile-selection-and-third-axis-interpolation-factor-computation.
-'            ...yes include period when copying that link
-
+' Trilinear Mip Mapping variants
+'  Press (T) to change TLMMI mode between 8-point and 5-point.
+'  Toggle false colors with (F) and move around with the arrow keys.
+'
+'  (M)ode 0 = no mipmap
+'         1 = Per-Pixel LOD avoiding a square root and avoiding a log2f(). LOD_fraction curve is bent due to using LOD squared, but not very noticeable.
+'
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
 '
+'  4/25/2024 - TLMMI Variants: 5 point or normal 8 point.
 '  3/02/2024 - LOD aspect ratio
 '  2/23/2024 - Improved alpha blending
 '  1/22/2024 - LOD using no square root and no log2f()
@@ -51,10 +50,6 @@ _Title "Tri-Linear Mipmap Fences 137"
 '          Some other clever genius thought of the triangle knee concept, but I think I explain it better in code.
 '          It is thus easy to draw perspective correct textures in software.
 '
-Declare Library ""
-    ' grab a C99 function from math.h
-    Function log2f! (ByVal value!)
-End Declare
 
 Dim Shared DISP_IMAGE As Long
 Dim Shared WORK_IMAGE As Long
@@ -334,9 +329,9 @@ Dim Shared LOD_max As Integer
 Dim Shared LOD_aspect_vertical As Single ' vertical / horizontal
 Dim Shared LOD_aspect_squared As Single
 
-LOD_mode = 3
+LOD_mode = 1
 LOD_max = 0 ' 0 is the base level texture (largest)
-LOD_aspect_vertical = 0.25 ' LOD calculation acts like the textures are 1/4 as tall than as wide. Value chosen based on expected grazing angle of the texture.
+LOD_aspect_vertical = 0.5 ' LOD calculation acts like the textures are 1/2 as tall than as wide. Value chosen based on expected grazing angle of the texture.
 LOD_aspect_squared = LOD_aspect_vertical * LOD_aspect_vertical
 
 ' Load the Mesh
@@ -354,7 +349,7 @@ Mesh_Last_Element = (Wall_Count * Triangles_In_A_Wall) + (Tree_Count * Triangles
 Dim Shared mesh(Mesh_Last_Element) As triangle
 
 Dim Shared Mesh_Seed As Long
-Mesh_Seed = 152 ' mildly interesting
+Mesh_Seed = 183 ' interesting enough
 MakeMesh Mesh_Seed
 
 
@@ -366,16 +361,17 @@ MakeMesh Mesh_Seed
 '     | 3 |
 '     +---+
 
-Dim Shared SkyBoxRef(5) As Long
+Dim Shared SkyBoxRef(6) As Long
 SkyBoxRef(0) = _LoadImage("SkyBoxRight.png", 32)
 SkyBoxRef(1) = _LoadImage("SkyBoxLeft.png", 32)
 SkyBoxRef(2) = _LoadImage("SkyBoxTop.png", 32)
 SkyBoxRef(3) = _LoadImage("SkyBoxBottom.png", 32)
 SkyBoxRef(4) = _LoadImage("SkyBoxFront.png", 32)
 SkyBoxRef(5) = _LoadImage("SkyBoxBack.png", 32)
+SkyBoxRef(6) = _LoadImage("Origin16x16.png", 32)
 
 ' Error _LoadImage returns -1 as an invalid handle if it cannot load the image.
-For refIndex = 0 To 5
+For refIndex = 0 To 6
     If SkyBoxRef(refIndex) = -1 Then
         Print "Could not load texture file for skybox face: "; refIndex
         End
@@ -393,7 +389,7 @@ _PutImage (128 * 1, 128 * 2), SkyBoxRef(3)
 
 Dim A As Integer
 Dim Shared Sky_Last_Element As Integer
-Sky_Last_Element = 11
+Sky_Last_Element = 11 + 1
 
 Dim sky(Sky_Last_Element) As skybox_triangle
 Restore SKYBOX
@@ -492,7 +488,7 @@ vSunDir.z = 1.0
 Vector3_Normalize vSunDir
 Dim Shared Light_Directional As Single
 Dim Shared Light_AmbientVal As Single
-Light_AmbientVal = 0.45
+Light_AmbientVal = 0.3
 
 
 ' Screen Scaling
@@ -531,17 +527,29 @@ Dim Triangles_Drawn As Long
 Dim triCount As Integer
 Dim New_Triangles_Drawn As Long ' because of clipping
 Dim vMove_Player_Forward As vec3d
+Dim vSunPsn As vec3d
+
+Dim vSun0 As vec3d ' begin
+Dim vSun1 As vec3d ' finish
+Dim lightChangeCount As Integer
+
+Dim Shared TLMMI_Variant As Integer
 
 
 $Checking:Off
 main:
 ExitCode = 0
-Toggle_Mipmap_FalseColor = -1
+Toggle_Mipmap_FalseColor = 0
 T1_Filter_Selection = 1
 T2_Filter_Selection = 1
 fPitch = -10.0
 fYaw = 0.0
 fRoll = 0.0
+lightChangeCount = 0
+vSun1 = vSunDir
+
+TLMMI_Variant = 0
+
 Do
     ' Create "Point At" Matrix for camera
 
@@ -578,17 +586,33 @@ Do
 
     ' Draw Skybox 2-28-2023
     For A = 0 To Sky_Last_Element
-        point0.x = sky(A).x0
-        point0.y = sky(A).y0
-        point0.z = sky(A).z0
+        If A = Sky_Last_Element Then
+            Vector3_Mul vSunDir, 10.0, vSunPsn
+            point0.x = vSunPsn.x
+            point0.y = vSunPsn.y + 1.0
+            point0.z = vSunPsn.z
 
-        point1.x = sky(A).x1
-        point1.y = sky(A).y1
-        point1.z = sky(A).z1
+            point1.x = vSunPsn.x + 1.0
+            point1.y = vSunPsn.y + 1.0
+            point1.z = vSunPsn.z
 
-        point2.x = sky(A).x2
-        point2.y = sky(A).y2
-        point2.z = sky(A).z2
+            point2.x = vSunPsn.x
+            point2.y = vSunPsn.y
+            point2.z = vSunPsn.z
+
+        Else
+            point0.x = sky(A).x0
+            point0.y = sky(A).y0
+            point0.z = sky(A).z0
+
+            point1.x = sky(A).x1
+            point1.y = sky(A).y1
+            point1.z = sky(A).z1
+
+            point2.x = sky(A).x2
+            point2.y = sky(A).y2
+            point2.z = sky(A).z2
+        End If
 
         ' Follow the camera coordinate position (slide)
         ' Skybox is like putting your head inside a floating box that travels with you, but never rotates.
@@ -715,6 +739,22 @@ Do
 
     spotlightAnimationCount = spotlightAnimationCount + 7.0
     If spotlightAnimationCount >= 360.0 Then spotlightAnimationCount = spotlightAnimationCount - 360.0
+
+    ' dart around the sky
+    If lightChangeCount <= 0 Then
+        vSun0 = vSun1
+
+        vSun1.x = Rnd - 0.5
+        vSun1.y = Rnd ' +Y is up
+        vSun1.z = Rnd - 0.5
+
+        lightChangeCount = 200
+    Else
+        lightChangeCount = lightChangeCount - 1
+    End If
+
+    Vector3_Lerp vSun1, vSun0, lightChangeCount / 200.0, vSunDir
+    Vector3_Normalize vSunDir
 
 
     ' Draw Triangles
@@ -973,7 +1013,13 @@ Do
     Else
         Print "(F)alse Color Mipmap off. ";
     End If
-    Print "(M)ode:"; LOD_mode
+    Print "LOD (M)ode:"; LOD_mode
+    Print "(T)LMMI Variant: ";
+    If TLMMI_Variant = 0 Then
+        Print "8 point"
+    Else
+        Print "5 point"
+    End If
     Print "Spacebar rise. V drop. R reset."
     Print "(N)ew Mesh Seed:"; Mesh_Seed
     Print "+FOV- Degrees:"; Frustum_FOV_deg
@@ -1010,7 +1056,11 @@ Do
             Toggle_Mipmap_FalseColor = Not Toggle_Mipmap_FalseColor
         ElseIf KeyNow = "M" Then
             LOD_mode = LOD_mode + 1
-            If LOD_mode > 4 Then LOD_mode = 0
+            If LOD_mode > 1 Then LOD_mode = 0
+        ElseIf KeyNow = "T" Then
+            TLMMI_Variant = TLMMI_Variant + 1
+            If TLMMI_Variant > 1 Then TLMMI_Variant = 0
+
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
@@ -1059,7 +1109,7 @@ For refIndex = TextureCatalog_lastIndex To 0 Step -1
     _FreeImage TextureCatalog(refIndex)
 Next refIndex
 
-For refIndex = 5 To 0 Step -1
+For refIndex = 6 To 0 Step -1
     _FreeImage SkyBoxRef(refIndex)
 Next refIndex
 
@@ -1169,6 +1219,14 @@ Data +10,-10,-10
 Data -10,-10,-10
 Data 128,0,128,128,0,128
 Data 3
+
+' SUN
+Data -1,+1,+10
+Data +1,+1,+10
+Data -1,-1,+10
+Data 0,0,16,0,0,16
+Data 6
+
 
 
 Sub MakeMesh (seed As Long)
@@ -2655,6 +2713,10 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
     screen_mem_info = _MemImage(WORK_IMAGE)
     screen_next_row_step = 4 * Size_Render_X
 
+    ' caching of 4 texels in bilinear mode
+    Static T1_last_cache As _Unsigned Long
+    T1_last_cache = &HFFFFFFFF ' invalidate
+
     ' Row Loop from top to bottom
     row = draw_min_y
     screen_row_base = screen_mem_info.OFFSET + row * screen_next_row_step
@@ -2787,7 +2849,6 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
             Static LOD_coord_scale1 As Single
             Static LOD_coord_scale3 As Single
 
-            Static LOD_float As Single
             Static LOD_fraction As Single
 
             Static LOD_tile1 As Integer
@@ -2915,185 +2976,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                 LOD_coord_scale1 = 1.0
                                 LOD_coord_scale3 = 1.0
 
-
                             Case 1:
-                                ' The Academic Per-Pixel Horizontal LOD calculation.
-
-                                ' Horizontal LOD
-                                ' How much do the texel (U, V) coordinates change when going one pixel to the right?
-                                LOD_u00 = (tex_u * tex_z)
-                                LOD_u01 = ((tex_u + tex_u_step) / (tex_w + tex_w_step))
-
-                                LOD_v00 = (tex_v * tex_z)
-                                LOD_v01 = ((tex_v + tex_v_step) / (tex_w + tex_w_step))
-
-                                ' Pythagoras distance formula
-                                LODX_delta_u = LOD_u01 - LOD_u00
-                                LODX_delta_v = LOD_v01 - LOD_v00
-                                LOD_horizontal_squared = LODX_delta_v * LODX_delta_v + LODX_delta_u * LODX_delta_u
-
-                                ' Vertical LOD
-                                ' finish calculation for (u,v) one pixel down. (only multiply when we need to).
-                                LOD_u10 = LOD_next_uoz * LOD_next_z
-                                LOD_v10 = LOD_next_voz * LOD_next_z
-
-                                ' Pythagoras distance formula without the square root.
-                                LODY_delta_u = LOD_u10 - LOD_u00
-                                LODY_delta_v = LOD_v10 - LOD_v00
-                                LOD_vertical_squared = LODY_delta_v * LODY_delta_v + LODY_delta_u * LODY_delta_u
-
-
-                                ' Pick the largest of the two LODs
-                                ' You could keep both values, but anisotropic has not been invented yet in this time period.
-                                '
-                                LOD_squared = LOD_vertical_squared * LOD_aspect_squared
-                                If (LOD_squared < LOD_horizontal_squared) Or (LOD_vertical_failure = 1) Then LOD_squared = LOD_horizontal_squared
-
-                                If LOD_squared > 1.0 Then
-                                    ' Base 2 logarithm
-                                    'LOD_float = Log(LOD_right) / Log(2.0)  ' slower equivalent if you do not have access to log2f().
-                                    LOD_float = log2f(Sqr(LOD_squared))
-
-                                    LOD_tile1 = Int(LOD_float)
-                                    If LOD_tile1 > LOD_max Then LOD_tile1 = LOD_max
-
-                                    'LOD_coord_scale1 = 2 ^ -LOD
-                                    LOD_coord_scale1 = 1.0 / (2 ^ LOD_tile1)
-
-                                    ' 7-14-2023 we should trilinear blend
-                                    ' The third texture mapper T3 is using the smaller sized, higher index numbered mipmap texture.
-                                    LOD_tile3 = LOD_tile1 + 1
-                                    If LOD_tile3 > LOD_max Then LOD_tile3 = LOD_max
-
-                                    If LOD_tile3 <> LOD_tile1 Then
-                                        ' Introduce the smaller of the two mipmaps and determine the LOD fractional portion.
-                                        LOD_coord_scale3 = 1.0 / (2 ^ LOD_tile3)
-                                        LOD_fraction = LOD_float - LOD_tile1 ' easy when doing log2
-
-                                        T3_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_tile3)
-                                        T3_mblock = _MemImage(T3_ImageHandle)
-                                        T3_width = _Width(T3_ImageHandle): T3_width_MASK = T3_width - 1
-                                        T3_height = _Height(T3_ImageHandle): T3_height_MASK = T3_height - 1
-                                    End If
-                                Else
-                                    ' No LOD when magnifying
-                                    LOD_tile1 = 0
-                                    LOD_tile3 = 0
-                                    LOD_coord_scale1 = 1.0
-                                End If
-
-                                ' Because LOD changes up or down, these T1 numbers need to be set again.
-                                ' This includes the case of going from LOD 1 back down to LOD 0.
-                                ' So just set every time.
-                                T1_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_tile1)
-                                T1_mblock = _MemImage(T1_ImageHandle)
-                                T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
-                                T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
-
-
-                            Case 2:
-                                ' Slightly faster lookup table for coord scale, still using log2f()
-
-                                ' Horizontal LOD
-                                ' How much do the texel (U, V) coordinates change when going one pixel to the right?
-                                LOD_u00 = (tex_u * tex_z)
-                                LOD_u01 = ((tex_u + tex_u_step) / (tex_w + tex_w_step))
-
-                                LOD_v00 = (tex_v * tex_z)
-                                LOD_v01 = ((tex_v + tex_v_step) / (tex_w + tex_w_step))
-
-                                LODX_delta_u = LOD_u01 - LOD_u00
-                                LODX_delta_v = LOD_v01 - LOD_v00
-
-                                ' Pythagoras distance formula but without the square root
-                                LOD_horizontal_squared = LODX_delta_v * LODX_delta_v + LODX_delta_u * LODX_delta_u
-
-
-                                ' Vertical LOD
-                                LOD_u10 = LOD_next_uoz * LOD_next_z
-                                LOD_v10 = LOD_next_voz * LOD_next_z
-
-                                ' Pythagoras distance formula without the square root.
-                                LODY_delta_u = LOD_u10 - LOD_u00
-                                LODY_delta_v = LOD_v10 - LOD_v00
-                                LOD_vertical_squared = LODY_delta_v * LODY_delta_v + LODY_delta_u * LODY_delta_u
-
-
-                                ' Pick the largest of the two LODs
-                                LOD_squared = LOD_vertical_squared * LOD_aspect_squared
-                                If (LOD_squared < LOD_horizontal_squared) Or (LOD_vertical_failure = 1) Then LOD_squared = LOD_horizontal_squared
-
-                                If LOD_squared > 1.0 Then
-                                    ' Determine integer and fractional LOD
-                                    ' Using an imported C99 math function for base 2 logarithm as this needs to be fast
-                                    LOD_float = log2f(Sqr(LOD_squared))
-                                    LOD_tile1 = Int(LOD_float)
-                                    LOD_fraction = LOD_float - LOD_tile1
-
-                                    If LOD_tile1 > LOD_max Then
-                                        LOD_tile1 = LOD_max
-                                        LOD_tile3 = LOD_max
-                                    Else
-                                        LOD_tile3 = LOD_tile1 + 1
-                                        If LOD_tile3 > LOD_max Then
-                                            LOD_tile3 = LOD_max
-                                        Else
-                                            If LOD_tile3 <> LOD_tile1 Then
-                                                T3_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_tile3)
-                                                T3_mblock = _MemImage(T3_ImageHandle)
-                                                T3_width = _Width(T3_ImageHandle): T3_width_MASK = T3_width - 1
-                                                T3_height = _Height(T3_ImageHandle): T3_height_MASK = T3_height - 1
-                                            End If
-
-                                        End If
-
-                                    End If
-
-                                    Select Case LOD_tile1
-                                        Case 0:
-                                            LOD_coord_scale1 = 1.0
-                                            LOD_coord_scale3 = 0.5
-                                        Case 1:
-                                            LOD_coord_scale1 = 0.5
-                                            LOD_coord_scale3 = 0.25
-                                        Case 2:
-                                            LOD_coord_scale1 = 0.25
-                                            LOD_coord_scale3 = 0.125
-                                        Case 3:
-                                            LOD_coord_scale1 = 0.125
-                                            LOD_coord_scale3 = 0.0625
-                                        Case 4:
-                                            LOD_coord_scale1 = 0.0625
-                                            LOD_coord_scale3 = 0.03125
-                                        Case 5:
-                                            LOD_coord_scale1 = 0.03125
-                                            LOD_coord_scale3 = 0.015625
-                                        Case 6:
-                                            LOD_coord_scale1 = 0.015625
-                                            LOD_coord_scale3 = 0.0078125
-                                        Case 7:
-                                            LOD_coord_scale1 = 0.0078125
-                                            LOD_coord_scale3 = 0.00390625
-                                    End Select
-
-                                Else
-                                    ' No LOD when magnifying
-                                    LOD_tile1 = 0
-                                    LOD_tile3 = 0
-                                    LOD_coord_scale1 = 1.0
-                                End If
-
-                                ' Because LOD changes up or down, these T1 numbers need to be set again.
-                                ' This includes the case of going from LOD 1 back down to LOD 0.
-                                ' So just set every time.
-                                T1_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_tile1)
-                                T1_mblock = _MemImage(T1_ImageHandle)
-                                T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
-                                T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
-
-
-                            Case 3:
-                                ' I think I invented this one.
                                 ' No square root, no base 2 logarithm, LOD_fraction is approximated from LOD_squared.
 
                                 ' Horizontal LOD
@@ -3194,130 +3077,6 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                 T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
                                 T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
-
-                            Case 4:
-                                ' N64 avoid square root, avoid base 2 logarithm. 1-22-2024
-
-                                ' Horizontal LOD
-                                LOD_u00 = (tex_u * tex_z)
-                                LOD_u01 = ((tex_u + tex_u_step) / (tex_w + tex_w_step))
-
-                                LOD_v00 = (tex_v * tex_z)
-                                LOD_v01 = ((tex_v + tex_v_step) / (tex_w + tex_w_step))
-
-                                LODX_delta_u = Abs(LOD_u01 - LOD_u00)
-                                LODX_delta_v = Abs(LOD_v01 - LOD_v00)
-
-                                ' Vertical LOD
-                                LOD_u10 = LOD_next_uoz * LOD_next_z
-                                LOD_v10 = LOD_next_voz * LOD_next_z
-
-                                LODY_delta_u = Abs(LOD_u10 - LOD_u00)
-                                LODY_delta_v = Abs(LOD_v10 - LOD_v00)
-
-
-                                ' Find the highest magnitude
-                                LOD_float = LODX_delta_v
-                                If LODX_delta_u > LOD_float Then LOD_float = LODX_delta_u
-                                If LODY_delta_u > LOD_float Then LOD_float = LODY_delta_u
-                                If LODY_delta_v > LOD_float Then LOD_float = LODY_delta_v
-
-                                If LOD_float > 1.0 Then
-                                    ' In reality on N64 this is a "bitfield find first one" fixed-point operation.
-                                    '  where the highest bit number set to 1 gives the tile1 index,
-                                    '  and the bits underneath that are the fractional part.
-                                    ' LOD_fraction = LOD / (2 ^ LOD_tile1) - 1.0 ' linear approximation
-                                    If LOD_float >= 128.0 Then
-                                        LOD_tile1 = 7
-                                        LOD_fraction = LOD_float / 128.0 - 1.0
-
-                                    ElseIf LOD_float >= 64.0 Then
-                                        LOD_tile1 = 6
-                                        LOD_fraction = LOD_float / 64.0 - 1.0
-
-                                    ElseIf LOD_float >= 32.0 Then
-                                        LOD_tile1 = 5
-                                        LOD_fraction = LOD_float / 32.0 - 1.0
-
-                                    ElseIf LOD_float >= 16.0 Then
-                                        LOD_tile1 = 4
-                                        LOD_fraction = LOD_float / 16.0 - 1.0
-
-                                    ElseIf LOD_float >= 8.0 Then
-                                        LOD_tile1 = 3
-                                        LOD_fraction = LOD_float / 8.0 - 1.0
-
-                                    ElseIf LOD_float >= 4.0 Then
-                                        LOD_tile1 = 2
-                                        LOD_fraction = LOD_float / 4.0 - 1.0
-
-                                    ElseIf LOD_float >= 2.0 Then
-                                        LOD_tile1 = 1
-                                        LOD_fraction = LOD_float / 2.0 - 1.0
-
-                                    Else
-                                        LOD_tile1 = 0
-                                        LOD_fraction = LOD_float - 1.0
-                                    End If
-
-                                    If LOD_tile1 > LOD_max Then
-                                        LOD_tile1 = LOD_max
-                                        LOD_tile3 = LOD_max
-                                    Else
-                                        LOD_tile3 = LOD_tile1 + 1
-                                        If LOD_tile3 > LOD_max Then LOD_tile3 = LOD_max
-
-                                        If LOD_tile3 <> LOD_tile1 Then
-                                            T3_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_tile3)
-                                            T3_mblock = _MemImage(T3_ImageHandle)
-                                            T3_width = _Width(T3_ImageHandle): T3_width_MASK = T3_width - 1
-                                            T3_height = _Height(T3_ImageHandle): T3_height_MASK = T3_height - 1
-                                        End If
-
-                                    End If
-
-                                    Select Case LOD_tile1
-                                        Case 0:
-                                            LOD_coord_scale1 = 1.0
-                                            LOD_coord_scale3 = 0.5
-                                        Case 1:
-                                            LOD_coord_scale1 = 0.5
-                                            LOD_coord_scale3 = 0.25
-                                        Case 2:
-                                            LOD_coord_scale1 = 0.25
-                                            LOD_coord_scale3 = 0.125
-                                        Case 3:
-                                            LOD_coord_scale1 = 0.125
-                                            LOD_coord_scale3 = 0.0625
-                                        Case 4:
-                                            LOD_coord_scale1 = 0.0625
-                                            LOD_coord_scale3 = 0.03125
-                                        Case 5:
-                                            LOD_coord_scale1 = 0.03125
-                                            LOD_coord_scale3 = 0.015625
-                                        Case 6:
-                                            LOD_coord_scale1 = 0.015625
-                                            LOD_coord_scale3 = 0.0078125
-                                        Case 7:
-                                            LOD_coord_scale1 = 0.0078125
-                                            LOD_coord_scale3 = 0.00390625
-                                    End Select
-
-                                Else
-                                    ' No LOD when magnifying
-                                    LOD_tile1 = 0
-                                    LOD_tile3 = 0
-                                    LOD_coord_scale1 = 1.0
-                                End If
-
-                                ' Because LOD changes up or down, these T1 numbers need to be set again.
-                                ' This includes the case of going from LOD 1 back down to LOD 0.
-                                ' So just set every time.
-                                T1_ImageHandle = TextureCatalog(T1_CatalogIndex + LOD_tile1)
-                                T1_mblock = _MemImage(T1_ImageHandle)
-                                T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
-                                T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
-
                         End Select
 
                     Else
@@ -3326,7 +3085,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                         LOD_tile3 = 0
                     End If ' LOD_max
 
-                    ' Originally function ReadTexel3Point& (ccol As Single, rrow As Single)
+                    ' Read Texel
                     ' Relies on shared T1_ and T2_ variables
                     Static cc As Integer
                     Static ccp As Integer
@@ -3504,45 +3263,84 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                         rrp = (rr + 1) And T1_height_MASK
                     End If
 
-                    'uv_0_0 = Texture1(cc, rr)
-                    T1_address_pointer = T1_mblock.OFFSET + (cc + rr * T1_width) * 4
-                    _MemGet T1_mblock, T1_address_pointer, uv_0_0
+                    ' 4 point bilinear temp vars
+                    '
+                    ' 0 1
+                    ' . .
+                    Static bi_r0 As Integer
+                    Static bi_g0 As Integer
+                    Static bi_b0 As Integer
+                    Static bi_a0 As Integer
 
-                    'uv_1_1 = Texture1(ccp, rrp)
-                    T1_address_pointer = T1_mblock.OFFSET + (ccp + rrp * T1_width) * 4
-                    _MemGet T1_mblock, T1_address_pointer, uv_1_1
+                    ' . .
+                    ' 2 3
+                    Static bi_r1 As Integer
+                    Static bi_g1 As Integer
+                    Static bi_b1 As Integer
+                    Static bi_a1 As Integer
 
-                    Frac_cc1 = cm5 - Int(cm5)
-                    Frac_rr1 = rm5 - Int(rm5)
+                    Static Frac_cc1_FIX7 As Integer
+                    Static Frac_rr1_FIX7 As Integer
 
-                    If Frac_cc1 > Frac_rr1 Then
-                        ' top-right
-                        Area_11 = Frac_rr1
-                        Area_00 = 1.0 - Frac_cc1
+                    Frac_cc1_FIX7 = (cm5 - Int(cm5)) * 128
+                    Frac_rr1_FIX7 = (rm5 - Int(rm5)) * 128
 
-                        'uv_f = Texture1(ccp, rr)
+                    ' caching of 4 texels
+                    Static T1_this_cache As _Unsigned Long
+                    Static T1_uv_0_0 As Long
+                    Static T1_uv_1_0 As Long
+                    Static T1_uv_0_1 As Long
+                    Static T1_uv_1_1 As Long
+                    T1_this_cache = _ShL(LOD_tile1, 24) Or _ShL(rr, 12) Or cc
+                    If T1_this_cache <> T1_last_cache Then
+                        T1_address_pointer = T1_mblock.OFFSET + (cc + rr * T1_width) * 4
+                        _MemGet T1_mblock, T1_address_pointer, T1_uv_0_0
+
                         T1_address_pointer = T1_mblock.OFFSET + (ccp + rr * T1_width) * 4
-                        _MemGet T1_mblock, T1_address_pointer, uv_f
-                    Else
-                        ' bottom-left
-                        Area_00 = 1.0 - Frac_rr1
-                        Area_11 = Frac_cc1
+                        _MemGet T1_mblock, T1_address_pointer, T1_uv_1_0
 
-                        'uv_f = Texture1(cc, rrp)
                         T1_address_pointer = T1_mblock.OFFSET + (cc + rrp * T1_width) * 4
-                        _MemGet T1_mblock, T1_address_pointer, uv_f
+                        _MemGet T1_mblock, T1_address_pointer, T1_uv_0_1
+
+                        T1_address_pointer = T1_mblock.OFFSET + (ccp + rrp * T1_width) * 4
+                        _MemGet T1_mblock, T1_address_pointer, T1_uv_1_1
+
+                        T1_last_cache = T1_this_cache
                     End If
 
-                    Area_2f = 1.0 - (Area_00 + Area_11) ' 1.0 here is twice the total triangle area.
-
                     ' determine T1 RGB colors
-                    r1 = _Red32(uv_f) * Area_2f + _Red32(uv_0_0) * Area_00 + _Red32(uv_1_1) * Area_11
-                    g1 = _Green32(uv_f) * Area_2f + _Green32(uv_0_0) * Area_00 + _Green32(uv_1_1) * Area_11
-                    b1 = _Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11
+                    bi_r0 = _Red32(T1_uv_0_0)
+                    bi_r0 = _ShR((_Red32(T1_uv_1_0) - bi_r0) * Frac_cc1_FIX7, 7) + bi_r0
+
+                    bi_g0 = _Green32(T1_uv_0_0)
+                    bi_g0 = _ShR((_Green32(T1_uv_1_0) - bi_g0) * Frac_cc1_FIX7, 7) + bi_g0
+
+                    bi_b0 = _Blue32(T1_uv_0_0)
+                    bi_b0 = _ShR((_Blue32(T1_uv_1_0) - bi_b0) * Frac_cc1_FIX7, 7) + bi_b0
+
+                    bi_r1 = _Red32(T1_uv_0_1)
+                    bi_r1 = _ShR((_Red32(T1_uv_1_1) - bi_r1) * Frac_cc1_FIX7, 7) + bi_r1
+                    r1 = _ShR((bi_r1 - bi_r0) * Frac_rr1_FIX7, 7) + bi_r0
+
+                    bi_g1 = _Green32(T1_uv_0_1)
+                    bi_g1 = _ShR((_Green32(T1_uv_1_1) - bi_g1) * Frac_cc1_FIX7, 7) + bi_g1
+                    g1 = _ShR((bi_g1 - bi_g0) * Frac_rr1_FIX7, 7) + bi_g0
+
+                    bi_b1 = _Blue32(T1_uv_0_1)
+                    bi_b1 = _ShR((_Blue32(T1_uv_1_1) - bi_b1) * Frac_cc1_FIX7, 7) + bi_b1
+                    b1 = _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0
+
 
                     ' determine T1 Alpha channel
                     If Texture_options And T1_option_alpha_channel Then
-                        a1 = _Alpha32(uv_f) * Area_2f + _Alpha32(uv_0_0) * Area_00 + _Alpha32(uv_1_1) * Area_11
+
+                        bi_a0 = _Alpha32(T1_uv_0_0)
+                        bi_a0 = _ShR((_Alpha32(T1_uv_1_0) - bi_a0) * Frac_cc1_FIX7, 7) + bi_a0
+
+                        bi_a1 = _Alpha32(T1_uv_0_1)
+                        bi_a1 = _ShR((_Alpha32(T1_uv_1_1) - bi_a1) * Frac_cc1_FIX7, 7) + bi_a1
+                        a1 = _ShR((bi_a1 - bi_a0) * Frac_rr1_FIX7, 7) + bi_a0
+
                     Else
                         a1 = 255 ' solid
                     End If
@@ -3552,8 +3350,14 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     ' Texture 3
                     '
                     If LOD_tile3 <> LOD_tile1 Then
-                        cm5 = (tex_u * tex_z * LOD_coord_scale3) - 0.5
-                        rm5 = (tex_v * tex_z * LOD_coord_scale3) - 0.5
+                        If TLMMI_Variant = 0 Then
+                            cm5 = (tex_u * tex_z * LOD_coord_scale3) - 0.5
+                            rm5 = (tex_v * tex_z * LOD_coord_scale3) - 0.5
+                        Else
+                            cm5 = (tex_u * tex_z * LOD_coord_scale3)
+                            rm5 = (tex_v * tex_z * LOD_coord_scale3)
+
+                        End If
 
                         If Texture_options And T1_option_clamp_width Then
                             ' clamp
@@ -3594,48 +3398,57 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                         T3_address_pointer = T3_mblock.OFFSET + (cc + rr * T3_width) * 4
                         _MemGet T3_mblock, T3_address_pointer, uv_0_0
 
-                        'uv_1_1 = Texture1(ccp, rrp)
-                        T3_address_pointer = T3_mblock.OFFSET + (ccp + rrp * T3_width) * 4
-                        _MemGet T3_mblock, T3_address_pointer, uv_1_1
+                        If TLMMI_Variant = 0 Then
+                            'uv_1_1 = Texture3(ccp, rrp)
+                            T3_address_pointer = T3_mblock.OFFSET + (ccp + rrp * T3_width) * 4
+                            _MemGet T3_mblock, T3_address_pointer, uv_1_1
 
-                        Frac_cc1 = cm5 - Int(cm5)
-                        Frac_rr1 = rm5 - Int(rm5)
+                            Frac_cc1 = cm5 - Int(cm5)
+                            Frac_rr1 = rm5 - Int(rm5)
 
-                        If Frac_cc1 > Frac_rr1 Then
-                            ' top-right
-                            Area_11 = Frac_rr1
-                            Area_00 = 1.0 - Frac_cc1
+                            If Frac_cc1 > Frac_rr1 Then
+                                ' top-right
+                                Area_11 = Frac_rr1
+                                Area_00 = 1.0 - Frac_cc1
 
-                            'uv_f = Texture1(ccp, rr)
-                            T3_address_pointer = T3_mblock.OFFSET + (ccp + rr * T3_width) * 4
-                            _MemGet T3_mblock, T3_address_pointer, uv_f
+                                'uv_f = Texture3(ccp, rr)
+                                T3_address_pointer = T3_mblock.OFFSET + (ccp + rr * T3_width) * 4
+                                _MemGet T3_mblock, T3_address_pointer, uv_f
+                            Else
+                                ' bottom-left
+                                Area_00 = 1.0 - Frac_rr1
+                                Area_11 = Frac_cc1
+
+                                'uv_f = Texture3(cc, rrp)
+                                T3_address_pointer = T3_mblock.OFFSET + (cc + rrp * T3_width) * 4
+                                _MemGet T3_mblock, T3_address_pointer, uv_f
+                            End If
+
+                            Area_2f = 1.0 - (Area_00 + Area_11) ' 1.0 here is twice the total triangle area.
+
+                            ' determine T3 RGB colors
+                            ' note that the LOD_fraction blends the existing (r1 g1 b1) colors from T1 with T3
+                            r1 = ((_Red32(uv_f) * Area_2f + _Red32(uv_0_0) * Area_00 + _Red32(uv_1_1) * Area_11) - r1) * LOD_fraction + r1
+                            g1 = ((_Green32(uv_f) * Area_2f + _Green32(uv_0_0) * Area_00 + _Green32(uv_1_1) * Area_11) - g1) * LOD_fraction + g1
+                            b1 = ((_Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11) - b1) * LOD_fraction + b1
+
+                            ' Alpha channel
+                            If Texture_options And T1_option_alpha_channel Then
+                                a1 = ((_Alpha32(uv_f) * Area_2f + _Alpha32(uv_0_0) * Area_00 + _Alpha32(uv_1_1) * Area_11) - a1) * LOD_fraction + a1
+                            End If
+
                         Else
-                            ' bottom-left
-                            Area_00 = 1.0 - Frac_rr1
-                            Area_11 = Frac_cc1
+                            ' point sampling of T3
+                            r1 = (_Red32(uv_0_0) - r1) * LOD_fraction + r1
+                            g1 = (_Green32(uv_0_0) - g1) * LOD_fraction + g1
+                            b1 = (_Blue32(uv_0_0) - b1) * LOD_fraction + b1
 
-                            'uv_f = Texture1(cc, rrp)
-                            T3_address_pointer = T3_mblock.OFFSET + (cc + rrp * T3_width) * 4
-                            _MemGet T3_mblock, T3_address_pointer, uv_f
+                            ' Alpha channel
+                            If Texture_options And T1_option_alpha_channel Then
+                                a1 = (_Alpha32(uv_0_0) - a1) * LOD_fraction + a1
+                            End If
+
                         End If
-
-                        Area_2f = 1.0 - (Area_00 + Area_11) ' 1.0 here is twice the total triangle area.
-
-                        ' determine T3 RGB colors
-                        'r1 = r1 * LOD_1M_fraction + LOD_fraction * (_Red32(uv_f) * Area_2f + _Red32(uv_0_0) * Area_00 + _Red32(uv_1_1) * Area_11)
-                        'g1 = g1 * LOD_1M_fraction + LOD_fraction * (_Green32(uv_f) * Area_2f + _Green32(uv_0_0) * Area_00 + _Green32(uv_1_1) * Area_11)
-                        'b1 = b1 * LOD_1M_fraction + LOD_fraction * (_Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11)
-
-                        ' for your edification this removes 3 multiply
-                        r1 = ((_Red32(uv_f) * Area_2f + _Red32(uv_0_0) * Area_00 + _Red32(uv_1_1) * Area_11) - r1) * LOD_fraction + r1
-                        g1 = ((_Green32(uv_f) * Area_2f + _Green32(uv_0_0) * Area_00 + _Green32(uv_1_1) * Area_11) - g1) * LOD_fraction + g1
-                        b1 = ((_Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11) - b1) * LOD_fraction + b1
-
-                        ' Alpha channel
-                        If Texture_options And T1_option_alpha_channel Then
-                            a1 = ((_Alpha32(uv_f) * Area_2f + _Alpha32(uv_0_0) * Area_00 + _Alpha32(uv_1_1) * Area_11) - a1) * LOD_fraction + a1
-                        End If
-
                     End If
 
 
@@ -3703,6 +3516,10 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             Static pixel_alpha As Single
                             pixel_alpha = a0 / 255.0
                             pixel_existing = _MemGet(screen_mem_info, screen_address, _Unsigned Long)
+
+                            'pixel_value = _RGB32((1.0 - pixel_alpha) *   _Red32(pixel_existing) + pixel_alpha *   _red32(pixel_value), _
+                            '                     (1.0 - pixel_alpha) * _Green32(pixel_existing) + pixel_alpha * _green32(pixel_value), _
+                            '                     (1.0 - pixel_alpha) *  _Blue32(pixel_existing) + pixel_alpha *  _blue32(pixel_value))
 
                             pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
                                                  (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _

@@ -150,7 +150,7 @@ Next Y
 ### Inverse Projection
  The purpose of inverse projection is to visit each screen pixel within a triangle exactly once, casting a ray straight back to determine where it hits the texture, to determine the color of the pixel.
 
- This gets rid of the overdraw problem, but introduces a new challenge. There is no way around needing to unproject at each and every pixel. As in requiring the same expensive divisions.
+ This gets rid of the overdraw problem, but introduces a new challenge. There is no way around needing to unproject at each and every pixel. As in requiring expensive divisions.
 
 ### Projected Z is non-linear
  To get the terminology clear, a "screen" is the two dimensional pixel grid that comprises what you see on your monitor. So the projection equation takes a 3D point and places it on the 2D screen.
@@ -244,7 +244,7 @@ Imagine ink bleeding through paper so that both sides have ink on them. The prin
 
 The winding order of the triangle's vertexes determines which side is the front face. The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer. 
 
-If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So flagging and then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
+If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
 
 ## Texture Sample Filters
 ### Texture Magnification
@@ -385,7 +385,7 @@ A program named *TextureWrapOptions.bas* in the Concepts folder was used to deve
  
  This realization lead to two innovations not long after the graphics accelerators covered here.
 1. Lossy data compression can be used on the largest textures. For example store exact values every 4th texel and then some bitfields to shape the interpolation curve between them. A tiny bit more hardware but this could lead to a patent (groan).
-2. Keep the X and Y LODs separated for a 2 dimensional lookup of the texture. This is called Anisotropic texturing. In our program examples, this would work great for the road texture because it is often drawn crushed vertically but wide horizontally.
+2. Keep the X and Y LODs separated for a 2 dimensional lookup of the texture. This is called Anisotropic texturing. In our program examples, this would work great for the square road texture because it is often drawn crushed vertically but wide horizontally.
 
 ### Why do I feel mip mapping is overrated? 
  
