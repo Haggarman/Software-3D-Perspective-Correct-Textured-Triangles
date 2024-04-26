@@ -79,6 +79,8 @@ Yes | Z-Fight Bias
   <dd>The final boss. Realtime blend between two mipmap textures based on LOD fraction.</dd>
  <dt>TrilinearMipmapFences.bas</dt>
   <dd>An alpha-blended, alpha-masked, mipmapped fence to go alongside the road.</dd>
+ <dt>TrilinearVariants.bas</dt>
+  <dd>Adds a moving sun light source to the road and fence scene, and you can switch between 5 or 8 point TLMMI</dd>
 </dl>
 
 ## Triangles
@@ -246,7 +248,8 @@ The winding order of the triangle's vertexes determines which side is the front 
 
 If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
 
-## Texture Sample Filters
+## Texture Sampling
+
 ### Texture Magnification
  The following texel filters are selectable in the examples that showcase them:
 ID | Name | Description
@@ -301,15 +304,41 @@ ID | Name | Description
 
  So it ends up being 3 area multiplications per color component. For RGB, that is just 9 total multiplications.
 
-### Texture boundaries
+### 4 Point Bilinear
 
-Nothing is really preventing the U or V texel coordinates from going outside of the range of the sampled texture. The question becomes what to do. And the answer is that it depends on what the artist wants. So it makes sense to give them the option.
+ Unfortunately more tricks for speed even with bilinear.
+
+#### Four Corners
+ The straightforward approach is to use weights to tug at the four corners of a unit square. For RGB, this requires 15 multiplications:
+
+```
+Given packed RGB values T1_uv_0_0, T1_uv_1_0, T1_uv_0_1, T1_uv_1_1; and texel coordinate (cm5, rm5):
+Frac_cc1 = cm5 - Int(cm5)
+Frac_rr1 = rm5 - Int(rm5)
+
+weight_11 = Frac_cc1 * Frac_rr1
+weight_10 = Frac_cc1 * (1.0 - Frac_rr1)
+weight_01 = (1.0 - Frac_cc1) * Frac_rr1
+weight_00 = 1.0 - (weight_11 + weight_10 + weight_01)
+
+r1 = Int(_Red32(T1_uv_0_0)   * weight_00 + _Red32(T1_uv_1_0)   * weight_10 + _Red32(T1_uv_0_1)   * weight_01 + _Red32(T1_uv_1_1)   * weight_11)
+g1 = Int(_Green32(T1_uv_0_0) * weight_00 + _Green32(T1_uv_1_0) * weight_10 + _Green32(T1_uv_0_1) * weight_01 + _Green32(T1_uv_1_1) * weight_11)
+b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Blue32(T1_uv_0_1)  * weight_01 + _Blue32(T1_uv_1_1)  * weight_11)
+```
+#### H pattern
+ Flip a captital H on its side to envision the strategy. Interpolate between points (0, 0) and (1, 0) for the first row. Also Interpolate between points (0, 1) and (1, 1) for the second row. Then finally interpolate between the two rows vertically. For RGB, this reduces the required multiplications to 9 when using fixed point integer math and bit shifting.
+
+### Hardware considerations
+ Go take a close look at the circuit board of a 3D graphics accelerator from around 1996 - 2002 searching for the memory chips. You will notice them in groups of 4. This is entirely due to bilinear sampling. The need is to pull four 16-bit texture samples in one read cycle, requiring a 64-bit bus at minimum. The general expectation set by 3dfx became zero-penalty 4-point bilinear texture sampling.
+
+### Texture boundaries
+ Nothing is really preventing the U or V texel coordinates from going outside of the range of the sampled texture. The question becomes what to do. And the answer is that it depends on what the artist wants. So it makes sense to give them the option.
 
 1. Tile - Texture is regularly repeated. The bitwise AND function is used to keep only the lower significant bits.
 2. Clamp - Texture coordinates are clamped to the min and max boundaries of the texture.
 3. Mirror - (uncommon) Texture coordinates fold back symmetrically. For example 2 texels above the maximum, coordinate becomes maximum - 2.
 
-A program named *TextureWrapOptions.bas* in the Concepts folder was used to develop the Tile versus Clamp options. It draws a 2D visual as the options are changed by pressing number keys on the keyboard.
+ A program named *TextureWrapOptions.bas* in the Concepts folder was used to develop the Tile versus Clamp options. It draws a 2D visual as the options are changed by pressing number keys on the keyboard.
 
 ## Fog (Depth Cueing)
  Pixel Fog (Table Fog) is calculated at the end of the pixel blending process. Fog is usually intended to have objects blend into a background color with increasing distance from the viewer. Fog is just a general term, and could also represent smoke or liquid water, but I think you get the picture.

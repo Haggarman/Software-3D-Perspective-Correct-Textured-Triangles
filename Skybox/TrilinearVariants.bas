@@ -1,9 +1,11 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Variants 145"
+_Title "Tri-Linear Mipmap Variants 146"
 ' 2024 Haggarman
 ' Trilinear Mip Mapping variants
+'
 '  Press (T) to change TLMMI mode between 8-point and 5-point.
 '  Toggle false colors with (F) and move around with the arrow keys.
+'  Press (C) to toggle metrics: bright yellow or electric blue = cache hit
 '
 '  (M)ode 0 = no mipmap
 '         1 = Per-Pixel LOD avoiding a square root and avoiding a log2f(). LOD_fraction curve is bent due to using LOD squared, but not very noticeable.
@@ -535,6 +537,14 @@ Dim lightChangeCount As Integer
 
 Dim Shared TLMMI_Variant As Integer
 
+' metrics
+Dim Shared Toggle_Cache_FalseColor As Integer
+Dim Shared T1_total_fetch_attempts As _Unsigned Long
+Dim Shared T1_cache_miss_count As _Unsigned Long
+Dim Shared T3_total_fetch_attempts As _Unsigned Long
+Dim Shared T3_cache_miss_count As _Unsigned Long
+
+
 
 $Checking:Off
 main:
@@ -549,6 +559,9 @@ lightChangeCount = 0
 vSun1 = vSunDir
 
 TLMMI_Variant = 0
+Toggle_Cache_FalseColor = 0
+T1_total_fetch_attempts = 0
+T1_cache_miss_count = 0
 
 Do
     ' Create "Point At" Matrix for camera
@@ -1025,8 +1038,27 @@ Do
     Print "+FOV- Degrees:"; Frustum_FOV_deg
     Print "Triangles Drawn:"; Triangles_Drawn; "+"; New_Triangles_Drawn
 
+    If T1_total_fetch_attempts > 0 Then
+        If Toggle_Cache_FalseColor Then
+            Color _RGB32(255, 255, 0)
+        End If
+        Print Using "T1 (C)ache Efficiency ###.###%"; (T1_total_fetch_attempts - T1_cache_miss_count) * 100.0 / T1_total_fetch_attempts
+    End If
+    If T3_total_fetch_attempts > 0 Then
+        If Toggle_Cache_FalseColor Then
+            Color _RGB32(100, 100, 255)
+        End If
+        Print Using "T3 Cache Efficiency   ###.###%"; (T3_total_fetch_attempts - T3_cache_miss_count) * 100.0 / T3_total_fetch_attempts
+    End If
+
     _Limit 60
     _Display
+
+    ' metrics
+    T1_cache_miss_count = 0
+    T1_total_fetch_attempts = 0
+    T3_cache_miss_count = 0
+    T3_total_fetch_attempts = 0
 
     KeyNow = UCase$(InKey$)
     If KeyNow <> "" Then
@@ -1060,6 +1092,8 @@ Do
         ElseIf KeyNow = "T" Then
             TLMMI_Variant = TLMMI_Variant + 1
             If TLMMI_Variant > 1 Then TLMMI_Variant = 0
+        ElseIf KeyNow = "C" Then
+            Toggle_Cache_FalseColor = Not Toggle_Cache_FalseColor
 
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
@@ -2716,6 +2750,9 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
     ' caching of 4 texels in bilinear mode
     Static T1_last_cache As _Unsigned Long
     T1_last_cache = &HFFFFFFFF ' invalidate
+    Static T3_last_cache As _Unsigned Long
+    T3_last_cache = &HFFFFFFFF ' invalidate
+
 
     ' Row Loop from top to bottom
     row = draw_min_y
@@ -2963,6 +3000,12 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                 ' Note: Only solid (non-transparent) pixels update the Z-buffer
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
 
+                    ' metrics
+                    Static T1_cache_miss_event As Integer
+                    Static T3_cache_miss_event As Integer
+                    T1_cache_miss_event = 0
+                    T3_cache_miss_event = 0
+
                     ' Level of Detail calculation
                     If LOD_max > 0 Then
 
@@ -3119,6 +3162,11 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     Static b1 As Integer
                     Static a1 As Integer
 
+                    Static r3 As Integer
+                    Static g3 As Integer
+                    Static b3 As Integer
+                    Static a3 As Integer
+
                     Static r0 As Integer
                     Static g0 As Integer
                     Static b0 As Integer
@@ -3127,7 +3175,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     ' This is about the limit of understanding for inlining.
                     ' I wish QB64 subroutines removed the stack setup and teardown when only static vars are used.
                     '
-                    ' T2 -> T1 -> Screen
+                    ' T2 -> (T1 or T3) -> Screen
                     '
                     ' Texture 2
                     '
@@ -3291,6 +3339,10 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     Static T1_uv_1_0 As Long
                     Static T1_uv_0_1 As Long
                     Static T1_uv_1_1 As Long
+
+                    T1_total_fetch_attempts = T1_total_fetch_attempts + 1
+                    T1_cache_miss_event = 1
+
                     T1_this_cache = _ShL(LOD_tile1, 24) Or _ShL(rr, 12) Or cc
                     If T1_this_cache <> T1_last_cache Then
                         T1_address_pointer = T1_mblock.OFFSET + (cc + rr * T1_width) * 4
@@ -3306,6 +3358,8 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                         _MemGet T1_mblock, T1_address_pointer, T1_uv_1_1
 
                         T1_last_cache = T1_this_cache
+                        T1_cache_miss_count = T1_cache_miss_count + 1
+                        T1_cache_miss_event = 2
                     End If
 
                     ' determine T1 RGB colors
@@ -3356,7 +3410,6 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                         Else
                             cm5 = (tex_u * tex_z * LOD_coord_scale3)
                             rm5 = (tex_v * tex_z * LOD_coord_scale3)
-
                         End If
 
                         If Texture_options And T1_option_clamp_width Then
@@ -3394,50 +3447,84 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             rrp = (rr + 1) And T3_height_MASK
                         End If
 
-                        'uv_0_0 = Texture1(cc, rr)
-                        T3_address_pointer = T3_mblock.OFFSET + (cc + rr * T3_width) * 4
-                        _MemGet T3_mblock, T3_address_pointer, uv_0_0
-
                         If TLMMI_Variant = 0 Then
-                            'uv_1_1 = Texture3(ccp, rrp)
-                            T3_address_pointer = T3_mblock.OFFSET + (ccp + rrp * T3_width) * 4
-                            _MemGet T3_mblock, T3_address_pointer, uv_1_1
+                            Frac_cc1_FIX7 = (cm5 - Int(cm5)) * 128
+                            Frac_rr1_FIX7 = (rm5 - Int(rm5)) * 128
 
-                            Frac_cc1 = cm5 - Int(cm5)
-                            Frac_rr1 = rm5 - Int(rm5)
+                            ' caching of 4 texels
+                            Static T3_this_cache As _Unsigned Long
+                            Static T3_uv_0_0 As Long
+                            Static T3_uv_1_0 As Long
+                            Static T3_uv_0_1 As Long
+                            Static T3_uv_1_1 As Long
 
-                            If Frac_cc1 > Frac_rr1 Then
-                                ' top-right
-                                Area_11 = Frac_rr1
-                                Area_00 = 1.0 - Frac_cc1
+                            T3_total_fetch_attempts = T3_total_fetch_attempts + 1
+                            T3_cache_miss_event = 1
 
-                                'uv_f = Texture3(ccp, rr)
+                            T3_this_cache = _ShL(LOD_tile3, 24) Or _ShL(rr, 12) Or cc
+                            If T3_this_cache <> T3_last_cache Then
+                                T3_address_pointer = T3_mblock.OFFSET + (cc + rr * T3_width) * 4
+                                _MemGet T3_mblock, T3_address_pointer, T3_uv_0_0
+
                                 T3_address_pointer = T3_mblock.OFFSET + (ccp + rr * T3_width) * 4
-                                _MemGet T3_mblock, T3_address_pointer, uv_f
-                            Else
-                                ' bottom-left
-                                Area_00 = 1.0 - Frac_rr1
-                                Area_11 = Frac_cc1
+                                _MemGet T3_mblock, T3_address_pointer, T3_uv_1_0
 
-                                'uv_f = Texture3(cc, rrp)
                                 T3_address_pointer = T3_mblock.OFFSET + (cc + rrp * T3_width) * 4
-                                _MemGet T3_mblock, T3_address_pointer, uv_f
+                                _MemGet T3_mblock, T3_address_pointer, T3_uv_0_1
+
+                                T3_address_pointer = T3_mblock.OFFSET + (ccp + rrp * T3_width) * 4
+                                _MemGet T3_mblock, T3_address_pointer, T3_uv_1_1
+
+                                T3_last_cache = T3_this_cache
+                                T3_cache_miss_count = T3_cache_miss_count + 1
+                                T3_cache_miss_event = 2
+
                             End If
 
-                            Area_2f = 1.0 - (Area_00 + Area_11) ' 1.0 here is twice the total triangle area.
-
                             ' determine T3 RGB colors
-                            ' note that the LOD_fraction blends the existing (r1 g1 b1) colors from T1 with T3
-                            r1 = ((_Red32(uv_f) * Area_2f + _Red32(uv_0_0) * Area_00 + _Red32(uv_1_1) * Area_11) - r1) * LOD_fraction + r1
-                            g1 = ((_Green32(uv_f) * Area_2f + _Green32(uv_0_0) * Area_00 + _Green32(uv_1_1) * Area_11) - g1) * LOD_fraction + g1
-                            b1 = ((_Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11) - b1) * LOD_fraction + b1
+                            bi_r0 = _Red32(T3_uv_0_0)
+                            bi_r0 = _ShR((_Red32(T3_uv_1_0) - bi_r0) * Frac_cc1_FIX7, 7) + bi_r0
 
-                            ' Alpha channel
+                            bi_g0 = _Green32(T3_uv_0_0)
+                            bi_g0 = _ShR((_Green32(T3_uv_1_0) - bi_g0) * Frac_cc1_FIX7, 7) + bi_g0
+
+                            bi_b0 = _Blue32(T3_uv_0_0)
+                            bi_b0 = _ShR((_Blue32(T3_uv_1_0) - bi_b0) * Frac_cc1_FIX7, 7) + bi_b0
+
+                            ' note that the LOD_fraction blends the existing (r1 g1 b1) colors from T1 with T3
+                            bi_r1 = _Red32(T3_uv_0_1)
+                            bi_r1 = _ShR((_Red32(T3_uv_1_1) - bi_r1) * Frac_cc1_FIX7, 7) + bi_r1
+                            r3 = _ShR((bi_r1 - bi_r0) * Frac_rr1_FIX7, 7) + bi_r0
+
+                            bi_g1 = _Green32(T3_uv_0_1)
+                            bi_g1 = _ShR((_Green32(T3_uv_1_1) - bi_g1) * Frac_cc1_FIX7, 7) + bi_g1
+                            g3 = _ShR((bi_g1 - bi_g0) * Frac_rr1_FIX7, 7) + bi_g0
+
+                            bi_b1 = _Blue32(T3_uv_0_1)
+                            bi_b1 = _ShR((_Blue32(T3_uv_1_1) - bi_b1) * Frac_cc1_FIX7, 7) + bi_b1
+                            b3 = _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0
+
+                            r1 = (r3 - r1) * LOD_fraction + r1
+                            g1 = (g3 - g1) * LOD_fraction + g1
+                            b1 = (b3 - b1) * LOD_fraction + b1
+
                             If Texture_options And T1_option_alpha_channel Then
-                                a1 = ((_Alpha32(uv_f) * Area_2f + _Alpha32(uv_0_0) * Area_00 + _Alpha32(uv_1_1) * Area_11) - a1) * LOD_fraction + a1
+                                ' determine T3 Alpha channel (same as T1 option)
+                                bi_a0 = _Alpha32(T3_uv_0_0)
+                                bi_a0 = _ShR((_Alpha32(T3_uv_1_0) - bi_a0) * Frac_cc1_FIX7, 7) + bi_a0
+
+                                bi_a1 = _Alpha32(T3_uv_0_1)
+                                bi_a1 = _ShR((_Alpha32(T3_uv_1_1) - bi_a1) * Frac_cc1_FIX7, 7) + bi_a1
+
+                                a3 = _ShR((bi_a1 - bi_a0) * Frac_rr1_FIX7, 7) + bi_a0
+                                a1 = (a3 - a1) * LOD_fraction + a1
                             End If
 
                         Else
+                            'uv_0_0 = Texture1(cc, rr)
+                            T3_address_pointer = T3_mblock.OFFSET + (cc + rr * T3_width) * 4
+                            _MemGet T3_mblock, T3_address_pointer, uv_0_0
+
                             ' point sampling of T3
                             r1 = (_Red32(uv_0_0) - r1) * LOD_fraction + r1
                             g1 = (_Green32(uv_0_0) - g1) * LOD_fraction + g1
@@ -3448,8 +3535,9 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                                 a1 = (_Alpha32(uv_0_0) - a1) * LOD_fraction + a1
                             End If
 
-                        End If
-                    End If
+                        End If ' TLMMI_Variant
+
+                    End If ' Texture 3
 
 
                     ' Color Combiner Alpha Channel Source
@@ -3533,6 +3621,16 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                         ' The simplest way to describe threshold is how potentially noticable do you want a ghosting/glowing halo around the solid parts.
                         ' Best value is entirely dependent upon the alpha (transparency) channel ranges in the source texture and the colors involved.
                         If a0 >= T1_Alpha_Threshold Then Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
+
+                        If Toggle_Cache_FalseColor Then
+                            If T1_cache_miss_event = 1 Then
+                                ' metrics bright yellow cache hit
+                                pixel_value = _RGB32(255, 255, 0)
+                            ElseIf T3_cache_miss_event = 1 Then
+                                ' metrics bright blue cache hit
+                                pixel_value = _RGB32(100, 100, 255)
+                            End If
+                        End If
 
                         'PSet (col, row), pixel_value
                         _MemPut screen_mem_info, screen_address, pixel_value
@@ -3812,47 +3910,27 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                 ' do not update Z Buffer
                 'tex_z = 1 / tex_w ' Optimization
 
-                '--- Begin Inline Texel Read
-                ' Originally function ReadTexel3Point& (ccol As Single, rrow As Single)
                 ' Relies on some shared T1 variables over by Texture1
                 Static cc As Integer
                 Static rr As Integer
-                Static cc1 As Integer
-                Static rr1 As Integer
-
-                Static Frac_cc1 As Single
-                Static Frac_rr1 As Single
-
-                Static Area_00 As Single
-                Static Area_11 As Single
-                Static Area_2f As Single
 
                 Static T1_address_pointer As _Offset
-                Static uv_0_0 As _Unsigned Long
-                Static uv_1_1 As _Unsigned Long
-                Static uv_f As _Unsigned Long
-
-                Static r0 As Integer
-                Static g0 As Integer
-                Static b0 As Integer
 
                 Static cm5 As Single
                 Static rm5 As Single
 
-                ' Offset so the transition appears in the center of an enlarged texel instead of a corner.
-                cm5 = (tex_u * tex_z) - 0.5
-                rm5 = (tex_v * tex_z) - 0.5
+                ' Recover U and V
+                cm5 = (tex_u * tex_z)
+                rm5 = (tex_v * tex_z)
 
                 ' clamp
                 If cm5 < 0.0 Then cm5 = 0.0
                 If cm5 >= T1_width_MASK Then
                     ' 15.0 and up
                     cc = T1_width_MASK
-                    cc1 = T1_width_MASK
                 Else
                     ' 0 1 2 .. 13 14.999
                     cc = Int(cm5)
-                    cc1 = cc + 1
                 End If
 
                 ' clamp
@@ -3860,54 +3938,13 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                 If rm5 >= T1_height_MASK Then
                     ' 15.0 and up
                     rr = T1_height_MASK
-                    rr1 = T1_height_MASK
                 Else
                     rr = Int(rm5)
-                    rr1 = rr + 1
                 End If
 
                 'uv_0_0 = Texture1(cc, rr)
                 T1_address_pointer = T1_mblock.OFFSET + (cc + rr * T1_width) * 4
-                _MemGet T1_mblock, T1_address_pointer, uv_0_0
-
-                'uv_1_1 = Texture1(cc1, rr1)
-                T1_address_pointer = T1_mblock.OFFSET + (cc1 + rr1 * T1_width) * 4
-                _MemGet T1_mblock, T1_address_pointer, uv_1_1
-
-                Frac_cc1 = cm5 - Int(cm5)
-                Frac_rr1 = rm5 - Int(rm5)
-
-                If Frac_cc1 > Frac_rr1 Then
-                    ' top-right
-                    ' Area of a triangle = 1/2 * base * height
-                    ' Using twice the areas (rectangles) to eliminate a multiply by 1/2 and a later divide by 1/2
-                    Area_11 = Frac_rr1
-                    Area_00 = 1.0 - Frac_cc1
-
-                    'uv_f = Texture1(cc1, rr)
-                    T1_address_pointer = T1_mblock.OFFSET + (cc1 + rr * T1_width) * 4
-                    _MemGet T1_mblock, T1_address_pointer, uv_f
-                Else
-                    ' bottom-left
-                    Area_00 = 1.0 - Frac_rr1
-                    Area_11 = Frac_cc1
-
-                    'uv_f = Texture1(cc, rr1)
-                    T1_address_pointer = T1_mblock.OFFSET + (cc + rr1 * T1_width) * 4
-                    _MemGet T1_mblock, T1_address_pointer, uv_f
-
-                End If
-
-                Area_2f = 1.0 - (Area_00 + Area_11) ' 1.0 here is twice the total triangle area.
-
-                r0 = _Red32(uv_f) * Area_2f + _Red32(uv_0_0) * Area_00 + _Red32(uv_1_1) * Area_11
-                g0 = _Green32(uv_f) * Area_2f + _Green32(uv_0_0) * Area_00 + _Green32(uv_1_1) * Area_11
-                b0 = _Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11
-                '--- End Inline Texel Read
-
-                '----- No lighting or Fog
-                pixel_value = _RGB32(r0, g0, b0)
-                '----- End No lighting or Fog
+                _MemGet T1_mblock, T1_address_pointer, pixel_value
 
                 _MemPut screen_mem_info, screen_address, pixel_value
                 'PSet (col, row), pixel_value
