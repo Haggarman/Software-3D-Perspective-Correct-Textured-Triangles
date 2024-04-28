@@ -110,6 +110,9 @@ Next Y
  The DDA algorithm is used to simultaneously step on whole number Y increments from vertex Ax to vertex Cx on the major edge, and from vertex Ax to vertex Bx on the minor edge. When the Minor Edge DDA reaches vertex By, the minor edge start values and steps are recalculated to be from vertex Bx to vertex Cx. This process is often termed "edge walking". Note that for a flat-topped triangle where vertex By = vertex Ay, the minor edge recalculation is performed immediately.
 
  Horizontal spans of pixels are drawn from Major edge X to Minor edge X-1. This process of writing to sequential memory addresses can be performed at the maximum speed of the video memory with a very efficient hardware-assisted pixel pipeline. The purpose of drawing up to but not including Minor edge X has to do with overdraw. Two triangles sharing two vertexes will have the pixels of the shared edge redrawn, wasting cycles. This is in fact so commonly encountered when drawing meshes, it has the term "rounding rule". The rounding rule for this rasterizer is to skip the rightmost and bottom pixels.
+### Demonstration
+ Please see the program in the Concepts folder titled *TwoTriangles.bas* for a concise example of how DDA is used to draw textured triangles.
+
 ### Why use DDA?
  DDA was used because not all math operations complete in the same amount of time. In this case we are comparing repeated additions to an accumulator, versus multiply then divide operations.
  Addition requires significantly less circuitry than division. Division also requires multiple clocks whereas addition can complete in one clock. Multiplication is somewhere inbetween, but any multiplication that can be avoided helps speed.
@@ -123,7 +126,7 @@ Next Y
  The start value of Y at vertex A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation. This also holds true for the start of each horizontal span. The starting X is also rounded up to the next integer. The span attribute's starting X values are also interpolated ahead using the amount by which X was rounded up.
 
 ### Gouraud Shading
- Gouraud shading is visual a step up from flat shading (flat as in the entire triangle having one same color). Gouraud is very fast, but it does not factor in depth. This can make for odd results under close scrutiny.
+ Gouraud shading offers a visual improvement as compared to flat shading (flat as in the entire triangle having one same color). Gouraud is very fast, but it does not factor in depth. This can make for odd results under close scrutiny.
 
  As mentioned above, each triangle vertex can have attributes. For example it is common to assign Red, Green, Blue primary color components to each of the 3 vertexes. DDA can be used to smoothly transition the color across the face of the triangle.
 
@@ -238,7 +241,7 @@ The near clipping function returns the number of triangles (n = 0, 1, or 2) afte
 
 #### Demonstration
 
-The test program that was used to develop and debug the NearClip function is available in the concepts folder. Program *NearFrustumClipTriangleAttributes.bas* rotates and clips a single triangle, while animating the winding order as crawling dots.
+The test program that was used to develop and debug the NearClip function is available in the Concepts folder. Program *NearFrustumClipTriangleAttributes.bas* rotates and clips a single triangle, while animating the winding order as crawling dots.
 
 ### Backface culling
 
@@ -255,8 +258,8 @@ If the triangle were to be viewed perfectly edge-on to have a dot product value 
 ID | Name | Description
 -- | ---- | ----
 0 | Nearest | Blocky sampling of a single texture point.
-1 | 3-Point N64 | A distinct look using Barycentric (area) math concepts.
-2 | Bilinear Fix | The standard blurry 4-point sampling, with some speed-up tricks.
+1 | 3-Point N64 | A distinct look using Barycentric (area) math.
+2 | Bilinear Fix | Blurry 4-point sampling, with some speed-up tricks.
 3 | Bilinear Float | The standard blurry 4-point sampling written without tricks.
  
 ### 3 Point?
