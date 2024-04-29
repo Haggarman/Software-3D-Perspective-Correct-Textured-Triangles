@@ -183,19 +183,31 @@ Next Y
 ### Over Z
  At some point back in the 20th century, someone mathing around had a eureka moment to express the vertex attributes per units of Z. For example, divide the blueness of VertexA and VertexB both by Z, then linearly interpolate, and then undo the "over Z" to get the blue value back. This gets beyond the visually incorrect but very fast Gouraud shading.
  
- Or more importantly, this insight led to dividing the U and V texel coordinates each by Z before starting the drawing loops. Then using linear interpolation across the triangle. Multiplying U * Z and V * Z at each pixel to recover the true texel coordinate to sample.
+ Or more seriously, this insight led to dividing the U and V texel coordinates each by Z before starting the drawing loops. Then using linear interpolation of 1/Z across the triangle face. And then finally multiplying U * Z and V * Z at each pixel to recover the true texel coordinate pair to sample.
 
 ```
+ ' unoptimized
+ OoZ = 1 / depth Z  ' also known as W
  UoZ = U texel horizontal attribute / depth Z
  VoZ = V texel vertical attribute / depth Z
- OoZ = 1 / depth Z
+
+ ' optimized
+ OoZ = 1 / depth Z  ' also known as W
+ UoZ = U texel horizontal attribute * OoZ
+ VoZ = V texel vertical attribute * OoZ
 ```
- Dividing the vertex coordinates by Z makes it possible to then use DDA to achieve correct perspective projection when stepping from one pixel to the next.
+ Dividing the vertex attributes by Z makes it possible to then use DDA to achieve correct perspective projection when stepping from one pixel to the next.
+
+### Demonstration
+ The program called *ColorCubeAffine.bas* allows you to easily flip between Affine and Perspective Correct rendering. Please review the code comments in the two locations where the small difference is made depending on the value of **Affine_Only**. The first location is where the vertex attributes are loaded in the main triangle drawing loop. The second location is where the pixel color value is determined in subroutine **TexturedVertexColorAlphaTriangle()**.
+Affine | Perspective Correct
+:---:|:--:
+![CubeAffine](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/dc10ea07-c2ce-4216-a523-127e0d4d4dc0) |  ![CubePerspective](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/9b935e31-754d-4c63-a14d-94af88520547)
 
 ### Bottom Line
  Being willing to dedicate huge amounts of silicon real estate to perform this 1 / 1 / Z algorithm is what separated true perspective projection graphics acceleration hardware from the more primitive affine transformation hardware.
 
- Division is expensive, but overdraw of a pixel is ever so more. This is why reverse projection won.
+ Division is expensive, but overdraw of a pixel is ever so more. Division by Z can be optimized by multiplying by the inverse of Z instead. The visual benefits outweigh the costs and this is why reverse projection won.
 
 ## Clipping
 ### Near Frustum Clipping
