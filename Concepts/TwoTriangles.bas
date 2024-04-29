@@ -15,7 +15,7 @@ Dim Shared Size_Render_X As Integer, Size_Render_Y As Integer
 Size_Screen_X = 800
 Size_Screen_Y = 600
 Size_Render_X = Size_Screen_X \ 8 ' render size
-Size_Render_Y = Size_Screen_Y \ 8 ' think of the 10 as number of screen pixels that one render pixel takes
+Size_Render_Y = Size_Screen_Y \ 8 ' think of it as the number of screen pixels that one rendered pixel takes
 
 DISP_IMAGE = _NewImage(Size_Screen_X, Size_Screen_Y, 32)
 Screen DISP_IMAGE

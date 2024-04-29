@@ -69,6 +69,8 @@ Yes | Z-Fight Bias
   <dd>Skybox background, near plane clipping, and major drawing speed increase.</dd>
  <dt>VertexAlphaDitherColorCube.bas</dt>
   <dd>Back to the Cube for testing Alpha Transparency.</dd>
+ <dt>ColorCubeAffine.bas</dt>
+  <dd>Easily toggle Affine versus Perspective Correct triangle rendering.</dd>
  <dt>SkyboxTrees.bas</dt>
   <dd>Procedural Road and Tree drawing. Allows Camera Pitch.</dd>
  <dt>TwinTextureTriangles.bas</dt>
@@ -187,7 +189,7 @@ Next Y
 
 ```
  ' unoptimized
- OoZ = 1 / depth Z  ' also known as W
+ OoZ = 1 / depth Z
  UoZ = U texel horizontal attribute / depth Z
  VoZ = V texel vertical attribute / depth Z
 
