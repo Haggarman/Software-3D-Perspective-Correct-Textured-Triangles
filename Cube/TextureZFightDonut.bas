@@ -160,10 +160,8 @@ Dim Shared T1_width As Integer, T1_height As Integer
 Dim Shared T1_width_MASK As Integer, T1_height_MASK As Integer
 Dim Shared T1_Filter_Selection As Integer
 Dim Shared T1_options As _Unsigned Long
-Dim Shared T1_option_clamp_width As _Unsigned Long
-Dim Shared T1_option_clamp_height As _Unsigned Long
-T1_option_clamp_width = 1 'constant
-T1_option_clamp_height = 2 'constant
+Const T1_option_clamp_width = 1 'constant
+Const T1_option_clamp_height = 2 'constant
 
 ' Later optimization in ReadTexel requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
@@ -548,6 +546,7 @@ Do
     _Limit 30
     _Display
 
+    $Checking:On
     KeyNow = UCase$(InKey$)
     If KeyNow <> "" Then
 
@@ -592,6 +591,7 @@ Do
 Loop Until ExitCode <> 0
 
 End
+$Checking:Off
 
 Texture1Data:
 'Grass_Block_top', 16x16px

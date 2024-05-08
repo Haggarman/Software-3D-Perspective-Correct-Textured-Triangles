@@ -161,8 +161,8 @@ Restore Texture1Data
 Dim Shared T1_width As Integer, T1_height As Integer
 Dim Shared T1_width_MASK As Integer, T1_height_MASK As Integer
 Dim Shared T1_Filter_Selection As Integer
-Dim Shared T1_options As _Unsigned Long
 Dim Shared T1_last_cache As _Unsigned Long
+Dim Shared T1_options As _Unsigned Long
 Const T1_option_clamp_width = 1 'constant
 Const T1_option_clamp_height = 2 'constant
 Const T1_option_no_Z_write = 4 'constant
@@ -351,11 +351,11 @@ Dim render_ms As Double
 Dim filter_ms As Double
 
 ' physics framerate
-Dim frametimestamp_prior_ms As Double
-Dim frametimestamp_now_ms As Double
-Dim frametimestamp_delta_ms As Double
 Dim frametime_fullframe_ms As Double
 Dim frametime_fullframethreshold_ms As Double
+Dim frametimestamp_now_ms As Double
+Dim frametimestamp_prior_ms As Double
+Dim frametimestamp_delta_ms As Double
 Dim frame_advance As Integer
 
 ' Main loop stuff
@@ -383,11 +383,12 @@ frametime_fullframe_ms = 1 / 60.0
 frametime_fullframethreshold_ms = 1 / 61.0
 frametimestamp_prior_ms = Timer(.001)
 frametimestamp_delta_ms = frametime_fullframe_ms
+frame_advance = 0
 
 Do
     If Animate_Spin Then
-        spinAngleDegZ = spinAngleDegZ + (0.460)
-        spinAngleDegX = spinAngleDegX + (0.713)
+        spinAngleDegZ = spinAngleDegZ + frame_advance * 0.460
+        spinAngleDegX = spinAngleDegX + frame_advance * 0.713
         'fYaw = fYaw + 1
     End If
 

@@ -165,11 +165,10 @@ Restore Texture1Data
 Dim Shared T1_width As Integer, T1_height As Integer
 Dim Shared T1_width_MASK As Integer, T1_height_MASK As Integer
 Dim Shared T1_Filter_Selection As Integer
+Dim Shared T1_last_cache As _Unsigned Long
 Dim Shared T1_options As _Unsigned Long
-Dim Shared T1_option_clamp_width As _Unsigned Long
-Dim Shared T1_option_clamp_height As _Unsigned Long
-T1_option_clamp_width = 1 'constant
-T1_option_clamp_height = 2 'constant
+Const T1_option_clamp_width = 1 'constant
+Const T1_option_clamp_height = 2 'constant
 
 ' Later optimization in ReadTexel requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
@@ -351,12 +350,13 @@ Dim halfHeight As Single
 halfWidth = Size_Screen_X / 2
 halfHeight = Size_Screen_Y / 2
 
-' Triangle Vertex List
+' Projected Screen Coordinate List
 Dim SX0 As Single, SY0 As Single
 Dim SX1 As Single, SY1 As Single
 Dim SX2 As Single, SY2 As Single
 Dim SX3 As Single, SY3 As Single
 
+' Triangle Vertex List
 Dim vertexA As vertex8
 Dim vertexB As vertex8
 Dim vertexC As vertex8
@@ -642,6 +642,7 @@ Do
     _Limit 30
     _Display
 
+    $Checking:On
     KeyNow = UCase$(InKey$)
     If KeyNow <> "" Then
 
@@ -689,6 +690,7 @@ Do
 Loop Until ExitCode <> 0
 
 End
+$Checking:Off
 
 Texture1Data:
 'Grass_Block_top', 16x16px
@@ -1291,7 +1293,7 @@ Function ReadTexelNearest& (ccol As Single, rrow As Single)
 End Function
 
 
-Function ReadTexel3Point& (ccol As Single, rrow As Single)
+Function ReadTexel3Point& (ccol As Single, rrow As Single) Static
     ' Relies on some shared T1 variables over by Texture1
     Static cc As Integer
     Static rr As Integer
@@ -1471,9 +1473,8 @@ Function ReadTexelBiLinear& (ccol As Single, rrow As Single)
 End Function
 
 
-Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
+Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single) Static
     ' caching of 4 texels
-    Static last_cache As _Unsigned Long
     Static this_cache As _Unsigned Long
     Static uv_0_0 As Long
     Static uv_0_1 As Long
@@ -1546,12 +1547,12 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
 
     ' cache
     this_cache = _ShL(rr, 16) Or cc
-    If this_cache <> last_cache Then
+    If this_cache <> T1_last_cache Then
         uv_0_0 = Texture1(cc, rr)
         uv_1_0 = Texture1(cc1, rr)
         uv_0_1 = Texture1(cc, rr1)
         uv_1_1 = Texture1(cc1, rr1)
-        last_cache = this_cache
+        T1_last_cache = this_cache
         ' uncomment below to show cache miss in yellow
         'ReadTexelBiLinearFix& = _RGB32(255, 255, 127)
         'Exit Function
@@ -1579,7 +1580,7 @@ Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single)
 End Function
 
 
-Function RGB_Fog& (zz As Single, RGB_color As _Unsigned Long)
+Function RGB_Fog& (zz As Single, RGB_color As _Unsigned Long) Static
     Static r0 As Long
     Static g0 As Long
     Static b0 As Long
@@ -1600,15 +1601,15 @@ Function RGB_Fog& (zz As Single, RGB_color As _Unsigned Long)
 End Function
 
 
-Function RGB_Lit& (RGB_color As _Unsigned Long)
+Function RGB_Lit& (RGB_color As _Unsigned Long) Static
     Static scale As Single
-    scale = Light_Directional + Light_AmbientVal 'oversaturate the bright colors
+    scale = Light_Directional + Light_AmbientVal ' oversaturate the bright colors
 
     RGB_Lit& = _RGB32(scale * _Red32(RGB_color), scale * _Green32(RGB_color), scale * _Blue32(RGB_color)) 'values over 255 are just clamped to 255
 End Function
 
 
-Function RGB_Sum& (RGB_1 As _Unsigned Long, RGB_2 As _Unsigned Long)
+Function RGB_Sum& (RGB_1 As _Unsigned Long, RGB_2 As _Unsigned Long) Static
     ' Lighten function
     Static r1 As Long
     Static g1 As Long
@@ -1624,11 +1625,11 @@ Function RGB_Sum& (RGB_1 As _Unsigned Long, RGB_2 As _Unsigned Long)
     g2 = _Green32(RGB_2)
     b2 = _Blue32(RGB_2)
 
-    RGB_Sum& = _RGB32(r1 + r2, g1 + g2, b1 + b2) 'values over 255 are just clamped to 255
+    RGB_Sum& = _RGB32(r1 + r2, g1 + g2, b1 + b2) ' values over 255 are just clamped to 255
 End Function
 
 
-Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long)
+Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long) Static
     ' Darken function
     Static r1 As Integer
     Static g1 As Integer
@@ -1787,6 +1788,9 @@ Sub TexturedVtxColorTriangle (A As vertex8, B As vertex8, C As vertex8)
     ' X Accumulators
     Static tex_w As Single, tex_u As Single, tex_v As Single
     Static tex_r As Single, tex_g As Single, tex_b As Single
+
+    ' Invalidate texel cache
+    T1_last_cache = &HFFFFFFFF
 
     row = draw_min_y
     While row <= draw_max_y
