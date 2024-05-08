@@ -202,9 +202,9 @@ Next Y
 
 ### Demonstration
  The program called *ColorCubeAffine.bas* allows you to easily flip between Affine and Perspective Correct rendering. Please review the code comments in the two locations where the small difference is made depending on the value of **Affine_Only**. The first location is where the vertex attributes are loaded in the main triangle drawing loop. The second location is where the pixel color value is determined in subroutine **TexturedVertexColorAlphaTriangle()**.
-Affine | Perspective Correct
-:---:|:--:
-![CubeAffine](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/dc10ea07-c2ce-4216-a523-127e0d4d4dc0) |  ![CubePerspective](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/9b935e31-754d-4c63-a14d-94af88520547)
+Affine | Perspective
+--- | ---
+![CubeAffine](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/dc10ea07-c2ce-4216-a523-127e0d4d4dc0) | ![CubePerspective](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/9b935e31-754d-4c63-a14d-94af88520547)
 
 ### Bottom Line
  Being willing to dedicate huge amounts of silicon real estate to perform this 1 / 1 / Z algorithm is what separated true perspective projection graphics acceleration hardware from the more primitive affine transformation hardware.
@@ -323,7 +323,7 @@ ID | Name | Description
 
 ### 4 Point Bilinear
 
- Unfortunately more tricks for speed even with bilinear.
+ More tricks for speed even with bilinear.
 
 #### Four Corners
  The straightforward approach is to use weights to tug at the four corners of a unit square. For RGB, this requires 15 multiplications:
@@ -347,6 +347,10 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 
 ### Hardware considerations
  Go take a close look at the circuit board of a 3D graphics accelerator from around 1996 - 2002 searching for the memory chips. You will notice them in groups of 4. This is entirely due to bilinear sampling. The need is to pull four 16-bit texture samples in one read cycle, requiring a 64-bit bus at minimum. The general expectation set by 3dfx became zero-penalty 4-point bilinear texture sampling.
+
+ Photo: Each of the four EDO-RAM chips have a 16-bit bus, creating a 64 bit wide bus. The texturing performance issues are more to do with the memory controller and lack of texture cache on the 86C325, because 50 nanoseconds is quite fast for the time.
+
+![S3_ViRGE_4RAM](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/2a551613-d01a-4e8b-bce7-0690327ff3cc)
 
 ### Texture boundaries
  Nothing is really preventing the U or V texel coordinates from going outside of the range of the sampled texture. The question becomes what to do. And the answer is that it depends on what the artist wants. So it makes sense to give them the option.
