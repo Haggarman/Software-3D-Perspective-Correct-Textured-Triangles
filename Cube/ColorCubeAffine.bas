@@ -1,7 +1,7 @@
 Option _Explicit
-_Title "Color Cube Affine versus Perspective 3"
+_Title "Color Cube Affine versus Perspective 4"
 ' 2024 Haggarman
-' Really frustrating that the perspective correct texturing secret was to divide the vertex attributes by the depth,
+' Really frustrating that the perspective correct texturing secret was to divide the vertex attributes by the Z depth,
 '  interpolate 1/Z across the triangle face, and then multiply the attributes by interpolated Z at each drawn pixel.
 '
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
@@ -350,6 +350,14 @@ Dim start_ms As Double
 Dim render_ms As Double
 Dim filter_ms As Double
 
+' physics framerate
+Dim frametimestamp_prior_ms As Double
+Dim frametimestamp_now_ms As Double
+Dim frametimestamp_delta_ms As Double
+Dim frametime_fullframe_ms As Double
+Dim frametime_fullframethreshold_ms As Double
+Dim frame_advance As Integer
+
 ' Main loop stuff
 Dim KeyNow As String
 Dim ExitCode As Integer
@@ -370,6 +378,12 @@ Animate_Spin = -1
 T1_Filter_Selection = 2
 Dither_Selection = 1
 Affine_Only = 1
+
+frametime_fullframe_ms = 1 / 60.0
+frametime_fullframethreshold_ms = 1 / 61.0
+frametimestamp_prior_ms = Timer(.001)
+frametimestamp_delta_ms = frametime_fullframe_ms
+
 Do
     If Animate_Spin Then
         spinAngleDegZ = spinAngleDegZ + (0.460)
@@ -564,7 +578,7 @@ Do
                     vertexC.b = 240
                 Else
                     vertexB.r = 0
-                    vertexB.g = 0
+                    vertexB.g = 240
                     vertexB.b = 240
 
                     vertexC.r = 64
@@ -587,7 +601,7 @@ Do
                     vertexC.b = 240 * pointProj2.w
                 Else
                     vertexB.r = 0 * pointProj1.w
-                    vertexB.g = 0 * pointProj1.w
+                    vertexB.g = 240 * pointProj1.w
                     vertexB.b = 240 * pointProj1.w
 
                     vertexC.r = 64 * pointProj2.w
@@ -666,9 +680,12 @@ Do
         Print "Perspective Correct"
     End If
 
-    _Limit 30
+    Print "frame advance"; frame_advance
+
+    _Limit 60
     _Display
 
+    $Checking:On
     KeyNow = UCase$(InKey$)
     If KeyNow <> "" Then
 
@@ -688,33 +705,50 @@ Do
         End If
     End If
 
-    If _KeyDown(19712) Then
-        ' Right arrow
-        fYaw = fYaw - 1.9
+    frametimestamp_now_ms = Timer(0.001)
+    If frametimestamp_now_ms - frametimestamp_prior_ms < 0.0 Then
+        ' timer rollover
+        ' without over-analyzing just use the previous delta, even if it is somewhat wrong it is a better guess than 0.
+        frametimestamp_prior_ms = frametimestamp_now_ms - frametimestamp_delta_ms
+    Else
+        frametimestamp_delta_ms = frametimestamp_now_ms - frametimestamp_prior_ms
     End If
 
-    If _KeyDown(19200) Then
-        ' Left arrow
-        fYaw = fYaw + 1.9
-    End If
+    frame_advance = 0
+    While frametimestamp_delta_ms > frametime_fullframethreshold_ms
+        frame_advance = frame_advance + 1
 
-    Dim vMove_Player_Forward As vec3d
-    Vector3_Mul vLookDir, 0.2, vMove_Player_Forward
+        If _KeyDown(19712) Then
+            ' Right arrow
+            fYaw = fYaw - 1.9
+        End If
 
-    If _KeyDown(18432) Then
-        ' Up arrow
-        Vector3_Add vCameraPsn, vMove_Player_Forward, vCameraPsn
-    End If
+        If _KeyDown(19200) Then
+            ' Left arrow
+            fYaw = fYaw + 1.9
+        End If
 
-    If _KeyDown(20480) Then
-        ' Down arrow
-        Vector3_Delta vCameraPsn, vMove_Player_Forward, vCameraPsn
-    End If
+        Dim vMove_Player_Forward As vec3d
+        Vector3_Mul vLookDir, 0.2, vMove_Player_Forward
 
+        If _KeyDown(18432) Then
+            ' Up arrow
+            Vector3_Add vCameraPsn, vMove_Player_Forward, vCameraPsn
+        End If
+
+        If _KeyDown(20480) Then
+            ' Down arrow
+            Vector3_Delta vCameraPsn, vMove_Player_Forward, vCameraPsn
+        End If
+
+        frametimestamp_prior_ms = frametimestamp_prior_ms + frametime_fullframe_ms
+        frametimestamp_delta_ms = frametimestamp_delta_ms - frametime_fullframe_ms
+    Wend ' frametime
 
 Loop Until ExitCode <> 0
 
 End
+$Checking:Off
 
 Texture1Data:
 'Red_Brick', 16x16px
