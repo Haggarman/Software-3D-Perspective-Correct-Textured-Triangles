@@ -175,7 +175,7 @@ TextureCatalog(4) = _LoadImage("Red_Brick.png", 32)
 Dim refIndex As Integer
 For refIndex = 0 To TextureCatalog_lastIndex
     If TextureCatalog(refIndex) = -1 Then
-        Print "Could not load texture file for texture: "; refIndex
+        Print "Could not load texture file for index: "; refIndex
         End
     End If
 Next refIndex
@@ -456,6 +456,14 @@ spinAngleDegX = 0.0
 Dim start_ms As Double
 Dim finish_ms As Double
 
+' physics framerate
+Dim frametime_fullframe_ms As Double
+Dim frametime_fullframethreshold_ms As Double
+Dim frametimestamp_now_ms As Double
+Dim frametimestamp_prior_ms As Double
+Dim frametimestamp_delta_ms As Double
+Dim frame_advance As Integer
+
 ' Main loop stuff
 Dim KeyNow As String
 Dim ExitCode As Integer
@@ -472,10 +480,17 @@ ExitCode = 0
 Animate_Spin = 0
 T1_Filter_Selection = 1
 fYaw = 275
+
+frametime_fullframe_ms = 1 / 60.0
+frametime_fullframethreshold_ms = 1 / 61.0
+frametimestamp_prior_ms = Timer(.001)
+frametimestamp_delta_ms = frametime_fullframe_ms
+frame_advance = 0
+
 Do
     If Animate_Spin Then
-        spinAngleDegZ = spinAngleDegZ '+ (0.980)
-        spinAngleDegX = spinAngleDegX + (0.228)
+        spinAngleDegZ = spinAngleDegZ '+ (0.980 * frame_advance)
+        spinAngleDegX = spinAngleDegX + (0.228 * frame_advance)
         'fYaw = fYaw + 1
     End If
 
@@ -847,9 +862,10 @@ Do
 
     Print "Triangles Drawn: "; Triangles_Drawn; "+"; New_Triangles_Drawn
 
-    _Limit 30
+    _Limit 60
     _Display
 
+    $Checking:On
     KeyNow = UCase$(InKey$)
     If KeyNow <> "" Then
 
@@ -867,40 +883,55 @@ Do
         End If
     End If
 
-    If _KeyDown(19712) Then
-        ' Right arrow
-        fYaw = fYaw - 1.8
+    frametimestamp_now_ms = Timer(0.001)
+    If frametimestamp_now_ms - frametimestamp_prior_ms < 0.0 Then
+        ' timer rollover
+        ' without over-analyzing just use the previous delta, even if it is somewhat wrong it is a better guess than 0.
+        frametimestamp_prior_ms = frametimestamp_now_ms - frametimestamp_delta_ms
+    Else
+        frametimestamp_delta_ms = frametimestamp_now_ms - frametimestamp_prior_ms
     End If
 
-    If _KeyDown(19200) Then
-        ' Left arrow
-        fYaw = fYaw + 1.8
-    End If
+    frame_advance = 0
+    While frametimestamp_delta_ms > frametime_fullframethreshold_ms
+        frame_advance = frame_advance + 1
 
-    ' Move the player
-    Matrix4_MakeRotation_Y fYaw, matCameraRot()
-    Multiply_Vector3_Matrix4 vCameraHome, matCameraRot(), vMove_Player_Forward
-    Vector3_Mul vMove_Player_Forward, 0.2, vMove_Player_Forward
+        If _KeyDown(19712) Then
+            ' Right arrow
+            fYaw = fYaw - 1.8
+        End If
 
-    If _KeyDown(18432) Then
-        ' Up arrow
-        Vector3_Add vCameraPsn, vMove_Player_Forward, vCameraPsn
-    End If
+        If _KeyDown(19200) Then
+            ' Left arrow
+            fYaw = fYaw + 1.8
+        End If
 
-    If _KeyDown(20480) Then
-        ' Down arrow
-        Vector3_Delta vCameraPsn, vMove_Player_Forward, vCameraPsn
-    End If
+        ' Move the player
+        Matrix4_MakeRotation_Y fYaw, matCameraRot()
+        Multiply_Vector3_Matrix4 vCameraHome, matCameraRot(), vMove_Player_Forward
+        Vector3_Mul vMove_Player_Forward, 0.2, vMove_Player_Forward
 
+        If _KeyDown(18432) Then
+            ' Up arrow
+            Vector3_Add vCameraPsn, vMove_Player_Forward, vCameraPsn
+        End If
+
+        If _KeyDown(20480) Then
+            ' Down arrow
+            Vector3_Delta vCameraPsn, vMove_Player_Forward, vCameraPsn
+        End If
+
+        frametimestamp_prior_ms = frametimestamp_prior_ms + frametime_fullframe_ms
+        frametimestamp_delta_ms = frametimestamp_delta_ms - frametime_fullframe_ms
+    Wend ' frametime
 
 Loop Until ExitCode <> 0
 
-$Checking:On
-For refIndex = 0 To TextureCatalog_lastIndex
+For refIndex = TextureCatalog_lastIndex To 0 Step -1
     _FreeImage TextureCatalog(refIndex)
 Next refIndex
 
-For refIndex = 0 To 5
+For refIndex = 5 To 0 Step -1
     _FreeImage SkyBoxRef(refIndex)
 Next refIndex
 
@@ -2258,3 +2289,4 @@ Sub TexturedNonlitTriangle (A As vertex8, B As vertex8, C As vertex8)
     Wend ' row
 
 End Sub
+

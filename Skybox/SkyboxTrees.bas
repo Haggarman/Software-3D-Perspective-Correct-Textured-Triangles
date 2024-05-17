@@ -174,7 +174,7 @@ TextureCatalog(2) = _LoadImage("DU_Road1.png", 32)
 Dim refIndex As Integer
 For refIndex = 0 To TextureCatalog_lastIndex
     If TextureCatalog(refIndex) = -1 Then
-        Print "Could not load texture file for texture: "; refIndex
+        Print "Could not load texture file for index: "; refIndex
         End
     End If
 Next refIndex
@@ -389,6 +389,14 @@ clip_max_x = Size_Render_X - 10
 Dim start_ms As Double
 Dim finish_ms As Double
 
+' physics framerate
+Dim frametime_fullframe_ms As Double
+Dim frametime_fullframethreshold_ms As Double
+Dim frametimestamp_now_ms As Double
+Dim frametimestamp_prior_ms As Double
+Dim frametimestamp_delta_ms As Double
+Dim frame_advance As Integer
+
 ' Main loop stuff
 Dim KeyNow As String
 Dim ExitCode As Integer
@@ -407,6 +415,13 @@ T1_Filter_Selection = 1
 fPitch = -10.0
 fYaw = 0.0
 fRoll = 0.0
+
+frametime_fullframe_ms = 1 / 60.0
+frametime_fullframethreshold_ms = 1 / 61.0
+frametimestamp_prior_ms = Timer(.001)
+frametimestamp_delta_ms = frametime_fullframe_ms
+frame_advance = 0
+
 Do
     ' Create "Point At" Matrix for camera
 
@@ -747,9 +762,10 @@ Do
     Print "+FOV- Degrees:"; Frustum_FOV_deg
     Print "Triangles Drawn:"; Triangles_Drawn; "+"; New_Triangles_Drawn
 
-    _Limit 30
+    _Limit 60
     _Display
 
+    $Checking:On
     KeyNow = UCase$(InKey$)
     If KeyNow <> "" Then
 
@@ -779,50 +795,65 @@ Do
         End If
     End If
 
-    If _KeyDown(32) Then
-        ' Spacebar
-        vCameraPsn.y = vCameraPsn.y + 0.2
+    frametimestamp_now_ms = Timer(0.001)
+    If frametimestamp_now_ms - frametimestamp_prior_ms < 0.0 Then
+        ' timer rollover
+        ' without over-analyzing just use the previous delta, even if it is somewhat wrong it is a better guess than 0.
+        frametimestamp_prior_ms = frametimestamp_now_ms - frametimestamp_delta_ms
+    Else
+        frametimestamp_delta_ms = frametimestamp_now_ms - frametimestamp_prior_ms
     End If
 
-    If _KeyDown(118) Or _KeyDown(86) Then
-        'V
-        vCameraPsn.y = vCameraPsn.y - 0.2
-    End If
+    frame_advance = 0
+    While frametimestamp_delta_ms > frametime_fullframethreshold_ms
+        frame_advance = frame_advance + 1
 
-    If _KeyDown(19712) Then
-        ' Right arrow
-        fYaw = fYaw - 1.8
-    End If
+        If _KeyDown(32) Then
+            ' Spacebar
+            vCameraPsn.y = vCameraPsn.y + 0.2
+        End If
 
-    If _KeyDown(19200) Then
-        ' Left arrow
-        fYaw = fYaw + 1.8
-    End If
+        If _KeyDown(118) Or _KeyDown(86) Then
+            'V
+            vCameraPsn.y = vCameraPsn.y - 0.2
+        End If
 
-    ' Move the player
-    Matrix4_MakeRotation_Y fYaw, matCameraRot()
-    Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), vMove_Player_Forward
-    Vector3_Mul vMove_Player_Forward, 0.2, vMove_Player_Forward
+        If _KeyDown(19712) Then
+            ' Right arrow
+            fYaw = fYaw - 1.8
+        End If
 
-    If _KeyDown(18432) Then
-        ' Up arrow
-        Vector3_Add vCameraPsn, vMove_Player_Forward, vCameraPsn
-    End If
+        If _KeyDown(19200) Then
+            ' Left arrow
+            fYaw = fYaw + 1.8
+        End If
 
-    If _KeyDown(20480) Then
-        ' Down arrow
-        Vector3_Delta vCameraPsn, vMove_Player_Forward, vCameraPsn
-    End If
+        ' Move the player
+        Matrix4_MakeRotation_Y fYaw, matCameraRot()
+        Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), vMove_Player_Forward
+        Vector3_Mul vMove_Player_Forward, 0.2, vMove_Player_Forward
 
+        If _KeyDown(18432) Then
+            ' Up arrow
+            Vector3_Add vCameraPsn, vMove_Player_Forward, vCameraPsn
+        End If
+
+        If _KeyDown(20480) Then
+            ' Down arrow
+            Vector3_Delta vCameraPsn, vMove_Player_Forward, vCameraPsn
+        End If
+
+        frametimestamp_prior_ms = frametimestamp_prior_ms + frametime_fullframe_ms
+        frametimestamp_delta_ms = frametimestamp_delta_ms - frametime_fullframe_ms
+    Wend ' frametime
 
 Loop Until ExitCode <> 0
 
-$Checking:On
-For refIndex = 0 To TextureCatalog_lastIndex
+For refIndex = TextureCatalog_lastIndex To 0 Step -1
     _FreeImage TextureCatalog(refIndex)
 Next refIndex
 
-For refIndex = 0 To 5
+For refIndex = 5 To 0 Step -1
     _FreeImage SkyBoxRef(refIndex)
 Next refIndex
 
