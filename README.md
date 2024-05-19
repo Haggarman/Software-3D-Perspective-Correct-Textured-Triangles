@@ -59,10 +59,10 @@ Yes | Z-Fight Bias
 <dl>
  <dt>VertexColorCube.bas</dt>
   <dd>As basic as it gets.</dd>
- <dt>DitherColorCube.bas</dt>
-  <dd>Colorful RGB 555 Bayer Dithering example.</dd>
  <dt>TexturedCubePlains.bas</dt>
   <dd>Fly over and spin a grass plane and also adjust Field of View.</dd>
+ <dt>DitherColorCube.bas</dt>
+  <dd>Colorful RGB 555 Bayer Dithering example.</dd>
  <dt>TextureZFightDonut.bas</dt>
   <dd>Z Fight Bias adjustment and interesting table fog (pixel fog) effect.</dd>
  <dt>SkyboxLongTube.bas</dt>

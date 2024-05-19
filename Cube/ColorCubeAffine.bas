@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Color Cube Affine versus Perspective 4"
+_Title "Color Cube Affine versus Perspective 5"
 ' 2024 Haggarman
 ' Really frustrating that the perspective correct texturing secret was to divide the vertex attributes by the Z depth,
 '  interpolate 1/Z across the triangle face, and then multiply the attributes by interpolated Z at each drawn pixel.
@@ -7,6 +7,7 @@ _Title "Color Cube Affine versus Perspective 4"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  5/18/2024 - Sort objects by Z so that translucency is drawn back to front.
 '  4/29/2024 - Toggle Affine versus Perspective
 ' 10/05/2023 - De-dither filter as described from an SGI interview.
 '  3/04/2023 - Bugfix for wide triangles (make col a Long)
@@ -105,6 +106,12 @@ Type vertex9
     a As Single ' alpha ranges from 0.0 to 1.0 for less conversion calculations
 End Type
 
+Type objectlist_type
+    viewz As Single
+    psn As vec3d
+    first As Integer
+    last As Integer
+End Type
 
 ' Projection Matrix
 Dim Frustum_Near As Single
@@ -204,6 +211,11 @@ Dim Shared Mesh_Last_Element As Integer
 Mesh_Last_Element = Cube_Count * Triangles_In_A_Cube - 1
 Dim mesh(Mesh_Last_Element) As triangle
 
+Dim Shared Objects_Last_Element As Integer
+Objects_Last_Element = Cube_Count
+Dim Objects(Objects_Last_Element) As objectlist_type
+' index 0 will be invisible
+
 Dim cube As Integer
 Dim tri_num As Integer
 Dim offset As Single
@@ -212,6 +224,12 @@ Dim A As Integer
 A = 0
 For cube = 1 To Cube_Count
     Restore MESHCUBE
+    Objects(cube).first = A
+
+    offset = cube * 8 * Atn(1) / Cube_Count
+    Objects(cube).psn.x = 0.0 + 2 * Cos(offset)
+    Objects(cube).psn.y = 0.0
+    Objects(cube).psn.z = 0.0 + 2 * Sin(offset)
 
     For tri_num = 0 To Triangles_In_A_Cube - 1
         Read mesh(A).x0
@@ -236,19 +254,21 @@ For cube = 1 To Cube_Count
         Read mesh(A).texture
         Read mesh(A).options
 
-        offset = cube * 8 * Atn(1) / Cube_Count
+        mesh(A).z0 = mesh(A).z0 + Objects(cube).psn.z
+        mesh(A).z1 = mesh(A).z1 + Objects(cube).psn.z
+        mesh(A).z2 = mesh(A).z2 + Objects(cube).psn.z
 
-        mesh(A).z0 = mesh(A).z0 + 2 * Sin(offset)
-        mesh(A).z1 = mesh(A).z1 + 2 * Sin(offset)
-        mesh(A).z2 = mesh(A).z2 + 2 * Sin(offset)
+        mesh(A).x0 = mesh(A).x0 + Objects(cube).psn.x
+        mesh(A).x1 = mesh(A).x1 + Objects(cube).psn.x
+        mesh(A).x2 = mesh(A).x2 + Objects(cube).psn.x
 
-        mesh(A).x0 = mesh(A).x0 + 2 * Cos(offset)
-        mesh(A).x1 = mesh(A).x1 + 2 * Cos(offset)
-        mesh(A).x2 = mesh(A).x2 + 2 * Cos(offset)
+        mesh(A).y0 = mesh(A).y0 + Objects(cube).psn.y
+        mesh(A).y1 = mesh(A).y1 + Objects(cube).psn.y
+        mesh(A).y2 = mesh(A).y2 + Objects(cube).psn.y
 
+        Objects(cube).last = A
         A = A + 1
     Next tri_num
-
 Next cube
 
 ' Here are the 3D math and projection vars
@@ -436,192 +456,213 @@ Do
     ' This is a qbasic only optimization. it sets the value to zero. it saves 10 ms.
     ReDim Screen_Z_Buffer(Screen_Z_Buffer_MaxElement)
 
-    ' Draw Triangles
-    For A = 0 To Mesh_Last_Element
-        point0.x = mesh(A).x0
-        point0.y = mesh(A).y0
-        point0.z = mesh(A).z0
-
-        point1.x = mesh(A).x1
-        point1.y = mesh(A).y1
-        point1.z = mesh(A).z1
-
-        point2.x = mesh(A).x2
-        point2.y = mesh(A).y2
-        point2.z = mesh(A).z2
-
+    ' Objects Z sort
+    ' Need to first rotate the objects to how they will be seen.
+    For cube = 1 To Cube_Count
         ' Rotate in Z-Axis
-        Multiply_Vector3_Matrix4 point0, matRotZ(), pointRotZ0
-        Multiply_Vector3_Matrix4 point1, matRotZ(), pointRotZ1
-        Multiply_Vector3_Matrix4 point2, matRotZ(), pointRotZ2
+        Multiply_Vector3_Matrix4 Objects(cube).psn, matRotZ(), pointRotZ0
 
         ' Rotate in X-Axis
         Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), pointRotZX0
-        Multiply_Vector3_Matrix4 pointRotZ1, matRotX(), pointRotZX1
-        Multiply_Vector3_Matrix4 pointRotZ2, matRotX(), pointRotZX2
 
-        ' Offset into the screen
-        pointTrans0 = pointRotZX0
-        pointTrans1 = pointRotZX1
-        pointTrans2 = pointRotZX2
+        ' Convert World Space --> View Space
+        Multiply_Vector3_Matrix4 pointRotZX0, matView(), pointView0
 
+        Objects(cube).viewz = pointView0.z
+    Next cube
+    QuickSort_ViewZ 1, Cube_Count, Objects()
+    'Locate 10, 1
 
-        ' Part 2 (Triangle Surface Normal Calculation)
-        CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
+    ' Draw Triangles
+    For cube = Cube_Count To 1 Step -1
+        'Print Objects(cube).first, Objects(cube).viewz
 
-        Vector3_Delta vCameraPsn, pointTrans0, cameraRay
-        dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay)
+        For A = Objects(cube).first To Objects(cube).last
+            point0.x = mesh(A).x0
+            point0.y = mesh(A).y0
+            point0.z = mesh(A).z0
 
-        If dotProductCam > 0.0 Then
-            ' Convert World Space --> View Space
-            Multiply_Vector3_Matrix4 pointTrans0, matView(), pointView0
-            Multiply_Vector3_Matrix4 pointTrans1, matView(), pointView1
-            Multiply_Vector3_Matrix4 pointTrans2, matView(), pointView2
+            point1.x = mesh(A).x1
+            point1.y = mesh(A).y1
+            point1.z = mesh(A).z1
 
-            ' Skip if any Z is too close
-            If (pointView0.z < Frustum_Near) Or (pointView1.z < Frustum_Near) Or (pointView2.z < Frustum_Near) Then
-                GoTo Lbl_SkipA
-            End If
+            point2.x = mesh(A).x2
+            point2.y = mesh(A).y2
+            point2.z = mesh(A).z2
 
-            ' Project triangles from 3D -----------------> 2D
-            ProjectMatrixVector4 pointView0, matProj(), pointProj0
-            ProjectMatrixVector4 pointView1, matProj(), pointProj1
-            ProjectMatrixVector4 pointView2, matProj(), pointProj2
+            ' Rotate in Z-Axis
+            Multiply_Vector3_Matrix4 point0, matRotZ(), pointRotZ0
+            Multiply_Vector3_Matrix4 point1, matRotZ(), pointRotZ1
+            Multiply_Vector3_Matrix4 point2, matRotZ(), pointRotZ2
 
-            ' Early scissor reject
-            If pointProj0.x > 1.0 And pointProj1.x > 1.0 And pointProj2.x > 1.0 Then GoTo Lbl_SkipA
-            If pointProj0.x < -1.0 And pointProj1.x < -1.0 And pointProj2.x < -1.0 Then GoTo Lbl_SkipA
-            If pointProj0.y > 1.0 And pointProj1.y > 1.0 And pointProj2.y > 1.0 Then GoTo Lbl_SkipA
-            If pointProj0.y < -1.0 And pointProj1.y < -1.0 And pointProj2.y < -1.0 Then GoTo Lbl_SkipA
+            ' Rotate in X-Axis
+            Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), pointRotZX0
+            Multiply_Vector3_Matrix4 pointRotZ1, matRotX(), pointRotZX1
+            Multiply_Vector3_Matrix4 pointRotZ2, matRotX(), pointRotZX2
 
-            ' Slide to center, then Scale into viewport
-            SX0 = (pointProj0.x + 1) * halfWidth
-            SY0 = (pointProj0.y + 1) * halfHeight
-
-            SX1 = (pointProj1.x + 1) * halfWidth
-            SY1 = (pointProj1.y + 1) * halfHeight
-
-            SX2 = (pointProj2.x + 1) * halfWidth
-            SY2 = (pointProj2.y + 1) * halfHeight
-
-            ' Load Vertex List for Textured triangle
-            If Affine_Only = 1 Then
-                ' Affine only, depth ignored for (u, v) texel coordinates
-                vertexA.x = SX0
-                vertexA.y = SY0
-                vertexA.w = pointProj0.w
-                vertexA.u = mesh(A).u0
-                vertexA.v = mesh(A).v0
-                vertexA.a = 0.96
-
-                vertexB.x = SX1
-                vertexB.y = SY1
-                vertexB.w = pointProj1.w
-                vertexB.u = mesh(A).u1
-                vertexB.v = mesh(A).v1
-                vertexB.a = 0.85
-
-                vertexC.x = SX2
-                vertexC.y = SY2
-                vertexC.w = pointProj2.w
-                vertexC.u = mesh(A).u2
-                vertexC.v = mesh(A).v2
-                vertexC.a = 0.85
-            Else
-                ' Perspective Correct
-                vertexA.x = SX0
-                vertexA.y = SY0
-                vertexA.w = pointProj0.w ' depth
-                ' !!! notice the only difference is multiplying attributes by w
-                vertexA.u = mesh(A).u0 * pointProj0.w
-                vertexA.v = mesh(A).v0 * pointProj0.w
-                vertexA.a = 0.96 * pointProj0.w
-
-                vertexB.x = SX1
-                vertexB.y = SY1
-                vertexB.w = pointProj1.w ' depth
-                vertexB.u = mesh(A).u1 * pointProj1.w
-                vertexB.v = mesh(A).v1 * pointProj1.w
-                vertexB.a = 0.85 * pointProj1.w
-
-                vertexC.x = SX2
-                vertexC.y = SY2
-                vertexC.w = pointProj2.w ' depth
-                vertexC.u = mesh(A).u2 * pointProj2.w
-                vertexC.v = mesh(A).v2 * pointProj2.w
-                vertexC.a = 0.85 * pointProj2.w
-            End If
-
-            ' Directional light 1-17-2023
-            Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
-            If Light_Directional < 0.0 Then Light_Directional = 0.0
-
-            ' 2-23-2023
-            T1_options = mesh(A).options Or T1_option_no_Z_write
+            ' Offset into the screen
+            pointTrans0 = pointRotZX0
+            pointTrans1 = pointRotZX1
+            pointTrans2 = pointRotZX2
 
 
-            ' Prove also that Gouraud Shading can be perspective correct,
-            '  Although most graphics accelerator cards didn't bother at the time.
-            If Affine_Only = 1 Then
-                ' Color each vertex brightly.
-                ' Using modulation function for bright primary colors.
-                vertexA.r = 240
-                vertexA.g = 0
-                vertexA.b = 0
+            ' Part 2 (Triangle Surface Normal Calculation)
+            CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
 
-                If A And 1 Then
-                    vertexB.r = 64
-                    vertexB.g = 240
-                    vertexB.b = 0
+            Vector3_Delta vCameraPsn, pointTrans0, cameraRay
+            dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay)
 
-                    vertexC.r = 0
-                    vertexC.g = 0
-                    vertexC.b = 240
-                Else
-                    vertexB.r = 0
-                    vertexB.g = 240
-                    vertexB.b = 240
+            If dotProductCam > 0.0 Then
+                ' Convert World Space --> View Space
+                Multiply_Vector3_Matrix4 pointTrans0, matView(), pointView0
+                Multiply_Vector3_Matrix4 pointTrans1, matView(), pointView1
+                Multiply_Vector3_Matrix4 pointTrans2, matView(), pointView2
 
-                    vertexC.r = 64
-                    vertexC.g = 240
-                    vertexC.b = 0
-                End If
-            Else
-                'same as above but using 1/Z for perspective correct Gouraud
-                vertexA.r = 240 * pointProj0.w
-                vertexA.g = 0 * pointProj0.w
-                vertexA.b = 0 * pointProj0.w
-
-                If A And 1 Then
-                    vertexB.r = 64 * pointProj1.w
-                    vertexB.g = 240 * pointProj1.w
-                    vertexB.b = 0 * pointProj1.w
-
-                    vertexC.r = 0 * pointProj2.w
-                    vertexC.g = 0 * pointProj2.w
-                    vertexC.b = 240 * pointProj2.w
-                Else
-                    vertexB.r = 0 * pointProj1.w
-                    vertexB.g = 240 * pointProj1.w
-                    vertexB.b = 240 * pointProj1.w
-
-                    vertexC.r = 64 * pointProj2.w
-                    vertexC.g = 240 * pointProj2.w
-                    vertexC.b = 0 * pointProj2.w
+                ' Skip if any Z is too close
+                If (pointView0.z < Frustum_Near) Or (pointView1.z < Frustum_Near) Or (pointView2.z < Frustum_Near) Then
+                    GoTo Lbl_SkipA
                 End If
 
+                ' Project triangles from 3D -----------------> 2D
+                ProjectMatrixVector4 pointView0, matProj(), pointProj0
+                ProjectMatrixVector4 pointView1, matProj(), pointProj1
+                ProjectMatrixVector4 pointView2, matProj(), pointProj2
+
+                ' Early scissor reject
+                If pointProj0.x > 1.0 And pointProj1.x > 1.0 And pointProj2.x > 1.0 Then GoTo Lbl_SkipA
+                If pointProj0.x < -1.0 And pointProj1.x < -1.0 And pointProj2.x < -1.0 Then GoTo Lbl_SkipA
+                If pointProj0.y > 1.0 And pointProj1.y > 1.0 And pointProj2.y > 1.0 Then GoTo Lbl_SkipA
+                If pointProj0.y < -1.0 And pointProj1.y < -1.0 And pointProj2.y < -1.0 Then GoTo Lbl_SkipA
+
+                ' Slide to center, then Scale into viewport
+                SX0 = (pointProj0.x + 1) * halfWidth
+                SY0 = (pointProj0.y + 1) * halfHeight
+
+                SX1 = (pointProj1.x + 1) * halfWidth
+                SY1 = (pointProj1.y + 1) * halfHeight
+
+                SX2 = (pointProj2.x + 1) * halfWidth
+                SY2 = (pointProj2.y + 1) * halfHeight
+
+                ' Load Vertex List for Textured triangle
+                If Affine_Only = 1 Then
+                    ' Affine only, depth ignored for (u, v) texel coordinates
+                    vertexA.x = SX0
+                    vertexA.y = SY0
+                    vertexA.w = pointProj0.w
+                    vertexA.u = mesh(A).u0
+                    vertexA.v = mesh(A).v0
+                    vertexA.a = 0.86
+
+                    vertexB.x = SX1
+                    vertexB.y = SY1
+                    vertexB.w = pointProj1.w
+                    vertexB.u = mesh(A).u1
+                    vertexB.v = mesh(A).v1
+                    vertexB.a = 0.75
+
+                    vertexC.x = SX2
+                    vertexC.y = SY2
+                    vertexC.w = pointProj2.w
+                    vertexC.u = mesh(A).u2
+                    vertexC.v = mesh(A).v2
+                    vertexC.a = 0.75
+                Else
+                    ' Perspective Correct
+                    vertexA.x = SX0
+                    vertexA.y = SY0
+                    vertexA.w = pointProj0.w ' depth
+                    ' !!! notice the only difference is multiplying attributes by w
+                    vertexA.u = mesh(A).u0 * pointProj0.w
+                    vertexA.v = mesh(A).v0 * pointProj0.w
+                    vertexA.a = 0.86 * pointProj0.w
+
+                    vertexB.x = SX1
+                    vertexB.y = SY1
+                    vertexB.w = pointProj1.w ' depth
+                    vertexB.u = mesh(A).u1 * pointProj1.w
+                    vertexB.v = mesh(A).v1 * pointProj1.w
+                    vertexB.a = 0.75 * pointProj1.w
+
+                    vertexC.x = SX2
+                    vertexC.y = SY2
+                    vertexC.w = pointProj2.w ' depth
+                    vertexC.u = mesh(A).u2 * pointProj2.w
+                    vertexC.v = mesh(A).v2 * pointProj2.w
+                    vertexC.a = 0.75 * pointProj2.w
+                End If
+
+                ' Directional light 1-17-2023
+                Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
+                If Light_Directional < 0.0 Then Light_Directional = 0.0
+
+                ' 2-23-2023
+                T1_options = mesh(A).options Or T1_option_no_Z_write
+
+
+                ' Prove also that Gouraud Shading can be perspective correct,
+                '  Although most graphics accelerator cards didn't bother at the time.
+                If Affine_Only = 1 Then
+                    ' Color each vertex brightly.
+                    ' Using modulation function for bright primary colors.
+                    vertexA.r = 240
+                    vertexA.g = 0
+                    vertexA.b = 0
+
+                    If A And 1 Then
+                        vertexB.r = 64
+                        vertexB.g = 240
+                        vertexB.b = 0
+
+                        vertexC.r = 0
+                        vertexC.g = 0
+                        vertexC.b = 240
+                    Else
+                        vertexB.r = 0
+                        vertexB.g = 240
+                        vertexB.b = 240
+
+                        vertexC.r = 64
+                        vertexC.g = 240
+                        vertexC.b = 0
+                    End If
+                Else
+                    'same as above but using 1/Z for perspective correct Gouraud
+                    vertexA.r = 240 * pointProj0.w
+                    vertexA.g = 0 * pointProj0.w
+                    vertexA.b = 0 * pointProj0.w
+
+                    If A And 1 Then
+                        vertexB.r = 64 * pointProj1.w
+                        vertexB.g = 240 * pointProj1.w
+                        vertexB.b = 0 * pointProj1.w
+
+                        vertexC.r = 0 * pointProj2.w
+                        vertexC.g = 0 * pointProj2.w
+                        vertexC.b = 240 * pointProj2.w
+                    Else
+                        vertexB.r = 0 * pointProj1.w
+                        vertexB.g = 240 * pointProj1.w
+                        vertexB.b = 240 * pointProj1.w
+
+                        vertexC.r = 64 * pointProj2.w
+                        vertexC.g = 240 * pointProj2.w
+                        vertexC.b = 0 * pointProj2.w
+                    End If
+
+                End If
+
+                TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+
+                ' Wireframe triangle
+                'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 128, 128)
+                'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 128, 128)
+                'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
             End If
 
-            TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
-
-            ' Wireframe triangle
-            'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 128, 128)
-            'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 128, 128)
-            'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
-        End If
-
-        Lbl_SkipA:
-    Next A
+            Lbl_SkipA:
+        Next A
+    Next cube
 
     render_ms = Timer(.001)
 
@@ -1053,6 +1094,26 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
         o.y = -o.y * o.w 'because I feel +Y is up
         o.z = o.z * o.w
     End If
+End Sub
+
+Sub QuickSort_ViewZ (start As Long, finish As Long, J() As objectlist_type)
+    Dim Lo As Long
+    Dim Hi As Long
+    Dim middleVal As Single
+
+    Lo = start
+    Hi = finish
+    middleVal = J((Lo + Hi) / 2).viewz
+    Do
+        Do While J(Lo).viewz < middleVal: Lo = Lo + 1: Loop
+        Do While J(Hi).viewz > middleVal: Hi = Hi - 1: Loop
+        If Lo <= Hi Then
+            Swap J(Lo), J(Hi)
+            Lo = Lo + 1: Hi = Hi - 1
+        End If
+    Loop Until Lo > Hi
+    If Hi > start Then Call QuickSort_ViewZ(start, Hi, J())
+    If Lo < finish Then Call QuickSort_ViewZ(Lo, finish, J())
 End Sub
 
 
@@ -1496,12 +1557,12 @@ End Sub
 
 Sub DeDitherWorkBuffer
     ' Work Screen Memory Pointers
-    Static screen_mem_info As _MEM
-    Static screen_next_row_step As _Offset
-    Static screen_row_base As _Offset ' Calculated every row
-    Static screen_address As _Offset ' Calculated at every starting column
-    screen_mem_info = _MemImage(WORK_IMAGE)
-    screen_next_row_step = 4 * Size_Render_X
+    Static work_mem_info As _MEM
+    Static work_next_row_step As _Offset
+    Static work_row_base As _Offset ' Calculated every row
+    Static work_address As _Offset ' Calculated at every starting column
+    work_mem_info = _MemImage(WORK_IMAGE)
+    work_next_row_step = 4 * Size_Render_X
 
     ' Filter Screen Memory Pointers
     Static filter_mem_info As _MEM
@@ -1512,7 +1573,7 @@ Sub DeDitherWorkBuffer
     filter_next_row_step = 4 * Size_Render_X
 
     Static neighbor_address As _Offset
-    Static neighbor_topleft As _Offset
+    Static neighbor_left As _Offset
     Static pixel_value As _Unsigned Long
 
     Dim R As Integer
@@ -1538,16 +1599,17 @@ Sub DeDitherWorkBuffer
     _Source WORK_IMAGE
     _Dest FILTER_IMAGE
 
-    screen_row_base = screen_mem_info.OFFSET + 1 * screen_next_row_step
-    filter_row_base = filter_mem_info.OFFSET + 1 * filter_next_row_step
+    work_row_base = work_mem_info.OFFSET
+    filter_row_base = filter_mem_info.OFFSET + filter_next_row_step + 4 ' one line down and one right
 
-    For R = 1 To Size_Render_Y - 1
+    For R = 1 To Size_Render_Y - 2
 
-        screen_address = screen_row_base + 4 * 1
-        filter_address = filter_row_base + 4 * 1
-        For C = 1 To Size_Render_X - 1
+        work_address = work_row_base
+        filter_address = filter_row_base
+
+        For C = 1 To Size_Render_X - 2
             'pixel_existing = Point(C, R)
-            pixel_existing = _MemGet(screen_mem_info, screen_address, _Unsigned Long)
+            pixel_existing = _MemGet(work_mem_info, work_address + work_next_row_step + 4, _Unsigned Long)
             existing_red = _Red32(pixel_existing)
             existing_green = _Green32(pixel_existing)
             existing_blue = _Blue32(pixel_existing)
@@ -1556,12 +1618,12 @@ Sub DeDitherWorkBuffer
             filter_green = existing_green
             filter_blue = existing_blue
 
-            neighbor_topleft = screen_address - screen_next_row_step - 4
-            For innerR = R - 1 To R + 1
-                neighbor_address = neighbor_topleft
-                For innerC = C - 1 To C + 1
-                    'pixel_neighbor = Point(innerC, innerR)
-                    pixel_neighbor = _MemGet(screen_mem_info, neighbor_address, _Unsigned Long)
+            neighbor_left = work_address ' top left
+
+            For innerR = -1 To 1
+                neighbor_address = neighbor_left
+                For innerC = -1 To 1
+                    pixel_neighbor = _MemGet(work_mem_info, neighbor_address, _Unsigned Long)
 
                     neighbor_red = _Red32(pixel_neighbor)
                     neighbor_green = _Green32(pixel_neighbor)
@@ -1578,18 +1640,17 @@ Sub DeDitherWorkBuffer
 
                     neighbor_address = neighbor_address + 4
                 Next innerC
-                neighbor_topleft = neighbor_topleft + screen_next_row_step
+                neighbor_left = neighbor_left + work_next_row_step
             Next innerR
 
-            'PSet (C, R), _RGB32(filter_red, filter_green, filter_blue)
             pixel_value = _RGB32(filter_red, filter_green, filter_blue)
-            _MemPut screen_mem_info, filter_address, pixel_value
+            _MemPut filter_mem_info, filter_address, pixel_value
 
             filter_address = filter_address + 4
-            screen_address = screen_address + 4
+            work_address = work_address + 4
         Next C
 
-        screen_row_base = screen_row_base + screen_next_row_step
+        work_row_base = work_row_base + work_next_row_step
         filter_row_base = filter_row_base + filter_next_row_step
     Next R
 
