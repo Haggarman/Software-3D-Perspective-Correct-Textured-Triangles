@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Variants 148"
+_Title "Tri-Linear Mipmap Variants 152"
 ' 2024 Haggarman
 ' Trilinear Mip Mapping variants
 '
@@ -281,16 +281,16 @@ Next refIndex
 ' These T1 Texture characteristics are read later on during drawing.
 Dim Shared T1_CatalogIndex As Long
 Dim Shared T1_ImageHandle As Long
-Dim Shared T1_width As Integer, T1_width_MASK As Integer
-Dim Shared T1_height As Integer, T1_height_MASK As Integer
+Dim Shared T1_width As _Unsigned Integer, T1_width_MASK As _Unsigned Integer
+Dim Shared T1_height As _Unsigned Integer, T1_height_MASK As _Unsigned Integer
 Dim Shared T1_Filter_Selection As Integer
 Dim Shared T1_mblock As _MEM
 Dim Shared T1_Alpha_Threshold As Integer
 
 ' T2 calculates before T1
 Dim Shared T2_ImageHandle As Long
-Dim Shared T2_width As Integer, T2_width_MASK As Integer
-Dim Shared T2_height As Integer, T2_height_MASK As Integer
+Dim Shared T2_width As _Unsigned Integer, T2_width_MASK As _Unsigned Integer
+Dim Shared T2_height As _Unsigned Integer, T2_height_MASK As _Unsigned Integer
 Dim Shared T2_Filter_Selection As Integer
 Dim Shared T2_mblock As _MEM
 Dim Shared T2_Alpha_Threshold As Integer
@@ -2775,12 +2775,13 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
     screen_mem_info = _MemImage(WORK_IMAGE)
     screen_next_row_step = 4 * Size_Render_X
 
-    ' caching of 4 texels in bilinear mode
+    ' Caching of 4 texels in bilinear mode
     Static T1_last_cache As _Unsigned Long
-    T1_last_cache = &HFFFFFFFF ' invalidate
+    Static T2_last_cache As _Unsigned Long
     Static T3_last_cache As _Unsigned Long
+    T1_last_cache = &HFFFFFFFF ' invalidate
+    T1_last_cache = &HFFFFFFFF ' invalidate
     T3_last_cache = &HFFFFFFFF ' invalidate
-
 
     ' Row Loop from top to bottom
     row = draw_min_y
@@ -2920,8 +2921,8 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
             Static LOD_tile3 As Integer
 
             ' T3 is higher up in pyramid version of T1
-            Static T3_width As Integer, T3_width_MASK As Integer
-            Static T3_height As Integer, T3_height_MASK As Integer
+            Static T3_width As _Unsigned Integer, T3_width_MASK As _Unsigned Integer
+            Static T3_height As _Unsigned Integer, T3_height_MASK As _Unsigned Integer
             Static T3_ImageHandle As Long
             Static T3_mblock As _MEM
 
@@ -3158,28 +3159,31 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
                     ' Read Texel
                     ' Relies on shared T1_ and T2_ variables
-                    Static cc As Integer
-                    Static ccp As Integer
-                    Static rr As Integer
-                    Static rrp As Integer
-
                     Static cm5 As Single
                     Static rm5 As Single
-                    Static Frac_cc1 As Single
-                    Static Frac_rr1 As Single
+                    Static cc As _Unsigned Integer
+                    Static ccp As _Unsigned Integer
+                    Static rr As _Unsigned Integer
+                    Static rrp As _Unsigned Integer
 
-                    Static Area_00 As Single
-                    Static Area_11 As Single
-                    Static Area_2f As Single
+                    ' 4 point bilinear temp vars
+                    Static Frac_cc1_FIX7 As Integer
+                    Static Frac_rr1_FIX7 As Integer
+                    ' 0 1
+                    ' . .
+                    Static bi_r0 As Integer
+                    Static bi_g0 As Integer
+                    Static bi_b0 As Integer
+                    Static bi_a0 As Integer
+                    ' . .
+                    ' 2 3
+                    Static bi_r1 As Integer
+                    Static bi_g1 As Integer
+                    Static bi_b1 As Integer
+                    Static bi_a1 As Integer
 
-                    Static T1_address_pointer As _Offset
-                    Static T2_address_pointer As _Offset
-                    Static T3_address_pointer As _Offset
 
-                    Static uv_0_0 As _Unsigned Long
-                    Static uv_1_1 As _Unsigned Long
-                    Static uv_f As _Unsigned Long
-
+                    ' color blending
                     Static r2 As Integer
                     Static g2 As Integer
                     Static b2 As Integer
@@ -3249,49 +3253,56 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             rrp = (rr + 1) And T2_height_MASK
                         End If
 
-                        'uv_0_0 = Texture1(cc, rr)
-                        T2_address_pointer = T2_mblock.OFFSET + (cc + rr * T2_width) * 4
-                        _MemGet T2_mblock, T2_address_pointer, uv_0_0
+                        Frac_cc1_FIX7 = (cm5 - Int(cm5)) * 128
+                        Frac_rr1_FIX7 = (rm5 - Int(rm5)) * 128
 
-                        'uv_1_1 = Texture1(ccp, rrp)
-                        T2_address_pointer = T2_mblock.OFFSET + (ccp + rrp * T2_width) * 4
-                        _MemGet T2_mblock, T2_address_pointer, uv_1_1
+                        ' caching of 4 texels
+                        Static T2_this_cache As _Unsigned Long
+                        Static T2_uv_0_0 As Long
+                        Static T2_uv_1_0 As Long
+                        Static T2_uv_0_1 As Long
+                        Static T2_uv_1_1 As Long
 
-                        Frac_cc1 = cm5 - Int(cm5)
-                        Frac_rr1 = rm5 - Int(rm5)
+                        T2_this_cache = _ShL(rr, 12) Or cc
+                        If T2_this_cache <> T2_last_cache Then
+                            _MemGet T2_mblock, T2_mblock.OFFSET + (cc + rr * T2_width) * 4, T2_uv_0_0
+                            _MemGet T2_mblock, T2_mblock.OFFSET + (ccp + rr * T2_width) * 4, T2_uv_1_0
+                            _MemGet T2_mblock, T2_mblock.OFFSET + (cc + rrp * T2_width) * 4, T2_uv_0_1
+                            _MemGet T2_mblock, T2_mblock.OFFSET + (ccp + rrp * T2_width) * 4, T2_uv_1_1
 
-                        If Frac_cc1 > Frac_rr1 Then
-                            ' top-right
-                            ' Area of a triangle = 1/2 * base * height
-                            ' Using twice the areas (rectangles) to eliminate a multiply by 1/2 and a later divide by 1/2
-                            Area_11 = Frac_rr1
-                            Area_00 = 1.0 - Frac_cc1
-
-                            'uv_f = Texture2(ccp, rr)
-                            T2_address_pointer = T2_mblock.OFFSET + (ccp + rr * T2_width) * 4
-                            _MemGet T2_mblock, T2_address_pointer, uv_f
-                        Else
-                            ' bottom-left
-                            Area_00 = 1.0 - Frac_rr1
-                            Area_11 = Frac_cc1
-
-                            'uv_f = Texture2(cc, rrp)
-                            T2_address_pointer = T2_mblock.OFFSET + (cc + rrp * T2_width) * 4
-                            _MemGet T2_mblock, T2_address_pointer, uv_f
-
+                            T2_last_cache = T2_this_cache
                         End If
 
-                        Area_2f = 1.0 - (Area_00 + Area_11) ' 1.0 here is twice the total triangle area.
-
                         ' determine T2 RGB colors
-                        r2 = _Red32(uv_f) * Area_2f + _Red32(uv_0_0) * Area_00 + _Red32(uv_1_1) * Area_11
-                        g2 = _Green32(uv_f) * Area_2f + _Green32(uv_0_0) * Area_00 + _Green32(uv_1_1) * Area_11
-                        b2 = _Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11
-                        '--- End Inline Texel Read
+                        bi_r0 = _Red32(T2_uv_0_0)
+                        bi_r0 = _ShR((_Red32(T2_uv_1_0) - bi_r0) * Frac_cc1_FIX7, 7) + bi_r0
+
+                        bi_g0 = _Green32(T2_uv_0_0)
+                        bi_g0 = _ShR((_Green32(T2_uv_1_0) - bi_g0) * Frac_cc1_FIX7, 7) + bi_g0
+
+                        bi_b0 = _Blue32(T2_uv_0_0)
+                        bi_b0 = _ShR((_Blue32(T2_uv_1_0) - bi_b0) * Frac_cc1_FIX7, 7) + bi_b0
+
+                        bi_r1 = _Red32(T2_uv_0_1)
+                        bi_r1 = _ShR((_Red32(T2_uv_1_1) - bi_r1) * Frac_cc1_FIX7, 7) + bi_r1
+                        r2 = _ShR((bi_r1 - bi_r0) * Frac_rr1_FIX7, 7) + bi_r0
+
+                        bi_g1 = _Green32(T2_uv_0_1)
+                        bi_g1 = _ShR((_Green32(T2_uv_1_1) - bi_g1) * Frac_cc1_FIX7, 7) + bi_g1
+                        g2 = _ShR((bi_g1 - bi_g0) * Frac_rr1_FIX7, 7) + bi_g0
+
+                        bi_b1 = _Blue32(T2_uv_0_1)
+                        bi_b1 = _ShR((_Blue32(T2_uv_1_1) - bi_b1) * Frac_cc1_FIX7, 7) + bi_b1
+                        b2 = _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0
 
                         ' determine T2 Alpha channel
                         If Texture_options And T2_option_alpha_channel Then
-                            a2 = _Alpha32(uv_f) * Area_2f + _Alpha32(uv_0_0) * Area_00 + _Alpha32(uv_1_1) * Area_11
+                            bi_a0 = _Alpha32(T2_uv_0_0)
+                            bi_a0 = _ShR((_Alpha32(T2_uv_1_0) - bi_a0) * Frac_cc1_FIX7, 7) + bi_a0
+
+                            bi_a1 = _Alpha32(T2_uv_0_1)
+                            bi_a1 = _ShR((_Alpha32(T2_uv_1_1) - bi_a1) * Frac_cc1_FIX7, 7) + bi_a1
+                            a2 = _ShR((bi_a1 - bi_a0) * Frac_rr1_FIX7, 7) + bi_a0
                         Else
                             a2 = 255 ' solid
                         End If
@@ -3339,25 +3350,6 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                         rrp = (rr + 1) And T1_height_MASK
                     End If
 
-                    ' 4 point bilinear temp vars
-                    '
-                    ' 0 1
-                    ' . .
-                    Static bi_r0 As Integer
-                    Static bi_g0 As Integer
-                    Static bi_b0 As Integer
-                    Static bi_a0 As Integer
-
-                    ' . .
-                    ' 2 3
-                    Static bi_r1 As Integer
-                    Static bi_g1 As Integer
-                    Static bi_b1 As Integer
-                    Static bi_a1 As Integer
-
-                    Static Frac_cc1_FIX7 As Integer
-                    Static Frac_rr1_FIX7 As Integer
-
                     Frac_cc1_FIX7 = (cm5 - Int(cm5)) * 128
                     Frac_rr1_FIX7 = (rm5 - Int(rm5)) * 128
 
@@ -3373,17 +3365,10 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
                     T1_this_cache = _ShL(LOD_tile1, 24) Or _ShL(rr, 12) Or cc
                     If T1_this_cache <> T1_last_cache Then
-                        T1_address_pointer = T1_mblock.OFFSET + (cc + rr * T1_width) * 4
-                        _MemGet T1_mblock, T1_address_pointer, T1_uv_0_0
-
-                        T1_address_pointer = T1_mblock.OFFSET + (ccp + rr * T1_width) * 4
-                        _MemGet T1_mblock, T1_address_pointer, T1_uv_1_0
-
-                        T1_address_pointer = T1_mblock.OFFSET + (cc + rrp * T1_width) * 4
-                        _MemGet T1_mblock, T1_address_pointer, T1_uv_0_1
-
-                        T1_address_pointer = T1_mblock.OFFSET + (ccp + rrp * T1_width) * 4
-                        _MemGet T1_mblock, T1_address_pointer, T1_uv_1_1
+                        _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rr * T1_width) * 4, T1_uv_0_0
+                        _MemGet T1_mblock, T1_mblock.OFFSET + (ccp + rr * T1_width) * 4, T1_uv_1_0
+                        _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rrp * T1_width) * 4, T1_uv_0_1
+                        _MemGet T1_mblock, T1_mblock.OFFSET + (ccp + rrp * T1_width) * 4, T1_uv_1_1
 
                         T1_last_cache = T1_this_cache
                         T1_cache_miss_count = T1_cache_miss_count + 1
@@ -3412,17 +3397,14 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     bi_b1 = _ShR((_Blue32(T1_uv_1_1) - bi_b1) * Frac_cc1_FIX7, 7) + bi_b1
                     b1 = _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0
 
-
                     ' determine T1 Alpha channel
                     If Texture_options And T1_option_alpha_channel Then
-
                         bi_a0 = _Alpha32(T1_uv_0_0)
                         bi_a0 = _ShR((_Alpha32(T1_uv_1_0) - bi_a0) * Frac_cc1_FIX7, 7) + bi_a0
 
                         bi_a1 = _Alpha32(T1_uv_0_1)
                         bi_a1 = _ShR((_Alpha32(T1_uv_1_1) - bi_a1) * Frac_cc1_FIX7, 7) + bi_a1
                         a1 = _ShR((bi_a1 - bi_a0) * Frac_rr1_FIX7, 7) + bi_a0
-
                     Else
                         a1 = 255 ' solid
                     End If
@@ -3491,22 +3473,14 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
                             T3_this_cache = _ShL(LOD_tile3, 24) Or _ShL(rr, 12) Or cc
                             If T3_this_cache <> T3_last_cache Then
-                                T3_address_pointer = T3_mblock.OFFSET + (cc + rr * T3_width) * 4
-                                _MemGet T3_mblock, T3_address_pointer, T3_uv_0_0
-
-                                T3_address_pointer = T3_mblock.OFFSET + (ccp + rr * T3_width) * 4
-                                _MemGet T3_mblock, T3_address_pointer, T3_uv_1_0
-
-                                T3_address_pointer = T3_mblock.OFFSET + (cc + rrp * T3_width) * 4
-                                _MemGet T3_mblock, T3_address_pointer, T3_uv_0_1
-
-                                T3_address_pointer = T3_mblock.OFFSET + (ccp + rrp * T3_width) * 4
-                                _MemGet T3_mblock, T3_address_pointer, T3_uv_1_1
+                                _MemGet T3_mblock, T3_mblock.OFFSET + (cc + rr * T3_width) * 4, T3_uv_0_0
+                                _MemGet T3_mblock, T3_mblock.OFFSET + (ccp + rr * T3_width) * 4, T3_uv_1_0
+                                _MemGet T3_mblock, T3_mblock.OFFSET + (cc + rrp * T3_width) * 4, T3_uv_0_1
+                                _MemGet T3_mblock, T3_mblock.OFFSET + (ccp + rrp * T3_width) * 4, T3_uv_1_1
 
                                 T3_last_cache = T3_this_cache
                                 T3_cache_miss_count = T3_cache_miss_count + 1
                                 T3_cache_miss_event = 2
-
                             End If
 
                             ' determine T3 RGB colors
@@ -3549,18 +3523,15 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             End If
 
                         Else
-                            'uv_0_0 = Texture1(cc, rr)
-                            T3_address_pointer = T3_mblock.OFFSET + (cc + rr * T3_width) * 4
-                            _MemGet T3_mblock, T3_address_pointer, uv_0_0
-
                             ' point sampling of T3
-                            r1 = (_Red32(uv_0_0) - r1) * LOD_fraction + r1
-                            g1 = (_Green32(uv_0_0) - g1) * LOD_fraction + g1
-                            b1 = (_Blue32(uv_0_0) - b1) * LOD_fraction + b1
+                            _MemGet T3_mblock, T3_mblock.OFFSET + (cc + rr * T3_width) * 4, T3_uv_0_0
+                            r1 = (_Red32(T3_uv_0_0) - r1) * LOD_fraction + r1
+                            g1 = (_Green32(T3_uv_0_0) - g1) * LOD_fraction + g1
+                            b1 = (_Blue32(T3_uv_0_0) - b1) * LOD_fraction + b1
 
-                            ' Alpha channel
+                            ' Alpha channel T3
                             If Texture_options And T1_option_alpha_channel Then
-                                a1 = (_Alpha32(uv_0_0) - a1) * LOD_fraction + a1
+                                a1 = (_Alpha32(T3_uv_0_0) - a1) * LOD_fraction + a1
                             End If
 
                         End If ' TLMMI_Variant
@@ -3632,10 +3603,6 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             Static pixel_alpha As Single
                             pixel_alpha = a0 / 255.0
                             pixel_existing = _MemGet(screen_mem_info, screen_address, _Unsigned Long)
-
-                            'pixel_value = _RGB32((1.0 - pixel_alpha) *   _Red32(pixel_existing) + pixel_alpha *   _red32(pixel_value), _
-                            '                     (1.0 - pixel_alpha) * _Green32(pixel_existing) + pixel_alpha * _green32(pixel_value), _
-                            '                     (1.0 - pixel_alpha) *  _Blue32(pixel_existing) + pixel_alpha *  _blue32(pixel_value))
 
                             pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
                                                  (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
@@ -3845,6 +3812,10 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
     screen_mem_info = _MemImage(WORK_IMAGE)
     screen_next_row_step = 4 * Size_Render_X
 
+    ' caching of 4 texels in bilinear mode
+    Static T1_last_cache As _Unsigned Long
+    T1_last_cache = &HFFFFFFFF ' invalidate
+
     ' Row Loop from top to bottom
     row = draw_min_y
     screen_row_base = screen_mem_info.OFFSET + row * screen_next_row_step
@@ -3932,33 +3903,33 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
 
             ' Draw the Horizontal Scanline
             ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
+            ' Relies on some shared T1 variables over by Texture1
             screen_address = screen_row_base + 4 * col
             While col < draw_max_x
 
-                ' do not update Z Buffer
-                'tex_z = 1 / tex_w ' Optimization
-
-                ' Relies on some shared T1 variables over by Texture1
-                Static cc As Integer
-                Static rr As Integer
-
-                Static T1_address_pointer As _Offset
+                Static cc As _Unsigned Integer
+                Static ccp As _Unsigned Integer
+                Static rr As _Unsigned Integer
+                Static rrp As _Unsigned Integer
 
                 Static cm5 As Single
                 Static rm5 As Single
 
                 ' Recover U and V
-                cm5 = (tex_u * tex_z)
-                rm5 = (tex_v * tex_z)
+                ' Offset so the transition appears in the center of an enlarged texel instead of a corner.
+                cm5 = (tex_u * tex_z) - 0.5
+                rm5 = (tex_v * tex_z) - 0.5
 
                 ' clamp
                 If cm5 < 0.0 Then cm5 = 0.0
                 If cm5 >= T1_width_MASK Then
                     ' 15.0 and up
                     cc = T1_width_MASK
+                    ccp = T1_width_MASK
                 Else
                     ' 0 1 2 .. 13 14.999
                     cc = Int(cm5)
+                    ccp = cc + 1
                 End If
 
                 ' clamp
@@ -3966,14 +3937,67 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
                 If rm5 >= T1_height_MASK Then
                     ' 15.0 and up
                     rr = T1_height_MASK
+                    rrp = T1_height_MASK
                 Else
                     rr = Int(rm5)
+                    rrp = rr + 1
                 End If
 
-                'uv_0_0 = Texture1(cc, rr)
-                T1_address_pointer = T1_mblock.OFFSET + (cc + rr * T1_width) * 4
-                _MemGet T1_mblock, T1_address_pointer, pixel_value
+                ' 4 point bilinear temp vars
+                Static Frac_cc1_FIX7 As Integer
+                Static Frac_rr1_FIX7 As Integer
+                ' 0 1
+                ' . .
+                Static bi_r0 As Integer
+                Static bi_g0 As Integer
+                Static bi_b0 As Integer
+                ' . .
+                ' 2 3
+                Static bi_r1 As Integer
+                Static bi_g1 As Integer
+                Static bi_b1 As Integer
 
+                Frac_cc1_FIX7 = (cm5 - Int(cm5)) * 128
+                Frac_rr1_FIX7 = (rm5 - Int(rm5)) * 128
+
+                ' Caching of 4 texels
+                Static T1_this_cache As _Unsigned Long
+                Static T1_uv_0_0 As Long
+                Static T1_uv_1_0 As Long
+                Static T1_uv_0_1 As Long
+                Static T1_uv_1_1 As Long
+
+                T1_this_cache = _ShL(rr, 12) Or cc
+                If T1_this_cache <> T1_last_cache Then
+
+                    _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rr * T1_width) * 4, T1_uv_0_0
+                    _MemGet T1_mblock, T1_mblock.OFFSET + (ccp + rr * T1_width) * 4, T1_uv_1_0
+                    _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rrp * T1_width) * 4, T1_uv_0_1
+                    _MemGet T1_mblock, T1_mblock.OFFSET + (ccp + rrp * T1_width) * 4, T1_uv_1_1
+
+                    T1_last_cache = T1_this_cache
+                End If
+
+                ' determine T1 RGB colors
+                bi_r0 = _Red32(T1_uv_0_0)
+                bi_r0 = _ShR((_Red32(T1_uv_1_0) - bi_r0) * Frac_cc1_FIX7, 7) + bi_r0
+
+                bi_g0 = _Green32(T1_uv_0_0)
+                bi_g0 = _ShR((_Green32(T1_uv_1_0) - bi_g0) * Frac_cc1_FIX7, 7) + bi_g0
+
+                bi_b0 = _Blue32(T1_uv_0_0)
+                bi_b0 = _ShR((_Blue32(T1_uv_1_0) - bi_b0) * Frac_cc1_FIX7, 7) + bi_b0
+
+                bi_r1 = _Red32(T1_uv_0_1)
+                bi_r1 = _ShR((_Red32(T1_uv_1_1) - bi_r1) * Frac_cc1_FIX7, 7) + bi_r1
+
+                bi_g1 = _Green32(T1_uv_0_1)
+                bi_g1 = _ShR((_Green32(T1_uv_1_1) - bi_g1) * Frac_cc1_FIX7, 7) + bi_g1
+
+                bi_b1 = _Blue32(T1_uv_0_1)
+                bi_b1 = _ShR((_Blue32(T1_uv_1_1) - bi_b1) * Frac_cc1_FIX7, 7) + bi_b1
+
+                pixel_value = _RGB32(_ShR((bi_r1 - bi_r0) * Frac_rr1_FIX7, 7) + bi_r0, _ShR((bi_g1 - bi_g0) * Frac_rr1_FIX7, 7) + bi_g0, _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0)
                 _MemPut screen_mem_info, screen_address, pixel_value
                 'PSet (col, row), pixel_value
 
