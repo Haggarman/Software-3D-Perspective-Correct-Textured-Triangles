@@ -1,8 +1,10 @@
 Option _Explicit
-_Title "Alias Object File 18"
+_Title "Alias Object File 19"
 ' 2024 Haggarman
-'  Version 17 is where the directional lighting using vertex normals is functioning.
-'  Press G to toggle lighting method.
+'  V19 Re-introduce textures mapping, although you only get red brick for now.
+'  V17 is where the directional lighting using vertex normals is functioning.
+'
+'  Press G to toggle lighting method, if vertex normals are available.
 '
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
@@ -13,12 +15,12 @@ Dim Shared FILTER_IMAGE As Long
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
 Dim Shared Size_Render_X As Integer, Size_Render_Y As Integer
 Dim Cube_Count As Integer
-
+Cube_Count = 1 ' keep at 1 for now
 Dim Obj_File_Name As String
-Obj_File_Name = "teacup.obj" '"spoonfix.obj"
+
 
 ' MODIFY THESE if you want.
-Cube_Count = 1
+Obj_File_Name = "bunny.obj" '"cube.obj" "teacup.obj" "spoonfix.obj"
 Size_Screen_X = 1024
 Size_Screen_Y = 768
 Size_Render_X = Size_Screen_X \ 2 ' render size
@@ -159,9 +161,10 @@ Dim Shared T1_width_MASK As Integer, T1_height_MASK As Integer
 Dim Shared T1_Filter_Selection As Integer
 Dim Shared T1_last_cache As _Unsigned Long
 Dim Shared T1_options As _Unsigned Long
-Const T1_option_clamp_width = 1 'constant
-Const T1_option_clamp_height = 2 'constant
-Const T1_option_no_Z_write = 4 'constant
+Const T1_option_clamp_width = 1
+Const T1_option_clamp_height = 2
+Const T1_option_no_Z_write = 4
+Const T1_option_no_T1 = 65536
 
 ' Later optimization in ReadTexel requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
@@ -241,7 +244,7 @@ Dim A As Long
 A = 0
 For cube = 1 To Cube_Count
     Objects(cube).first = A + 1
-    LoadMesh Obj_File_Name, mesh(), A, Vertex_Count, Materials(), vtxnorms()
+    LoadMesh Obj_File_Name, mesh(), A, Vertex_Count, TextureCoord_Count, Materials(), vtxnorms()
     Objects(cube).last = A
 Next cube
 
@@ -551,22 +554,22 @@ Do
                 vertexA.x = SX0
                 vertexA.y = SY0
                 vertexA.w = pointProj0.w ' depth
-                vertexA.u = mesh(A).u0 * pointProj0.w
-                vertexA.v = mesh(A).v0 * pointProj0.w
+                vertexA.u = mesh(A).u0 * T1_width * pointProj0.w
+                vertexA.v = mesh(A).v0 * T1_height * pointProj0.w
                 vertexA.a = 1 * pointProj0.w
 
                 vertexB.x = SX1
                 vertexB.y = SY1
                 vertexB.w = pointProj1.w ' depth
-                vertexB.u = mesh(A).u1 * pointProj1.w
-                vertexB.v = mesh(A).v1 * pointProj1.w
+                vertexB.u = mesh(A).u1 * T1_width * pointProj1.w
+                vertexB.v = mesh(A).v1 * T1_height * pointProj1.w
                 vertexB.a = 1 * pointProj1.w
 
                 vertexC.x = SX2
                 vertexC.y = SY2
                 vertexC.w = pointProj2.w ' depth
-                vertexC.u = mesh(A).u2 * pointProj2.w
-                vertexC.v = mesh(A).v2 * pointProj2.w
+                vertexC.u = mesh(A).u2 * T1_width * pointProj2.w
+                vertexC.v = mesh(A).v2 * T1_height * pointProj2.w
                 vertexC.a = 1 * pointProj2.w
 
                 T1_options = mesh(A).options
@@ -750,6 +753,9 @@ Do
         End If
     End If
 
+    ' overrides
+    If Normals_Count = 0 Then Gouraud_Shading_Selection = 0
+
     frametimestamp_now_ms = Timer(0.001)
     If frametimestamp_now_ms - frametimestamp_prior_ms < 0.0 Then
         ' timer rollover
@@ -865,61 +871,6 @@ Data &HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFfffff
 '
 ' v
 
-' x0,y0,z0, x1,y1,z1, x2,y2,z2
-' u0,v0, u1,v1, u2,v2
-' texture_index, texture_options
-' .0 = T1_option_clamp_width
-' .1 = T1_option_clamp_height
-
-MESHCUBE:
-' SOUTH
-Data 0,0,0,0,1,0,1,1,0
-Data 0,32,0,16,16,16
-Data 0,0
-Data 0,0,0,1,1,0,1,0,0
-Data 0,32,16,16,16,32
-Data 0,0
-
-' EAST
-Data 1,0,0,1,1,0,1,1,1
-Data 0,32,0,16,16,16
-Data 0,0
-Data 1,0,0,1,1,1,1,0,1
-Data 0,32,16,16,16,32
-Data 0,0
-
-' NORTH
-Data 1,0,1,1,1,1,0,1,1
-Data 0,32,0,16,16,16
-Data 0,0
-Data 1,0,1,0,1,1,0,0,1
-Data 0,32,16,16,16,32
-Data 0,0
-
-' WEST
-Data 0,0,1,0,1,1,0,1,0
-Data 0,32,0,16,16,16
-Data 0,0
-Data 0,0,1,0,1,0,0,0,0
-Data 0,32,16,16,16,32
-Data 0,0
-
-' TOP
-Data 0,1,0,0,1,1,1,1,1
-Data 0,16,0,0,16,0
-Data 0,3
-Data 0,1,0,1,1,1,1,1,0
-Data 0,16,16,0,16,16
-Data 0,3
-
-' BOTTOM
-Data 1,0,1,0,0,1,0,0,0
-Data 0,48,0,32,16,32
-Data 0,3
-Data 1,0,1,0,0,0,1,0,0
-Data 0,48,16,32,16,48
-Data 0,3
-
 $Checking:On
 Sub PrescanMesh (thefile As String, requiredTriangles As Long, totalVertex As Long, totalTextureCoords As Long, totalNormals As Long, totalMaterialLibrary As Long, materialFile As String)
     ' Primary purpose is to determine the required amount of triangles.
@@ -1028,7 +979,7 @@ Sub PrescanMesh (thefile As String, requiredTriangles As Long, totalVertex As Lo
     'Input "waiting..."; temp$
 End Sub
 
-Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVertexList As Long, mats() As newmtl_type, vn() As vec3d)
+Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, leVertexList As Long, leVertexTexelList As Long, mats() As newmtl_type, vn() As vec3d)
     Dim ParameterStorage(10, 2) As Double
 
     Dim totalVertex As Long
@@ -1041,7 +992,9 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVerte
     Dim paramStringLength As Integer
     Dim useMaterialNumber As Long
     Dim totalVertexNormals As Long
-    Dim VertexList(sizeVertexList + 1) As vec3d ' this gets tossed after loading mesh()
+    Dim totalVertexTexels As Long
+    Dim VertexList(leVertexList) As vec3d ' this gets tossed after loading mesh()
+    Dim TexelCoord(leVertexTexelList) As vec3d ' this gets tossed after loading mesh()
 
     totalVertex = 0
     totalVertexNormals = 0 ' refers to vn() array
@@ -1153,6 +1106,48 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVerte
                 'Print "vn "; ParameterStorage(1); ParameterStorage(2); ParameterStorage(3)
             End If
 
+
+        ElseIf Left$(rawString, 3) = "vt " Then
+            totalVertexTexels = totalVertexTexels + 1
+
+            lineCursor = 4
+            parameterIndex = 0
+
+            While lineCursor < lineLength
+                paramStringLength = 0
+
+                ' eat spaces
+                While Asc(rawString, lineCursor) <= 32
+                    lineCursor = lineCursor + 1
+                    If lineCursor > lineLength Then GoTo BAIL_VERTEXTEXELS
+                Wend
+
+                ' count chars up to next space char, stopping if end of string reached
+                paramStringStart = lineCursor
+                While Asc(rawString, lineCursor) > 32
+                    'Print Mid$(rawString, lineCursor, 1);
+                    paramStringLength = paramStringLength + 1
+                    lineCursor = lineCursor + 1
+                    If lineCursor > lineLength Then Exit While
+                Wend
+
+                If paramStringLength > 0 Then
+                    parameterIndex = parameterIndex + 1
+                    parameter$ = Mid$(rawString, paramStringStart, paramStringLength)
+                    ParameterStorage(parameterIndex, 0) = Val(parameter$)
+                    'Print parameterIndex, paramStringStart, paramStringLength, "["; parameter$; "]"
+                End If
+            Wend
+
+            BAIL_VERTEXTEXELS:
+            'Print parameterIndex; " EOL"
+
+            If parameterIndex >= 2 Then
+                TexelCoord(totalVertexTexels).x = ParameterStorage(1, 0)
+                TexelCoord(totalVertexTexels).y = ParameterStorage(2, 0)
+                'Print "vt "; ParameterStorage(1, 0); ParameterStorage(2, 0);
+            End If
+
         End If
     Loop
 
@@ -1162,13 +1157,20 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVerte
 
     Dim mostRecentVertex As Long
     Dim mostRecentVertexNormal As Long
+    Dim mostRecentVertexTexel As Long
     mostRecentVertex = 0
     mostRecentVertexNormal = 0
+    mostRecentVertexTexel = 0
 
     Dim tri0 As Long
     Dim tri1 As Long
     Dim tri2 As Long
     Dim tri3 As Long
+    Dim tex0 As Long
+    Dim tex1 As Long
+    Dim tex2 As Long
+    Dim tex3 As Long
+
     useMaterialNumber = 0
 
     Dim ssc As Integer
@@ -1191,7 +1193,12 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVerte
             mostRecentVertex = mostRecentVertex + 1
 
         ElseIf Left$(rawString, 3) = "vn " Then
+            ' vertex normal command (directional shading)
             mostRecentVertexNormal = mostRecentVertexNormal + 1
+
+        ElseIf Left$(rawString, 3) = "vt " Then
+            ' vertex texture coordinate(s)
+            mostRecentVertexTexel = mostRecentVertexTexel + 1
 
         ElseIf Left$(rawString, 2) = "f " Then
             ' face command
@@ -1236,6 +1243,7 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVerte
                 If ssc = 47 Then
                     ' / character means next sub parameter
                     paramSubindex = paramSubindex + 1
+                    ParameterStorage(parameterIndex, paramSubindex) = 0
                 End If
 
             Wend
@@ -1259,6 +1267,27 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVerte
                 tris(indexTri).z2 = VertexList(tri2).z
                 tris(indexTri).options = 0
                 tris(indexTri).material = useMaterialNumber
+
+                If paramSubindex >= 1 Then
+                    If ParameterStorage(1, 1) = 0 Then
+                        ' no texture 1
+                        tris(indexTri).options = tris(indexTri).options Or T1_option_no_T1
+                    Else
+                        tex0 = FindVertexNumAbsOrRel(ParameterStorage(1, 1), mostRecentVertexTexel)
+                        tex1 = FindVertexNumAbsOrRel(ParameterStorage(2, 1), mostRecentVertexTexel)
+                        tex2 = FindVertexNumAbsOrRel(ParameterStorage(3, 1), mostRecentVertexTexel)
+
+                        tris(indexTri).u0 = TexelCoord(tex0).x
+                        tris(indexTri).v0 = TexelCoord(tex0).y
+
+                        tris(indexTri).u1 = TexelCoord(tex1).x
+                        tris(indexTri).v1 = TexelCoord(tex1).y
+
+                        tris(indexTri).u2 = TexelCoord(tex2).x
+                        tris(indexTri).v2 = TexelCoord(tex2).y
+                    End If
+                End If
+
                 If paramSubindex >= 2 Then
                     tris(indexTri).vni0 = FindVertexNumAbsOrRel(ParameterStorage(1, 2), mostRecentVertexNormal)
                     tris(indexTri).vni1 = FindVertexNumAbsOrRel(ParameterStorage(2, 2), mostRecentVertexNormal)
@@ -1272,6 +1301,7 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVerte
 
             If parameterIndex = 4 Then
                 tri3 = FindVertexNumAbsOrRel(ParameterStorage(4, 0), mostRecentVertex)
+                tex3 = FindVertexNumAbsOrRel(ParameterStorage(4, 1), mostRecentVertexTexel)
 
                 indexTri = indexTri + 1
                 tris(indexTri).x0 = VertexList(tri0).x
@@ -1285,6 +1315,20 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVerte
                 tris(indexTri).z2 = VertexList(tri3).z
                 tris(indexTri).options = 0
                 tris(indexTri).material = useMaterialNumber
+
+                If paramSubindex >= 1 Then
+                    If (tris(indexTri).options And T1_option_no_T1) = 0 Then
+                        tris(indexTri).u0 = TexelCoord(tex0).x
+                        tris(indexTri).v0 = TexelCoord(tex0).y
+
+                        tris(indexTri).u1 = TexelCoord(tex2).x
+                        tris(indexTri).v1 = TexelCoord(tex2).y
+
+                        tris(indexTri).u2 = TexelCoord(tex3).x
+                        tris(indexTri).v2 = TexelCoord(tex3).y
+                    End If
+                End If
+
                 If paramSubindex >= 2 Then
                     tris(indexTri).vni0 = FindVertexNumAbsOrRel(ParameterStorage(1, 2), mostRecentVertexNormal)
                     tris(indexTri).vni1 = FindVertexNumAbsOrRel(ParameterStorage(3, 2), mostRecentVertexNormal)
@@ -1336,9 +1380,9 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, sizeVerte
         End If
     Loop
     Close #2
-    Dim temp$
-    Input "waiting..."; temp$
-
+    'Dim temp$
+    'Input "waiting..."; temp$
+    Sleep 3
 End Sub
 
 Function FindVertexNumAbsOrRel (param As Double, recentvert As Long)
@@ -2573,8 +2617,11 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                     pixel_existing = Point(col, row)
 
                     Static pixel_combine As _Unsigned Long
-                    'pixel_combine = RGB_Lit&(RGB_Sum&(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB32(tex_r, tex_g, tex_b)))
-                    pixel_combine = _RGB32(tex_r, tex_g, tex_b)
+                    If (T1_option_no_T1 And T1_options) Then
+                        pixel_combine = _RGB32(tex_r, tex_g, tex_b)
+                    Else
+                        pixel_combine = RGB_Modulate(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB32(tex_r, tex_g, tex_b))
+                    End If
 
                     Static pixel_value As _Unsigned Long
                     pixel_alpha = tex_a * tex_z
