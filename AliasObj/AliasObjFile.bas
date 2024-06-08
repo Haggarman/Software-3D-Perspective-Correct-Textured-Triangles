@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 19"
+_Title "Alias Object File 23"
 ' 2024 Haggarman
+'  V23 Specular gouraud.
 '  V19 Re-introduce textures mapping, although you only get red brick for now.
 '  V17 is where the directional lighting using vertex normals is functioning.
 '
@@ -67,6 +68,7 @@ Type triangle
     v1 As Single
     u2 As Single
     v2 As Single
+
     texture As _Unsigned Long
     options As _Unsigned Long
     material As Long
@@ -101,6 +103,7 @@ Type newmtl_type
     Ks_r As Single
     Ks_g As Single
     Ks_b As Single
+    diaphaneity As Single ' translucency factor
     textName As String
 End Type
 
@@ -226,6 +229,7 @@ End If
 ' always create at least one material. 0 just creates a single element index 0.
 Dim Shared Materials(Materials_Count) As newmtl_type
 ' sensible defaults to at least show something.
+Materials(0).diaphaneity = 1.0
 Materials(0).Kd_r = 0.5: Materials(0).Kd_g = 0.5: Materials(0).Kd_b = 0.5
 Materials(0).Ks_r = 0.25: Materials(0).Ks_g = 0.25: Materials(0).Ks_b = 0.25
 
@@ -267,9 +271,9 @@ Dim pointRotZX1 As vec3d
 Dim pointRotZX2 As vec3d
 
 ' Translation (as in offset)
-Dim pointTrans0 As vec3d
-Dim pointTrans1 As vec3d
-Dim pointTrans2 As vec3d
+Dim pointWorld0 As vec3d
+Dim pointWorld1 As vec3d
+Dim pointWorld2 As vec3d
 
 ' View Space 2-10-2023
 Dim matView(3, 3) As Single
@@ -296,7 +300,7 @@ vCameraPsn.x = 0.0
 vCameraPsn.y = 0.0
 vCameraPsn.z = -6.0
 
-Dim cameraRay As vec3d
+Dim cameraRay0 As vec3d
 Dim dotProductCam As Single
 
 ' View Space 2-10-2023
@@ -320,13 +324,14 @@ Dim matCamera(3, 3) As Single
 
 ' Directional light 1-17-2023
 Dim vLightDir As vec3d
-vLightDir.x = -2.0
-vLightDir.y = 10.0 ' +Y is now up
-vLightDir.z = -5.0
+' Put the light source where the camera starts so you don't go insane when trying to get the specular vectors correct.
+vLightDir.x = 0.0
+vLightDir.y = 0.0 ' +Y is now up
+vLightDir.z = -6.0
 Vector3_Normalize vLightDir
 Dim Shared Light_Directional As Single
 Dim Shared Light_AmbientVal As Single
-Light_AmbientVal = 0.6
+Light_AmbientVal = 0.2
 
 ' Directional lighting using vertex normals
 Dim light_directional_A As Single
@@ -335,6 +340,17 @@ Dim light_directional_C As Single
 Dim face_light_r As Single
 Dim face_light_g As Single
 Dim face_light_b As Single
+
+' Specular lighting
+Dim cameraRay1 As vec3d
+Dim cameraRay2 As vec3d
+Dim vLightSpec As vec3d
+Dim reflectLightDir0 As vec3d
+Dim reflectLightDir1 As vec3d
+Dim reflectLightDir2 As vec3d
+Dim light_specular_A As Single
+Dim light_specular_B As Single
+Dim light_specular_C As Single
 
 ' Screen Scaling
 Dim halfWidth As Single
@@ -371,6 +387,8 @@ Dim frametimestamp_delta_ms As Double
 Dim frame_advance As Integer
 
 ' Main loop stuff
+Dim renderPass As Integer
+Dim transparencyFactor As Single
 Dim KeyNow As String
 Dim ExitCode As Integer
 Dim Animate_Spin As Integer
@@ -378,11 +396,6 @@ Dim Shared Dither_Selection As Integer
 Dim Gouraud_Shading_Selection As Integer
 Dim vMove_Player_Forward As vec3d
 
-' Clear Z-Buffer
-Dim L As _Unsigned Long
-For L = 0 To Screen_Z_Buffer_MaxElement
-    Screen_Z_Buffer(L) = 3.402823E+38 ' https://qb64phoenix.com/qb64wiki/index.php/Variable_Types
-Next L
 
 main:
 $Checking:Off
@@ -391,6 +404,7 @@ Animate_Spin = -1
 T1_Filter_Selection = 2
 Dither_Selection = 0
 Gouraud_Shading_Selection = 1
+cube = 1
 
 fPitch = 0.0
 fYaw = 0.0
@@ -455,35 +469,15 @@ Do
     _Source WORK_IMAGE
 
     ' Clear Z-Buffer
-    'For L = 0 To Screen_Z_Buffer_MaxElement
-    'Screen_Z_Buffer(L) = 3.402823E+38 'https://qb64phoenix.com/qb64wiki/index.php/Variable_Types
-    'Next L
-    ' Erase Screen_Z_Buffer
-    ' This is a qbasic only optimization. it sets the value to zero. it saves 10 ms.
+    ' This is a qbasic only optimization. it sets the array to zero. it saves 10 ms.
     ReDim Screen_Z_Buffer(Screen_Z_Buffer_MaxElement)
 
-    ' Objects Z sort
-    ' Need to first rotate the objects to how they will be seen.
-    For cube = 1 To Cube_Count
-        ' Rotate in Z-Axis
-        Multiply_Vector3_Matrix4 Objects(cube).psn, matRotZ(), pointRotZ0
-
-        ' Rotate in X-Axis
-        Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), pointRotZX0
-
-        ' Convert World Space --> View Space
-        Multiply_Vector3_Matrix4 pointRotZX0, matView(), pointView0
-
-        Objects(cube).viewz = pointView0.z
-    Next cube
-    QuickSort_ViewZ 1, Cube_Count, Objects()
-    'Locate 10, 1
-
     ' Draw Triangles
-    For cube = Cube_Count To 1 Step -1
-        'Print Objects(cube).first, Objects(cube).viewz
-
+    For renderPass = 0 To 1
         For A = Objects(cube).first To Objects(cube).last
+            transparencyFactor = Materials(mesh(A).material).diaphaneity
+            If ((renderPass = 0) And (transparencyFactor < 1.0)) Or ((renderPass = 1) And (transparencyFactor = 1.0)) Then GoTo Lbl_SkipA
+
             point0.x = mesh(A).x0
             point0.y = mesh(A).y0
             point0.z = mesh(A).z0
@@ -507,22 +501,22 @@ Do
             Multiply_Vector3_Matrix4 pointRotZ2, matRotX(), pointRotZX2
 
             ' Offset into the screen
-            pointTrans0 = pointRotZX0
-            pointTrans1 = pointRotZX1
-            pointTrans2 = pointRotZX2
+            pointWorld0 = pointRotZX0
+            pointWorld1 = pointRotZX1
+            pointWorld2 = pointRotZX2
 
 
             ' Part 2 (Triangle Surface Normal Calculation)
-            CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
+            CalcSurfaceNormal_3Point pointWorld0, pointWorld1, pointWorld2, tri_normal
 
-            Vector3_Delta vCameraPsn, pointTrans0, cameraRay
-            dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay)
+            Vector3_Delta vCameraPsn, pointWorld0, cameraRay0 ' be careful, this is not normalized.
+            dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay0) ' only interested here in the sign (positive)
 
             If dotProductCam > 0.0 Then
                 ' Convert World Space --> View Space
-                Multiply_Vector3_Matrix4 pointTrans0, matView(), pointView0
-                Multiply_Vector3_Matrix4 pointTrans1, matView(), pointView1
-                Multiply_Vector3_Matrix4 pointTrans2, matView(), pointView2
+                Multiply_Vector3_Matrix4 pointWorld0, matView(), pointView0
+                Multiply_Vector3_Matrix4 pointWorld1, matView(), pointView1
+                Multiply_Vector3_Matrix4 pointWorld2, matView(), pointView2
 
                 ' Skip if any Z is too close
                 If (pointView0.z < Frustum_Near) Or (pointView1.z < Frustum_Near) Or (pointView2.z < Frustum_Near) Then
@@ -556,30 +550,41 @@ Do
                 vertexA.w = pointProj0.w ' depth
                 vertexA.u = mesh(A).u0 * T1_width * pointProj0.w
                 vertexA.v = mesh(A).v0 * T1_height * pointProj0.w
-                vertexA.a = 1 * pointProj0.w
+                vertexA.a = transparencyFactor * pointProj0.w
 
                 vertexB.x = SX1
                 vertexB.y = SY1
                 vertexB.w = pointProj1.w ' depth
                 vertexB.u = mesh(A).u1 * T1_width * pointProj1.w
                 vertexB.v = mesh(A).v1 * T1_height * pointProj1.w
-                vertexB.a = 1 * pointProj1.w
+                vertexB.a = transparencyFactor * pointProj1.w
 
                 vertexC.x = SX2
                 vertexC.y = SY2
                 vertexC.w = pointProj2.w ' depth
                 vertexC.u = mesh(A).u2 * T1_width * pointProj2.w
                 vertexC.v = mesh(A).v2 * T1_height * pointProj2.w
-                vertexC.a = 1 * pointProj2.w
+                vertexC.a = transparencyFactor * pointProj2.w
 
                 T1_options = mesh(A).options
 
-                face_light_r = Materials(mesh(A).material).Kd_r * 255.0
-                face_light_g = Materials(mesh(A).material).Kd_g * 255.0
-                face_light_b = Materials(mesh(A).material).Kd_b * 255.0
+                If mesh(A).texture = 0 Then
+                    ' start with the diffuse color
+                    T1_options = T1_options Or T1_option_no_T1
+                    face_light_r = Materials(mesh(A).material).Kd_r * 255.0 ' because Kd_r ranges from 0 to 1
+                    face_light_g = Materials(mesh(A).material).Kd_g * 255.0
+                    face_light_b = Materials(mesh(A).material).Kd_b * 255.0
+                Else
+                    ' start at full brightness, let the lack of light darken the texture
+                    face_light_r = 255.0
+                    face_light_g = 255.0
+                    face_light_b = 255.0
+                End If
+
 
                 If Gouraud_Shading_Selection = 1 Then
                     ' 6-2-2024
+                    ' smooth shading
                     ' vertex normals can be rotated and still retain their effectiveness.
                     point0.x = vtxnorms(mesh(A).vni0).x
                     point0.y = vtxnorms(mesh(A).vni0).y
@@ -603,6 +608,7 @@ Do
                     Multiply_Vector3_Matrix4 pointRotZ1, matRotX(), vertex_normal_B
                     Multiply_Vector3_Matrix4 pointRotZ2, matRotX(), vertex_normal_C
 
+                    ' Directional light
                     light_directional_A = Vector3_DotProduct(vertex_normal_A, vLightDir)
                     light_directional_B = Vector3_DotProduct(vertex_normal_B, vLightDir)
                     light_directional_C = Vector3_DotProduct(vertex_normal_C, vLightDir)
@@ -611,39 +617,82 @@ Do
                     If light_directional_B < 0.0 Then light_directional_B = 0.0
                     If light_directional_C < 0.0 Then light_directional_C = 0.0
 
-                    light_directional_A = light_directional_A + Light_AmbientVal
-                    light_directional_B = light_directional_B + Light_AmbientVal
-                    light_directional_C = light_directional_C + Light_AmbientVal
+                    ' Specular at Vertex
+                    ' Instead of a normalized light position pointing out from origin, needs to be pointing inward towards the reflective surface.
+                    vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
 
-                    vertexA.r = face_light_r * light_directional_A
-                    vertexA.g = face_light_g * light_directional_A
-                    vertexA.b = face_light_b * light_directional_A
+                    Vector3_Reflect vLightSpec, vertex_normal_A, reflectLightDir0
+                    Vector3_Normalize reflectLightDir0
+                    Vector3_Reflect vLightSpec, vertex_normal_B, reflectLightDir1
+                    Vector3_Normalize reflectLightDir1
+                    Vector3_Reflect vLightSpec, vertex_normal_C, reflectLightDir2
+                    Vector3_Normalize reflectLightDir2
 
-                    vertexB.r = face_light_r * light_directional_B
-                    vertexB.g = face_light_g * light_directional_B
-                    vertexB.b = face_light_b * light_directional_B
 
-                    vertexC.r = face_light_r * light_directional_C
-                    vertexC.g = face_light_g * light_directional_C
-                    vertexC.b = face_light_b * light_directional_C
+                    Vector3_Normalize cameraRay0
+                    light_specular_A = Vector3_DotProduct!(reflectLightDir0, cameraRay0)
+                    If light_specular_A < 0.0 Then light_specular_A = 0.0
+                    ' this power thing only works because it's supposed to range from 0..1 again.
+                    ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
+                    light_specular_A = 3.0 * light_specular_A ^ 16
+
+                    Vector3_Delta vCameraPsn, pointWorld1, cameraRay1
+                    Vector3_Normalize cameraRay1
+                    light_specular_B = Vector3_DotProduct!(reflectLightDir1, cameraRay1)
+                    If light_specular_B < 0.0 Then light_specular_B = 0.0
+                    light_specular_B = 3.0 * light_specular_B ^ 16
+
+                    Vector3_Delta vCameraPsn, pointWorld2, cameraRay2
+                    Vector3_Normalize cameraRay2
+                    light_specular_C = Vector3_DotProduct!(reflectLightDir2, cameraRay2)
+                    If light_specular_C < 0.0 Then light_specular_C = 0.0
+                    light_specular_C = 3.0 * light_specular_C ^ 16
+
+                    vertexA.r = 255.0 * (Materials(mesh(A).material).Kd_r * light_directional_A + Materials(mesh(A).material).Ks_r * light_specular_A + Light_AmbientVal)
+                    vertexA.g = 255.0 * (Materials(mesh(A).material).Kd_g * light_directional_A + Materials(mesh(A).material).Ks_g * light_specular_A + Light_AmbientVal)
+                    vertexA.b = 255.0 * (Materials(mesh(A).material).Kd_b * light_directional_A + Materials(mesh(A).material).Ks_b * light_specular_A + Light_AmbientVal)
+
+                    vertexB.r = 255.0 * (Materials(mesh(A).material).Kd_r * light_directional_B + Materials(mesh(A).material).Ks_r * light_specular_B + Light_AmbientVal)
+                    vertexB.g = 255.0 * (Materials(mesh(A).material).Kd_g * light_directional_B + Materials(mesh(A).material).Ks_g * light_specular_B + Light_AmbientVal)
+                    vertexB.b = 255.0 * (Materials(mesh(A).material).Kd_b * light_directional_B + Materials(mesh(A).material).Ks_b * light_specular_B + Light_AmbientVal)
+
+                    vertexC.r = 255.0 * (Materials(mesh(A).material).Kd_r * light_directional_C + Materials(mesh(A).material).Ks_r * light_specular_C + Light_AmbientVal)
+                    vertexC.g = 255.0 * (Materials(mesh(A).material).Kd_g * light_directional_C + Materials(mesh(A).material).Ks_g * light_specular_C + Light_AmbientVal)
+                    vertexC.b = 255.0 * (Materials(mesh(A).material).Kd_b * light_directional_C + Materials(mesh(A).material).Ks_b * light_specular_C + Light_AmbientVal)
+
                 Else
-                    ' flat shading
+                    ' flat face shading
+
                     ' Directional light 1-17-2023
                     Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
                     If Light_Directional < 0.0 Then Light_Directional = 0.0
-                    Light_Directional = Light_Directional + Light_AmbientVal
 
-                    vertexA.r = face_light_r * Light_Directional
-                    vertexA.g = face_light_g * Light_Directional
-                    vertexA.b = face_light_b * Light_Directional
+                    ' Specular light
+                    vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
+                    Vector3_Reflect vLightSpec, tri_normal, reflectLightDir0
+                    Vector3_Normalize reflectLightDir0
 
-                    vertexB.r = face_light_r * Light_Directional
-                    vertexB.g = face_light_g * Light_Directional
-                    vertexB.b = face_light_b * Light_Directional
+                    ' cameraRay0 is facing triangle point 0 in world space.
+                    Vector3_Normalize cameraRay0
+                    light_specular_A = Vector3_DotProduct!(reflectLightDir0, cameraRay0)
+                    If light_specular_A < 0.0 Then light_specular_A = 0.0
+                    light_specular_A = 3 * light_specular_A ^ 16
 
-                    vertexC.r = face_light_r * Light_Directional
-                    vertexC.g = face_light_g * Light_Directional
-                    vertexC.b = face_light_b * Light_Directional
+                    face_light_r = 255.0 * (Materials(mesh(A).material).Kd_r * Light_Directional + Materials(mesh(A).material).Ks_r * light_specular_A + Light_AmbientVal)
+                    face_light_g = 255.0 * (Materials(mesh(A).material).Kd_g * Light_Directional + Materials(mesh(A).material).Ks_g * light_specular_A + Light_AmbientVal)
+                    face_light_b = 255.0 * (Materials(mesh(A).material).Kd_b * Light_Directional + Materials(mesh(A).material).Ks_b * light_specular_A + Light_AmbientVal)
+
+                    vertexA.r = face_light_r
+                    vertexA.g = face_light_g
+                    vertexA.b = face_light_b
+
+                    vertexB.r = face_light_r
+                    vertexB.g = face_light_g
+                    vertexB.b = face_light_b
+
+                    vertexC.r = face_light_r
+                    vertexC.g = face_light_g
+                    vertexC.b = face_light_b
                 End If
 
                 TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
@@ -656,7 +705,7 @@ Do
 
             Lbl_SkipA:
         Next A
-    Next cube
+    Next renderPass
 
     render_ms = Timer(.001)
 
@@ -742,7 +791,7 @@ Do
         ElseIf KeyNow = "R" Then
             vCameraPsn.x = 0.0
             vCameraPsn.y = 0.0
-            vCameraPsn.z = 0.0
+            vCameraPsn.z = -6.0
             fPitch = 0.0
             fYaw = 0.0
         ElseIf KeyNow = "G" Then
@@ -1382,7 +1431,7 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, leVertexL
     Close #2
     'Dim temp$
     'Input "waiting..."; temp$
-    Sleep 3
+    'Sleep 3
 End Sub
 
 Function FindVertexNumAbsOrRel (param As Double, recentvert As Long)
@@ -1479,6 +1528,8 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
         If Left$(trimString, 7) = "newmtl " Then
             totalMaterials = totalMaterials + 1
             mats(totalMaterials).textName = _Trim$(Mid$(trimString, 8))
+            ' set any defaults that are non-zero
+            mats(totalMaterials).diaphaneity = 1.0
 
         ElseIf Left$(trimString, 3) = "Kd " Then
             ' Diffuse color is the most dominant color
@@ -1558,6 +1609,10 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
             End If
             'Print totalMaterials, "["; Mid$(trimString, 4); "]"
 
+        ElseIf Left$(trimString, 2) = "d " Then
+            ' diaphaneity
+            mats(totalMaterials).diaphaneity = Val(Mid$(trimString, 3))
+
         End If
         BAIL_INDENT_MATERIAL:
     Loop
@@ -1566,7 +1621,7 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
     Print totalMaterials, "Total Materials"
     Dim i As Long
     For i = 1 To totalMaterials
-        'Print i, mats(i).textName; mats(i).Kd_r; mats(i).Kd_g; mats(i).Kd_b
+        Print i, mats(i).textName; mats(i).Kd_r; mats(i).Kd_g; mats(i).Kd_b; mats(i).diaphaneity
     Next i
     'Dim temp$
     'Input "waiting..."; temp$
@@ -1677,6 +1732,14 @@ End Sub
 Function Vector3_DotProduct! (p0 As vec3d, p1 As vec3d)
     Vector3_DotProduct! = p0.x * p1.x + p0.y * p1.y + p0.z * p1.z
 End Function
+
+Sub Vector3_Reflect (i As vec3d, normal As vec3d, o As vec3d)
+    Static mag As Single
+    Static bounce As vec3d
+    mag = -2.0 * Vector3_DotProduct!(i, normal)
+    Vector3_Mul normal, mag, bounce
+    Vector3_Add bounce, i, o
+End Sub
 
 Sub Matrix4_MakeIdentity (m( 3 , 3) As Single)
     m(0, 0) = 1.0: m(0, 1) = 0.0: m(0, 2) = 0.0: m(0, 3) = 0.0

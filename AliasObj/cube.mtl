@@ -6,12 +6,12 @@
 newmtl default
   Ns 10.0000
   Ni 1.5000
-  d 1.0000
-  Tr 0  0
+  d 0.8
+  Tr 0.2
   Tf 1 1 1 
   illum 2
   Ka 1 1 1
   Kd 0.5 0.5 0.4
   Ks 0.2 0.2 0.2
   Ke 0 0 0
-  map_Kd default.png
+#  map_Kd default.png
