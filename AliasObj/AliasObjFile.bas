@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Alias Object File 23"
+_Title "Alias Object File 24"
 ' 2024 Haggarman
 '  V23 Specular gouraud.
 '  V19 Re-introduce textures mapping, although you only get red brick for now.
@@ -12,11 +12,11 @@ _Title "Alias Object File 23"
 '
 Dim Shared DISP_IMAGE As Long
 Dim Shared WORK_IMAGE As Long
-Dim Shared FILTER_IMAGE As Long
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
 Dim Shared Size_Render_X As Integer, Size_Render_Y As Integer
-Dim Cube_Count As Integer
-Cube_Count = 1 ' keep at 1 for now
+Dim Actor_Count As Integer
+Actor_Count = 1 ' keep at 1 for now
+Dim Shared Camera_Start_Z
 Dim Obj_File_Name As String
 
 
@@ -26,12 +26,12 @@ Size_Screen_X = 1024
 Size_Screen_Y = 768
 Size_Render_X = Size_Screen_X \ 2 ' render size
 Size_Render_Y = Size_Screen_Y \ 2
+Camera_Start_Z = -6.0
 
 DISP_IMAGE = _NewImage(Size_Screen_X, Size_Screen_Y, 32)
 Screen DISP_IMAGE
 
 WORK_IMAGE = _NewImage(Size_Render_X, Size_Render_Y, 32)
-FILTER_IMAGE = _NewImage(Size_Render_X, Size_Render_Y, 32)
 _DontBlend
 
 Dim Shared Screen_Z_Buffer_MaxElement As Long
@@ -188,17 +188,9 @@ For row = 0 To T1_height_MASK
 Next row
 
 
-' Bayer Ordered Dither Matrix
-Dim Shared Dither4(3, 3) As Integer
-Dither4(0, 0) = 1: Dither4(1, 0) = 5: Dither4(2, 0) = 2: Dither4(3, 0) = 6
-Dither4(0, 1) = 7: Dither4(1, 1) = 3: Dither4(2, 1) = 8: Dither4(3, 1) = 4
-Dither4(0, 2) = 2: Dither4(1, 2) = 6: Dither4(2, 2) = 1: Dither4(3, 2) = 5
-Dither4(0, 3) = 8: Dither4(1, 3) = 4: Dither4(2, 3) = 7: Dither4(3, 3) = 3
-
-
 ' Load Mesh
 Dim Shared Objects_Last_Element As Integer
-Objects_Last_Element = Cube_Count
+Objects_Last_Element = Actor_Count
 Dim Objects(Objects_Last_Element) As objectlist_type
 ' index 0 will be invisible
 
@@ -243,14 +235,14 @@ Dim Shared mesh(Mesh_Last_Element) As triangle
 ' 6-1-2024
 Dim Shared vtxnorms(Normals_Count) As vec3d
 
-Dim cube As Integer
-Dim A As Long
-A = 0
-For cube = 1 To Cube_Count
-    Objects(cube).first = A + 1
-    LoadMesh Obj_File_Name, mesh(), A, Vertex_Count, TextureCoord_Count, Materials(), vtxnorms()
-    Objects(cube).last = A
-Next cube
+Dim actor As Integer
+Dim tri As Long
+tri = 0
+For actor = 1 To Actor_Count
+    Objects(actor).first = tri + 1
+    LoadMesh Obj_File_Name, mesh(), tri, Vertex_Count, TextureCoord_Count, Materials(), vtxnorms()
+    Objects(actor).last = tri
+Next actor
 
 ' Here are the 3D math and projection vars
 
@@ -298,7 +290,7 @@ Dim vertex_normal_C As vec3d
 Dim vCameraPsn As vec3d ' location of camera in world space
 vCameraPsn.x = 0.0
 vCameraPsn.y = 0.0
-vCameraPsn.z = -6.0
+vCameraPsn.z = Camera_Start_Z
 
 Dim cameraRay0 As vec3d
 Dim dotProductCam As Single
@@ -327,7 +319,7 @@ Dim vLightDir As vec3d
 ' Put the light source where the camera starts so you don't go insane when trying to get the specular vectors correct.
 vLightDir.x = 0.0
 vLightDir.y = 0.0 ' +Y is now up
-vLightDir.z = -6.0
+vLightDir.z = Camera_Start_Z
 Vector3_Normalize vLightDir
 Dim Shared Light_Directional As Single
 Dim Shared Light_AmbientVal As Single
@@ -376,7 +368,6 @@ spinAngleDegX = 0.0
 ' code execution time
 Dim start_ms As Double
 Dim render_ms As Double
-Dim filter_ms As Double
 
 ' physics framerate
 Dim frametime_fullframe_ms As Double
@@ -404,7 +395,7 @@ Animate_Spin = -1
 T1_Filter_Selection = 2
 Dither_Selection = 0
 Gouraud_Shading_Selection = 1
-cube = 1
+actor = 1
 
 fPitch = 0.0
 fYaw = 0.0
@@ -474,21 +465,21 @@ Do
 
     ' Draw Triangles
     For renderPass = 0 To 1
-        For A = Objects(cube).first To Objects(cube).last
-            transparencyFactor = Materials(mesh(A).material).diaphaneity
-            If ((renderPass = 0) And (transparencyFactor < 1.0)) Or ((renderPass = 1) And (transparencyFactor = 1.0)) Then GoTo Lbl_SkipA
+        For tri = Objects(actor).first To Objects(actor).last
+            transparencyFactor = Materials(mesh(tri).material).diaphaneity
+            If ((renderPass = 0) And (transparencyFactor < 1.0)) Or ((renderPass = 1) And (transparencyFactor = 1.0)) Then GoTo Lbl_Skip_tri
 
-            point0.x = mesh(A).x0
-            point0.y = mesh(A).y0
-            point0.z = mesh(A).z0
+            point0.x = mesh(tri).x0
+            point0.y = mesh(tri).y0
+            point0.z = mesh(tri).z0
 
-            point1.x = mesh(A).x1
-            point1.y = mesh(A).y1
-            point1.z = mesh(A).z1
+            point1.x = mesh(tri).x1
+            point1.y = mesh(tri).y1
+            point1.z = mesh(tri).z1
 
-            point2.x = mesh(A).x2
-            point2.y = mesh(A).y2
-            point2.z = mesh(A).z2
+            point2.x = mesh(tri).x2
+            point2.y = mesh(tri).y2
+            point2.z = mesh(tri).z2
 
             ' Rotate in Z-Axis
             Multiply_Vector3_Matrix4 point0, matRotZ(), pointRotZ0
@@ -520,7 +511,7 @@ Do
 
                 ' Skip if any Z is too close
                 If (pointView0.z < Frustum_Near) Or (pointView1.z < Frustum_Near) Or (pointView2.z < Frustum_Near) Then
-                    GoTo Lbl_SkipA
+                    GoTo Lbl_Skip_tri
                 End If
 
                 ' Project triangles from 3D -----------------> 2D
@@ -529,10 +520,10 @@ Do
                 ProjectMatrixVector4 pointView2, matProj(), pointProj2
 
                 ' Early scissor reject
-                If pointProj0.x > 1.0 And pointProj1.x > 1.0 And pointProj2.x > 1.0 Then GoTo Lbl_SkipA
-                If pointProj0.x < -1.0 And pointProj1.x < -1.0 And pointProj2.x < -1.0 Then GoTo Lbl_SkipA
-                If pointProj0.y > 1.0 And pointProj1.y > 1.0 And pointProj2.y > 1.0 Then GoTo Lbl_SkipA
-                If pointProj0.y < -1.0 And pointProj1.y < -1.0 And pointProj2.y < -1.0 Then GoTo Lbl_SkipA
+                If pointProj0.x > 1.0 And pointProj1.x > 1.0 And pointProj2.x > 1.0 Then GoTo Lbl_Skip_tri
+                If pointProj0.x < -1.0 And pointProj1.x < -1.0 And pointProj2.x < -1.0 Then GoTo Lbl_Skip_tri
+                If pointProj0.y > 1.0 And pointProj1.y > 1.0 And pointProj2.y > 1.0 Then GoTo Lbl_Skip_tri
+                If pointProj0.y < -1.0 And pointProj1.y < -1.0 And pointProj2.y < -1.0 Then GoTo Lbl_Skip_tri
 
                 ' Slide to center, then Scale into viewport
                 SX0 = (pointProj0.x + 1) * halfWidth
@@ -548,55 +539,46 @@ Do
                 vertexA.x = SX0
                 vertexA.y = SY0
                 vertexA.w = pointProj0.w ' depth
-                vertexA.u = mesh(A).u0 * T1_width * pointProj0.w
-                vertexA.v = mesh(A).v0 * T1_height * pointProj0.w
+                vertexA.u = mesh(tri).u0 * T1_width * pointProj0.w
+                vertexA.v = mesh(tri).v0 * T1_height * pointProj0.w
                 vertexA.a = transparencyFactor * pointProj0.w
 
                 vertexB.x = SX1
                 vertexB.y = SY1
                 vertexB.w = pointProj1.w ' depth
-                vertexB.u = mesh(A).u1 * T1_width * pointProj1.w
-                vertexB.v = mesh(A).v1 * T1_height * pointProj1.w
+                vertexB.u = mesh(tri).u1 * T1_width * pointProj1.w
+                vertexB.v = mesh(tri).v1 * T1_height * pointProj1.w
                 vertexB.a = transparencyFactor * pointProj1.w
 
                 vertexC.x = SX2
                 vertexC.y = SY2
                 vertexC.w = pointProj2.w ' depth
-                vertexC.u = mesh(A).u2 * T1_width * pointProj2.w
-                vertexC.v = mesh(A).v2 * T1_height * pointProj2.w
+                vertexC.u = mesh(tri).u2 * T1_width * pointProj2.w
+                vertexC.v = mesh(tri).v2 * T1_height * pointProj2.w
                 vertexC.a = transparencyFactor * pointProj2.w
 
-                T1_options = mesh(A).options
+                T1_options = mesh(tri).options
 
-                If mesh(A).texture = 0 Then
+                If mesh(tri).texture = 0 Then
                     ' start with the diffuse color
                     T1_options = T1_options Or T1_option_no_T1
-                    face_light_r = Materials(mesh(A).material).Kd_r * 255.0 ' because Kd_r ranges from 0 to 1
-                    face_light_g = Materials(mesh(A).material).Kd_g * 255.0
-                    face_light_b = Materials(mesh(A).material).Kd_b * 255.0
-                Else
-                    ' start at full brightness, let the lack of light darken the texture
-                    face_light_r = 255.0
-                    face_light_g = 255.0
-                    face_light_b = 255.0
                 End If
-
 
                 If Gouraud_Shading_Selection = 1 Then
                     ' 6-2-2024
                     ' smooth shading
                     ' vertex normals can be rotated and still retain their effectiveness.
-                    point0.x = vtxnorms(mesh(A).vni0).x
-                    point0.y = vtxnorms(mesh(A).vni0).y
-                    point0.z = vtxnorms(mesh(A).vni0).z
+                    point0.x = vtxnorms(mesh(tri).vni0).x
+                    point0.y = vtxnorms(mesh(tri).vni0).y
+                    point0.z = vtxnorms(mesh(tri).vni0).z
 
-                    point1.x = vtxnorms(mesh(A).vni1).x
-                    point1.y = vtxnorms(mesh(A).vni1).y
-                    point1.z = vtxnorms(mesh(A).vni1).z
+                    point1.x = vtxnorms(mesh(tri).vni1).x
+                    point1.y = vtxnorms(mesh(tri).vni1).y
+                    point1.z = vtxnorms(mesh(tri).vni1).z
 
-                    point2.x = vtxnorms(mesh(A).vni2).x
-                    point2.y = vtxnorms(mesh(A).vni2).y
-                    point2.z = vtxnorms(mesh(A).vni2).z
+                    point2.x = vtxnorms(mesh(tri).vni2).x
+                    point2.y = vtxnorms(mesh(tri).vni2).y
+                    point2.z = vtxnorms(mesh(tri).vni2).z
 
                     ' Rotate in Z-Axis
                     Multiply_Vector3_Matrix4 point0, matRotZ(), pointRotZ0
@@ -648,17 +630,17 @@ Do
                     If light_specular_C < 0.0 Then light_specular_C = 0.0
                     light_specular_C = 3.0 * light_specular_C ^ 16
 
-                    vertexA.r = 255.0 * (Materials(mesh(A).material).Kd_r * light_directional_A + Materials(mesh(A).material).Ks_r * light_specular_A + Light_AmbientVal)
-                    vertexA.g = 255.0 * (Materials(mesh(A).material).Kd_g * light_directional_A + Materials(mesh(A).material).Ks_g * light_specular_A + Light_AmbientVal)
-                    vertexA.b = 255.0 * (Materials(mesh(A).material).Kd_b * light_directional_A + Materials(mesh(A).material).Ks_b * light_specular_A + Light_AmbientVal)
+                    vertexA.r = 255.0 * (Materials(mesh(tri).material).Kd_r * light_directional_A + Materials(mesh(tri).material).Ks_r * light_specular_A + Light_AmbientVal)
+                    vertexA.g = 255.0 * (Materials(mesh(tri).material).Kd_g * light_directional_A + Materials(mesh(tri).material).Ks_g * light_specular_A + Light_AmbientVal)
+                    vertexA.b = 255.0 * (Materials(mesh(tri).material).Kd_b * light_directional_A + Materials(mesh(tri).material).Ks_b * light_specular_A + Light_AmbientVal)
 
-                    vertexB.r = 255.0 * (Materials(mesh(A).material).Kd_r * light_directional_B + Materials(mesh(A).material).Ks_r * light_specular_B + Light_AmbientVal)
-                    vertexB.g = 255.0 * (Materials(mesh(A).material).Kd_g * light_directional_B + Materials(mesh(A).material).Ks_g * light_specular_B + Light_AmbientVal)
-                    vertexB.b = 255.0 * (Materials(mesh(A).material).Kd_b * light_directional_B + Materials(mesh(A).material).Ks_b * light_specular_B + Light_AmbientVal)
+                    vertexB.r = 255.0 * (Materials(mesh(tri).material).Kd_r * light_directional_B + Materials(mesh(tri).material).Ks_r * light_specular_B + Light_AmbientVal)
+                    vertexB.g = 255.0 * (Materials(mesh(tri).material).Kd_g * light_directional_B + Materials(mesh(tri).material).Ks_g * light_specular_B + Light_AmbientVal)
+                    vertexB.b = 255.0 * (Materials(mesh(tri).material).Kd_b * light_directional_B + Materials(mesh(tri).material).Ks_b * light_specular_B + Light_AmbientVal)
 
-                    vertexC.r = 255.0 * (Materials(mesh(A).material).Kd_r * light_directional_C + Materials(mesh(A).material).Ks_r * light_specular_C + Light_AmbientVal)
-                    vertexC.g = 255.0 * (Materials(mesh(A).material).Kd_g * light_directional_C + Materials(mesh(A).material).Ks_g * light_specular_C + Light_AmbientVal)
-                    vertexC.b = 255.0 * (Materials(mesh(A).material).Kd_b * light_directional_C + Materials(mesh(A).material).Ks_b * light_specular_C + Light_AmbientVal)
+                    vertexC.r = 255.0 * (Materials(mesh(tri).material).Kd_r * light_directional_C + Materials(mesh(tri).material).Ks_r * light_specular_C + Light_AmbientVal)
+                    vertexC.g = 255.0 * (Materials(mesh(tri).material).Kd_g * light_directional_C + Materials(mesh(tri).material).Ks_g * light_specular_C + Light_AmbientVal)
+                    vertexC.b = 255.0 * (Materials(mesh(tri).material).Kd_b * light_directional_C + Materials(mesh(tri).material).Ks_b * light_specular_C + Light_AmbientVal)
 
                 Else
                     ' flat face shading
@@ -678,9 +660,9 @@ Do
                     If light_specular_A < 0.0 Then light_specular_A = 0.0
                     light_specular_A = 3 * light_specular_A ^ 16
 
-                    face_light_r = 255.0 * (Materials(mesh(A).material).Kd_r * Light_Directional + Materials(mesh(A).material).Ks_r * light_specular_A + Light_AmbientVal)
-                    face_light_g = 255.0 * (Materials(mesh(A).material).Kd_g * Light_Directional + Materials(mesh(A).material).Ks_g * light_specular_A + Light_AmbientVal)
-                    face_light_b = 255.0 * (Materials(mesh(A).material).Kd_b * Light_Directional + Materials(mesh(A).material).Ks_b * light_specular_A + Light_AmbientVal)
+                    face_light_r = 255.0 * (Materials(mesh(tri).material).Kd_r * Light_Directional + Materials(mesh(tri).material).Ks_r * light_specular_A + Light_AmbientVal)
+                    face_light_g = 255.0 * (Materials(mesh(tri).material).Kd_g * Light_Directional + Materials(mesh(tri).material).Ks_g * light_specular_A + Light_AmbientVal)
+                    face_light_b = 255.0 * (Materials(mesh(tri).material).Kd_b * Light_Directional + Materials(mesh(tri).material).Ks_b * light_specular_A + Light_AmbientVal)
 
                     vertexA.r = face_light_r
                     vertexA.g = face_light_g
@@ -703,53 +685,22 @@ Do
                 'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
             End If
 
-            Lbl_SkipA:
-        Next A
+            Lbl_Skip_tri:
+        Next tri
     Next renderPass
 
     render_ms = Timer(.001)
 
-    If Dither_Selection = 2 Then
-        ' De-dither 10-5-2023
-        DeDitherWorkBuffer
-        _PutImage , FILTER_IMAGE, DISP_IMAGE
-        filter_ms = Timer(.001)
-    Else
-        _PutImage , WORK_IMAGE, DISP_IMAGE
-        filter_ms = render_ms
-    End If
+    _PutImage , WORK_IMAGE, DISP_IMAGE
 
     _Dest DISP_IMAGE
     Locate 1, 1
     Color _RGB32(177, 227, 255)
     Print Using "render time #.###"; render_ms - start_ms
-    Print Using "filter time #.###"; filter_ms - render_ms
     Color _RGB32(249, 244, 17)
     Print "ESC to exit. ";
     Color _RGB32(233)
     Print "Arrow Keys Move."
-    Print "Press F for Filter: ";
-    Select Case T1_Filter_Selection
-        Case 0
-            Print "Nearest"
-        Case 1
-            Print "3-Point N64"
-        Case 2
-            Print "Bilinear Fix"
-        Case 3
-            Print "Bilinear Float"
-
-    End Select
-
-    Print "Press D for Dither: ";
-    Select Case Dither_Selection
-        Case 0
-            Print "off"
-        Case 1
-            Print "Dither 555"
-        Case 2
-            Print "De-dither"
-    End Select
 
     If Animate_Spin Then
         Print "Press S to Stop Spin"
@@ -791,7 +742,7 @@ Do
         ElseIf KeyNow = "R" Then
             vCameraPsn.x = 0.0
             vCameraPsn.y = 0.0
-            vCameraPsn.z = -6.0
+            vCameraPsn.z = Camera_Start_Z
             fPitch = 0.0
             fYaw = 0.0
         ElseIf KeyNow = "G" Then
@@ -2266,143 +2217,6 @@ Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long) Stat
     RGB_Modulate& = _RGB32(_ShR(r1 * r2, 8), _ShR(g1 * g2, 8), _ShR(b1 * b2, 8))
 End Function
 
-
-Sub RGB_Dither555 (col As Long, row As Long, RGB_1 As _Unsigned Long) Static
-    Static r1 As Long
-    Static g1 As Long
-    Static b1 As Long
-    Static r2 As Long
-    Static g2 As Long
-    Static b2 As Long
-    Static threshold As Long
-
-    ' Extract bit fields
-    r1 = _Red32(RGB_1)
-    g1 = _Green32(RGB_1)
-    b1 = _Blue32(RGB_1)
-    r2 = r1 And 7
-    g2 = g1 And 7
-    b2 = b1 And 7
-
-    ' Duplicate the 3 MSB into the 3 LSB
-    ' This is because if you just zero the 3 LSB, you'll never hit full 255 brightness.
-    ' We need to act like the DAC only has 5 bits instead of 8.
-    r1 = (r1 And &HFFF8) Or _ShR(r1, 5)
-    g1 = (g1 And &HFFF8) Or _ShR(g1, 5)
-    b1 = (b1 And &HFFF8) Or _ShR(b1, 5)
-
-    ' Compare the fractional LSB amount to the 4x4 Bayer matrix.
-    ' Select the next brighter color component if threshold is reached.
-    threshold = Dither4(col And 3, row And 3)
-    If r2 >= threshold Then r1 = r1 + 9
-    If g2 >= threshold Then g1 = g1 + 9
-    If b2 >= threshold Then b1 = b1 + 9
-
-    PSet (col, row), _RGB32(r1, g1, b1) ' Relying on >255 clamped to 255
-End Sub
-
-
-Sub DeDitherWorkBuffer
-    ' Work Screen Memory Pointers
-    Static work_mem_info As _MEM
-    Static work_next_row_step As _Offset
-    Static work_row_base As _Offset ' Calculated every row
-    Static work_address As _Offset ' Calculated at every starting column
-    work_mem_info = _MemImage(WORK_IMAGE)
-    work_next_row_step = 4 * Size_Render_X
-
-    ' Filter Screen Memory Pointers
-    Static filter_mem_info As _MEM
-    Static filter_next_row_step As _Offset
-    Static filter_row_base As _Offset ' Calculated every row
-    Static filter_address As _Offset ' Calculated at every starting column
-    filter_mem_info = _MemImage(FILTER_IMAGE)
-    filter_next_row_step = 4 * Size_Render_X
-
-    Static neighbor_address As _Offset
-    Static neighbor_left As _Offset
-    Static pixel_value As _Unsigned Long
-
-    Dim R As Integer
-    Dim C As Integer
-    Dim innerR As Integer
-    Dim innerC As Integer
-
-    Dim pixel_existing As _Unsigned Long
-    Dim existing_red As Long
-    Dim existing_green As Long
-    Dim existing_blue As Long
-
-    Dim pixel_neighbor As _Unsigned Long
-    Dim neighbor_red As Long
-    Dim neighbor_green As Long
-    Dim neighbor_blue As Long
-
-    Dim filter_red As Long
-    Dim filter_green As Long
-    Dim filter_blue As Long
-
-
-    _Source WORK_IMAGE
-    _Dest FILTER_IMAGE
-
-    work_row_base = work_mem_info.OFFSET
-    filter_row_base = filter_mem_info.OFFSET + filter_next_row_step + 4 ' one line down and one right
-
-    For R = 1 To Size_Render_Y - 2
-
-        work_address = work_row_base
-        filter_address = filter_row_base
-
-        For C = 1 To Size_Render_X - 2
-            'pixel_existing = Point(C, R)
-            pixel_existing = _MemGet(work_mem_info, work_address + work_next_row_step + 4, _Unsigned Long)
-            existing_red = _Red32(pixel_existing)
-            existing_green = _Green32(pixel_existing)
-            existing_blue = _Blue32(pixel_existing)
-
-            filter_red = existing_red
-            filter_green = existing_green
-            filter_blue = existing_blue
-
-            neighbor_left = work_address ' top left
-
-            For innerR = -1 To 1
-                neighbor_address = neighbor_left
-                For innerC = -1 To 1
-                    pixel_neighbor = _MemGet(work_mem_info, neighbor_address, _Unsigned Long)
-
-                    neighbor_red = _Red32(pixel_neighbor)
-                    neighbor_green = _Green32(pixel_neighbor)
-                    neighbor_blue = _Blue32(pixel_neighbor)
-
-                    If neighbor_red > existing_red Then filter_red = filter_red + 1
-                    If neighbor_red < existing_red Then filter_red = filter_red - 1
-
-                    If neighbor_green > existing_green Then filter_green = filter_green + 1
-                    If neighbor_green < existing_green Then filter_green = filter_green - 1
-
-                    If neighbor_blue > existing_blue Then filter_blue = filter_blue + 1
-                    If neighbor_blue < existing_blue Then filter_blue = filter_blue - 1
-
-                    neighbor_address = neighbor_address + 4
-                Next innerC
-                neighbor_left = neighbor_left + work_next_row_step
-            Next innerR
-
-            pixel_value = _RGB32(filter_red, filter_green, filter_blue)
-            _MemPut filter_mem_info, filter_address, pixel_value
-
-            filter_address = filter_address + 4
-            work_address = work_address + 4
-        Next C
-
-        work_row_base = work_row_base + work_next_row_step
-        filter_row_base = filter_row_base + filter_next_row_step
-    Next R
-
-End Sub
-
 Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
     Static delta2 As vertex9
     Static delta1 As vertex9
@@ -2556,10 +2370,20 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
     Static tex_r As Single, tex_g As Single, tex_b As Single
     Static tex_a As Single
 
+    ' Work Screen Memory Pointers
+    Static work_mem_info As _MEM
+    Static work_next_row_step As _Offset
+    Static work_row_base As _Offset ' Calculated every row
+    Static work_address As _Offset ' Calculated at every starting column
+    work_mem_info = _MemImage(WORK_IMAGE)
+    work_next_row_step = 4 * Size_Render_X
+
     ' Invalidate texel cache
     T1_last_cache = &HFFFFFFFF
 
+    ' Row Loop from top to bottom
     row = draw_min_y
+    work_row_base = work_mem_info.OFFSET + row * work_next_row_step
     While row <= draw_max_y
 
         If row = draw_middle_y Then
@@ -2626,6 +2450,7 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x1
                 tex_w = leg_w1 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
                 tex_u = leg_u1 + prestep_x * tex_u_step
                 tex_v = leg_v1 + prestep_x * tex_v_step
                 tex_r = leg_r1 + prestep_x * tex_r_step
@@ -2654,6 +2479,7 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                 ' Prestep to find pixel starting point
                 prestep_x = col - leg_x2
                 tex_w = leg_w2 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
                 tex_u = leg_u2 + prestep_x * tex_u_step
                 tex_v = leg_v2 + prestep_x * tex_v_step
                 tex_r = leg_r2 + prestep_x * tex_r_step
@@ -2668,16 +2494,15 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
             End If
 
             ' Draw the Horizontal Scanline
+            ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
+            work_address = work_row_base + 4 * col
             zbuf_index = row * Size_Render_X + col
             While col < draw_max_x
-                tex_z = 1 / tex_w
+
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
                     If (T1_options And T1_option_no_Z_write) = 0 Then
                         Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
                     End If
-
-                    Static pixel_existing As _Unsigned Long
-                    pixel_existing = Point(col, row)
 
                     Static pixel_combine As _Unsigned Long
                     If (T1_option_no_T1 And T1_options) Then
@@ -2686,28 +2511,35 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                         pixel_combine = RGB_Modulate(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB32(tex_r, tex_g, tex_b))
                     End If
 
-                    Static pixel_value As _Unsigned Long
+                    Static pixel_existing As _Unsigned Long
                     pixel_alpha = tex_a * tex_z
+                    If pixel_alpha < 0.998 Then
+                        pixel_existing = _MemGet(work_mem_info, work_address, _Unsigned Long)
+                        pixel_combine = _RGB32((  _red32(pixel_combine) - _Red32(pixel_existing))   * pixel_alpha + _red32(pixel_existing), _
+                                               (_green32(pixel_combine) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
+                                               ( _Blue32(pixel_combine) - _Blue32(pixel_existing))  * pixel_alpha + _blue32(pixel_existing))
 
-                    pixel_value = _RGB32((1.0 - pixel_alpha) *   _Red32(pixel_existing) + pixel_alpha *   _red32(pixel_combine), _
-                                         (1.0 - pixel_alpha) * _Green32(pixel_existing) + pixel_alpha * _green32(pixel_combine), _
-                                         (1.0 - pixel_alpha) *  _Blue32(pixel_existing) + pixel_alpha *  _blue32(pixel_combine))
-
-                    If Dither_Selection > 0 Then
-                        RGB_Dither555 col, row, pixel_value
-                    Else
-                        PSet (col, row), pixel_value
+                        ' x = (p1 - p0) * ratio + p0 is equivalent to
+                        ' x = (1.0 - ratio) * p0 + ratio * p1
                     End If
+                    _MemPut work_mem_info, work_address, pixel_combine
+                    'If Dither_Selection > 0 Then
+                    '    RGB_Dither555 col, row, pixel_value
+                    'Else
+                    '    PSet (col, row), pixel_value
+                    'End If
 
                 End If ' tex_z
                 zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
+                tex_z = 1 / tex_w ' floating point divide can be done in parallel when result not required immediately.
                 tex_u = tex_u + tex_u_step
                 tex_v = tex_v + tex_v_step
                 tex_r = tex_r + tex_r_step
                 tex_g = tex_g + tex_g_step
                 tex_b = tex_b + tex_b_step
                 tex_a = tex_a + tex_a_step
+                work_address = work_address + 4
                 col = col + 1
             Wend ' col
 
@@ -2732,6 +2564,7 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
         leg_b2 = leg_b2 + legb2_step
         leg_a2 = leg_a2 + lega2_step
 
+        work_row_base = work_row_base + work_next_row_step
         row = row + 1
     Wend ' row
 
