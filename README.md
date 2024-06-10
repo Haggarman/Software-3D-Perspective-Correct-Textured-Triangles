@@ -1,7 +1,15 @@
 ## Description
  How were 3D triangles drawn by the first PC graphics accelerators in 1997? This was my deep dive into understanding the software algorithms involved in drawing triangles line by line.
  
- This is a software simulation only approach. I do not seek to mimic exact hardware pipelines, command registers, or video memory controller implementations.
+ This is a software simulation only approach. I do not seek to mimic exact hardware pipelines, command registers, or video memory controller implementations. Draw the pixels to a framebuffer using entirely the CPU to perform the 3D math, and then let whatever GPU take that framebuffer and display it in a window. The point here was to understand what the digital logic on a low-end PC level 3D Graphics Accelerator was doing in that time period based on the Silicon Graphics hardware rendering pipeline model.
+
+## Inspiration
+ I tried this project once before in the mid 1990s. Back on my first PC with Windows 95 and a ViRGE Graphics Accelerator, I noticed that the DirectX D3D Software Reference Rasterizer on a Pentium 200 was performing on par or often better than the S3 hardware (to put it lightly). The software textured triangles were good looking and more specifically were perspective correct. So, I had direct evidence it was possible.
+ 
+ The books on 3D Graphics at the time felt condescending, always assuming the reader is starting from the beginning, wasting page after page with personal anecdotes, and when finally getting at the meat of the problem would say the most hurtful thing a technical author can say, which is "that is beyond the scope of this book". Me shocked in disbelief as the author then continued with their dated affine mapping and DOS 8086 palletized 256 color VGA. As a result with everything so secret and so poorly described, I basically didn't pursue 3D anything as a career. If I couldn't understand it at the core mathematical level, I didn't want to deal with it.
+
+ If someone would have just said to me, the secret to perspective correct texturing is to interpolate 1/Z aross the face of the triangle instead of Z, that would have been enough for me to keep rolling along. I would have naturally figured out with things now expressed "per Z", to interpolate the (U, V) texel coordinates also as U/Z and V/Z. Instead, it had to be decades later when a random Youtube video suggestion led me to javidx9 "Code-It-Yourself! 3D Graphics Engine" series. To him I am eternally grateful for cutting through the rubbish and explaining things in a straightforward manner. I was once again able to soar, getting to write performant realtime tri-linear mip-mapping, which was the darling technology of the time.
+
 ### Era Applicable Cards
 - 3Dfx Voodoo 1 & 2
 - NVIDIA RIVA TNT
@@ -16,6 +24,7 @@
  ![Skybox Long Tube 800](https://user-images.githubusercontent.com/96515734/224502776-09c13ed1-60a6-4074-a7d4-dd2b05e30085.png)
  ![Skybox Treess](https://user-images.githubusercontent.com/96515734/234192793-af9a3844-cfc6-4cdb-a988-e38d5a0ae531.PNG)
  ![Tri-Linear Mipmap Road](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/ee802200-7212-4442-bb50-ee5cc7a9e2e0)
+ ![BunnyObj](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/f6e3e8e6-e13b-46d6-8eab-6df68b563cd6)
 
 ## Capabilities
  Let's list what has currently been implemented or explored, Final Reality Advanced benchmark style.
@@ -83,6 +92,8 @@ Yes | Z-Fight Bias
   <dd>An alpha-blended, alpha-masked, mipmapped fence to go alongside the road.</dd>
  <dt>TrilinearVariants.bas</dt>
   <dd>Adds a moving sun light source to the road and fence scene, and you can switch between 5 or 8 point TLMMI</dd>
+ <dt>AliasObjFile.bas</dt>
+  <dd>Loads .obj files and draws them with Gouraud shading (ambient, diffuse, and specular vertex lighting).</dd>
 </dl>
 
 ## Triangles
@@ -461,4 +472,6 @@ In the end, both companies were sold off. But it's how they're remembered and ce
  Worthless Patents: Untold time was spent on 16-bit Z-Buffers to cater to stingy manufacturers that wanted minimum viable product. *Hey, we noticed RAM is going to be very inexpensive soon, so what is the least amount of onboard RAM required?!* Is it really genius to think if you have 80-bit, 64-bit, or 32-bit floating point, that it is *possible* to have a 16-bit floating point number? But really, is that a good use of resources? By the time the Patent Lawyer's check clears, technology would have just moved on. The value of a company's patent portfolio is more about jumping out from the shadows and saying GOTCHA and hoping the competitor also made the same shortcut.
 
  16-bit doesn't cut it: Basically all of these first-generation 3D accelerator chips internally had 8 bits per color channel, but dithered the final colors into either RGB 555 or RGB 565, thinking we wouldn't notice. For perspective, having a healthy variety of texture color reduction and compression choices to save memory footprint leads to overall more visual variety and better graphical look. But skimping on 3 bits per channel in the final display framebuffer is just being really cheap. This isn't the first time, and it won't be the last time that dithering is used to inflate the number of bits. Well on average it's 8 bits... if you stand far enough back and squint your eyes. And yes a lot of your HDR displays are only 8-bit, twice dithered.
+
+ Page 1298 of a bloated Black Book I quote as follows: "Try to imagine any American 17-year-old of your acquaintance inventing backface removal. Try to imagine any teenager you know even using the phrase 'the cross product equations found in any math book'." Well, I was probably 16 at the time I read it, and that stung leaving a permanent scar.
  
