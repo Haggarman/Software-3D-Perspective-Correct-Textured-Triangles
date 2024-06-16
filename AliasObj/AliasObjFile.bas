@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Alias Object File 27"
+_Title "Alias Object File 28"
 ' 2024 Haggarman
 '  V26 Experiments with using half-angle instead of bounce reflection for specular.
 '  V23 Specular gouraud.
@@ -11,6 +11,11 @@ _Title "Alias Object File 27"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 '
+Declare Library ""
+    ' grab a C99 function from math.h
+    Function powf! (ByVal ba!, Byval ex!)
+End Declare
+
 Dim Shared DISP_IMAGE As Long
 Dim Shared WORK_IMAGE As Long
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
@@ -394,6 +399,7 @@ Dim Animate_Spin As Integer
 Dim Shared Dither_Selection As Integer
 Dim Gouraud_Shading_Selection As Integer
 Dim vMove_Player_Forward As vec3d
+Dim thisMaterial As newmtl_type
 
 
 main:
@@ -583,6 +589,8 @@ Do
                     T1_options = T1_options Or T1_option_no_T1
                 End If
 
+                thisMaterial = Materials(mesh(tri).material)
+
                 Select Case Gouraud_Shading_Selection
                     Case 0:
                         ' Flat face shading
@@ -594,19 +602,23 @@ Do
                         ' Specular light
                         ' Instead of a normalized light position pointing out from origin, needs to be pointing inward towards the reflective surface.
                         vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
-                        Vector3_Reflect vLightSpec, tri_normal, reflectLightDir0
-                        Vector3_Normalize reflectLightDir0
+                        Vector3_Reflect_unroll vLightSpec, tri_normal, reflectLightDir0
+                        'Vector3_Normalize reflectLightDir0
 
                         ' cameraRay0 was already calculated for backface removal.
-                        ' cameraRay0 is facing triangle point 0 in world space.
                         Vector3_Normalize cameraRay0
                         light_specular_A = Vector3_DotProduct!(reflectLightDir0, cameraRay0)
-                        If light_specular_A < 0.0 Then light_specular_A = 0.0
-                        light_specular_A = 3 * light_specular_A ^ Default_Specular_Power
+                        If light_specular_A > 0.0 Then
+                            ' this power thing only works because it should range from 0..1 again.
+                            ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
+                            light_specular_A = 3 * powf(light_specular_A, Default_Specular_Power)
+                        Else
+                            light_specular_A = 0.0
+                        End If
 
-                        face_light_r = 255.0 * (Materials(mesh(tri).material).Kd_r * Light_Directional + Materials(mesh(tri).material).Ks_r * light_specular_A + Light_AmbientVal)
-                        face_light_g = 255.0 * (Materials(mesh(tri).material).Kd_g * Light_Directional + Materials(mesh(tri).material).Ks_g * light_specular_A + Light_AmbientVal)
-                        face_light_b = 255.0 * (Materials(mesh(tri).material).Kd_b * Light_Directional + Materials(mesh(tri).material).Ks_b * light_specular_A + Light_AmbientVal)
+                        face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
+                        face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
+                        face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
 
                         vertexA.r = face_light_r
                         vertexA.g = face_light_g
@@ -641,44 +653,56 @@ Do
                         ' Instead of a normalized light position pointing out from origin, needs to be pointing inward towards the reflective surface.
                         vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
 
-                        Vector3_Reflect vLightSpec, vertex_normal_A, reflectLightDir0
-                        Vector3_Normalize reflectLightDir0
-                        Vector3_Reflect vLightSpec, vertex_normal_B, reflectLightDir1
-                        Vector3_Normalize reflectLightDir1
-                        Vector3_Reflect vLightSpec, vertex_normal_C, reflectLightDir2
-                        Vector3_Normalize reflectLightDir2
+                        Vector3_Reflect_unroll vLightSpec, vertex_normal_A, reflectLightDir0
+                        'Vector3_Normalize reflectLightDir0
+                        Vector3_Reflect_unroll vLightSpec, vertex_normal_B, reflectLightDir1
+                        'Vector3_Normalize reflectLightDir1
+                        Vector3_Reflect_unroll vLightSpec, vertex_normal_C, reflectLightDir2
+                        'Vector3_Normalize reflectLightDir2
 
+                        ' A
                         ' cameraRay0 was already calculated for backface removal.
                         Vector3_Normalize cameraRay0
                         light_specular_A = Vector3_DotProduct!(reflectLightDir0, cameraRay0)
-                        If light_specular_A < 0.0 Then light_specular_A = 0.0
-                        ' this power thing only works because it's supposed to range from 0..1 again.
-                        ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
-                        light_specular_A = 3.0 * light_specular_A ^ Default_Specular_Power
+                        If light_specular_A > 0.0 Then
+                            ' this power thing only works because it should range from 0..1 again.
+                            ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
+                            light_specular_A = 3.0 * powf(light_specular_A, Default_Specular_Power)
+                        Else
+                            light_specular_A = 0.0
+                        End If
 
+                        ' B
                         Vector3_Delta vCameraPsn, pointWorld1, cameraRay1
                         Vector3_Normalize cameraRay1
                         light_specular_B = Vector3_DotProduct!(reflectLightDir1, cameraRay1)
-                        If light_specular_B < 0.0 Then light_specular_B = 0.0
-                        light_specular_B = 3.0 * light_specular_B ^ Default_Specular_Power
+                        If light_specular_B > 0.0 Then
+                            light_specular_B = 3.0 * powf(light_specular_B, Default_Specular_Power)
+                        Else
+                            light_specular_B = 0.0
+                        End If
 
+                        ' C
                         Vector3_Delta vCameraPsn, pointWorld2, cameraRay2
                         Vector3_Normalize cameraRay2
                         light_specular_C = Vector3_DotProduct!(reflectLightDir2, cameraRay2)
-                        If light_specular_C < 0.0 Then light_specular_C = 0.0
-                        light_specular_C = 3.0 * light_specular_C ^ Default_Specular_Power
+                        If light_specular_C > 0.0 Then
+                            light_specular_C = 3.0 * powf(light_specular_C, Default_Specular_Power)
+                        Else
+                            light_specular_C = 0.0
+                        End If
 
-                        vertexA.r = 255.0 * (Materials(mesh(tri).material).Kd_r * light_directional_A + Materials(mesh(tri).material).Ks_r * light_specular_A + Light_AmbientVal)
-                        vertexA.g = 255.0 * (Materials(mesh(tri).material).Kd_g * light_directional_A + Materials(mesh(tri).material).Ks_g * light_specular_A + Light_AmbientVal)
-                        vertexA.b = 255.0 * (Materials(mesh(tri).material).Kd_b * light_directional_A + Materials(mesh(tri).material).Ks_b * light_specular_A + Light_AmbientVal)
+                        vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
+                        vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
+                        vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
 
-                        vertexB.r = 255.0 * (Materials(mesh(tri).material).Kd_r * light_directional_B + Materials(mesh(tri).material).Ks_r * light_specular_B + Light_AmbientVal)
-                        vertexB.g = 255.0 * (Materials(mesh(tri).material).Kd_g * light_directional_B + Materials(mesh(tri).material).Ks_g * light_specular_B + Light_AmbientVal)
-                        vertexB.b = 255.0 * (Materials(mesh(tri).material).Kd_b * light_directional_B + Materials(mesh(tri).material).Ks_b * light_specular_B + Light_AmbientVal)
+                        vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + Light_AmbientVal)
+                        vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + Light_AmbientVal)
+                        vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + Light_AmbientVal)
 
-                        vertexC.r = 255.0 * (Materials(mesh(tri).material).Kd_r * light_directional_C + Materials(mesh(tri).material).Ks_r * light_specular_C + Light_AmbientVal)
-                        vertexC.g = 255.0 * (Materials(mesh(tri).material).Kd_g * light_directional_C + Materials(mesh(tri).material).Ks_g * light_specular_C + Light_AmbientVal)
-                        vertexC.b = 255.0 * (Materials(mesh(tri).material).Kd_b * light_directional_C + Materials(mesh(tri).material).Ks_b * light_specular_C + Light_AmbientVal)
+                        vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + Light_AmbientVal)
+                        vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + Light_AmbientVal)
+                        vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + Light_AmbientVal)
 
                     Case 2:
                         ' Smooth shading
@@ -698,15 +722,20 @@ Do
                         If light_directional_B < 0.0 Then light_directional_B = 0.0
                         If light_directional_C < 0.0 Then light_directional_C = 0.0
 
-
                         ' Specular light
                         ' A
+                        ' cameraRay0 was already calculated for backface removal.
                         Vector3_Normalize cameraRay0
                         Vector3_Add cameraRay0, vLightDir, vHalfAngle
                         Vector3_Normalize vHalfAngle
                         light_specular_A = Vector3_DotProduct!(vHalfAngle, vertex_normal_A)
-                        If light_specular_A < 0.0 Then light_specular_A = 0.0
-                        light_specular_A = 3.0 * light_specular_A ^ Default_Specular_HA_Power
+                        If light_specular_A > 0.0 Then
+                            ' this power thing only works because it should range from 0..1 again.
+                            ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
+                            light_specular_A = 3.0 * powf(light_specular_A, Default_Specular_HA_Power)
+                        Else
+                            light_specular_A = 0.0
+                        End If
 
                         ' B
                         Vector3_Delta vCameraPsn, pointWorld1, cameraRay1
@@ -714,8 +743,11 @@ Do
                         Vector3_Add cameraRay1, vLightDir, vHalfAngle
                         Vector3_Normalize vHalfAngle
                         light_specular_B = Vector3_DotProduct!(vHalfAngle, vertex_normal_B)
-                        If light_specular_B < 0.0 Then light_specular_B = 0.0
-                        light_specular_B = 3.0 * light_specular_B ^ Default_Specular_HA_Power
+                        If light_specular_B > 0.0 Then
+                            light_specular_B = 3.0 * powf(light_specular_B, Default_Specular_HA_Power)
+                        Else
+                            light_specular_B = 0.0
+                        End If
 
                         ' C
                         Vector3_Delta vCameraPsn, pointWorld2, cameraRay2
@@ -723,21 +755,23 @@ Do
                         Vector3_Add cameraRay2, vLightDir, vHalfAngle
                         Vector3_Normalize vHalfAngle
                         light_specular_C = Vector3_DotProduct!(vHalfAngle, vertex_normal_C)
-                        If light_specular_C < 0.0 Then light_specular_C = 0.0
-                        light_specular_C = 3.0 * light_specular_C ^ Default_Specular_HA_Power
+                        If light_specular_C > 0.0 Then
+                            light_specular_C = 3.0 * powf(light_specular_C, Default_Specular_HA_Power)
+                        Else
+                            light_specular_C = 0.0
+                        End If
 
-                        vertexA.r = 255.0 * (Materials(mesh(tri).material).Kd_r * light_directional_A + Materials(mesh(tri).material).Ks_r * light_specular_A + Light_AmbientVal)
-                        vertexA.g = 255.0 * (Materials(mesh(tri).material).Kd_g * light_directional_A + Materials(mesh(tri).material).Ks_g * light_specular_A + Light_AmbientVal)
-                        vertexA.b = 255.0 * (Materials(mesh(tri).material).Kd_b * light_directional_A + Materials(mesh(tri).material).Ks_b * light_specular_A + Light_AmbientVal)
+                        vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
+                        vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
+                        vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
 
-                        vertexB.r = 255.0 * (Materials(mesh(tri).material).Kd_r * light_directional_B + Materials(mesh(tri).material).Ks_r * light_specular_B + Light_AmbientVal)
-                        vertexB.g = 255.0 * (Materials(mesh(tri).material).Kd_g * light_directional_B + Materials(mesh(tri).material).Ks_g * light_specular_B + Light_AmbientVal)
-                        vertexB.b = 255.0 * (Materials(mesh(tri).material).Kd_b * light_directional_B + Materials(mesh(tri).material).Ks_b * light_specular_B + Light_AmbientVal)
+                        vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + Light_AmbientVal)
+                        vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + Light_AmbientVal)
+                        vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + Light_AmbientVal)
 
-                        vertexC.r = 255.0 * (Materials(mesh(tri).material).Kd_r * light_directional_C + Materials(mesh(tri).material).Ks_r * light_specular_C + Light_AmbientVal)
-                        vertexC.g = 255.0 * (Materials(mesh(tri).material).Kd_g * light_directional_C + Materials(mesh(tri).material).Ks_g * light_specular_C + Light_AmbientVal)
-                        vertexC.b = 255.0 * (Materials(mesh(tri).material).Kd_b * light_directional_C + Materials(mesh(tri).material).Ks_b * light_specular_C + Light_AmbientVal)
-
+                        vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + Light_AmbientVal)
+                        vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + Light_AmbientVal)
+                        vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + Light_AmbientVal)
 
                     Case 3:
                         ' Fake Half-Angle specular per face.
@@ -752,12 +786,15 @@ Do
                         Vector3_Normalize vHalfAngle
 
                         light_specular_A = Vector3_DotProduct!(vHalfAngle, tri_normal)
-                        If light_specular_A < 0.0 Then light_specular_A = 0.0
-                        light_specular_A = 3.0 * light_specular_A ^ Default_Specular_HA_Power
+                        If light_specular_A > 0.0 Then
+                            light_specular_A = 3 * powf(light_specular_A, Default_Specular_HA_Power)
+                        Else
+                            light_specular_A = 0.0
+                        End If
 
-                        face_light_r = 255.0 * (Materials(mesh(tri).material).Kd_r * Light_Directional + Materials(mesh(tri).material).Ks_r * light_specular_A + Light_AmbientVal)
-                        face_light_g = 255.0 * (Materials(mesh(tri).material).Kd_g * Light_Directional + Materials(mesh(tri).material).Ks_g * light_specular_A + Light_AmbientVal)
-                        face_light_b = 255.0 * (Materials(mesh(tri).material).Kd_b * Light_Directional + Materials(mesh(tri).material).Ks_b * light_specular_A + Light_AmbientVal)
+                        face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
+                        face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
+                        face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
 
                         vertexA.r = face_light_r
                         vertexA.g = face_light_g
@@ -1202,6 +1239,7 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, leVertexL
                 vn(totalVertexNormals).x = ParameterStorage(1, 0)
                 vn(totalVertexNormals).y = ParameterStorage(2, 0)
                 vn(totalVertexNormals).z = ParameterStorage(3, 0)
+                Vector3_Normalize vn(totalVertexNormals)
                 'Print "vn "; ParameterStorage(1); ParameterStorage(2); ParameterStorage(3)
             End If
 
@@ -1806,6 +1844,15 @@ Sub Vector3_Reflect (i As vec3d, normal As vec3d, o As vec3d) Static
     Vector3_Mul normal, mag, bounce
     Vector3_Add bounce, i, o
 End Sub
+
+Sub Vector3_Reflect_unroll (i As vec3d, normal As vec3d, o As vec3d) Static
+    Static mag As Single
+    mag = -2.0 * (i.x * normal.x + i.y * normal.y + i.z * normal.z)
+    o.x = i.x + normal.x * mag
+    o.y = i.y + normal.y * mag
+    o.z = i.z + normal.z * mag
+End Sub
+
 
 Sub Matrix4_MakeIdentity (m( 3 , 3) As Single)
     m(0, 0) = 1.0: m(0, 1) = 0.0: m(0, 2) = 0.0: m(0, 3) = 0.0
