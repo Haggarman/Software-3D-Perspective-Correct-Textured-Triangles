@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 33"
+_Title "Alias Object File 35"
 ' 2024 Haggarman
+'  V34 Any size skybox texture dimensions
 '  V31 Mirror Reflective Surface
 '  V30 Skybox
 '  V26 Experiments with using half-angle instead of bounce reflection for specular.
@@ -250,12 +251,12 @@ Next row
 '     +---+
 
 Dim Shared SkyBoxRef(5) As Long
-SkyBoxRef(0) = _LoadImage("SkyBoxRight.png", 32)
-SkyBoxRef(1) = _LoadImage("SkyBoxLeft.png", 32)
-SkyBoxRef(2) = _LoadImage("SkyBoxTop.png", 32)
-SkyBoxRef(3) = _LoadImage("SkyBoxBottom.png", 32)
-SkyBoxRef(4) = _LoadImage("SkyBoxFront.png", 32)
-SkyBoxRef(5) = _LoadImage("SkyBoxBack.png", 32)
+SkyBoxRef(0) = _LoadImage("px.png", 32)
+SkyBoxRef(1) = _LoadImage("nx.png", 32)
+SkyBoxRef(2) = _LoadImage("py.png", 32)
+SkyBoxRef(3) = _LoadImage("ny.png", 32)
+SkyBoxRef(4) = _LoadImage("pz.png", 32)
+SkyBoxRef(5) = _LoadImage("nz.png", 32)
 
 ' Error _LoadImage returns -1 as an invalid handle if it cannot load the image.
 Dim refIndex As Integer
@@ -272,26 +273,25 @@ Sky_Last_Element = 11
 Dim sky(Sky_Last_Element) As skybox_triangle
 Restore SKYBOX
 For A = 0 To Sky_Last_Element
-    Read sky(A).x0
-    Read sky(A).y0
-    Read sky(A).z0
+    Read sky(A).x0: Read sky(A).y0: Read sky(A).z0
+    Read sky(A).x1: Read sky(A).y1: Read sky(A).z1
+    Read sky(A).x2: Read sky(A).y2: Read sky(A).z2
 
-    Read sky(A).x1
-    Read sky(A).y1
-    Read sky(A).z1
-
-    Read sky(A).x2
-    Read sky(A).y2
-    Read sky(A).z2
-
-    Read sky(A).u0
-    Read sky(A).v0
-    Read sky(A).u1
-    Read sky(A).v1
-    Read sky(A).u2
-    Read sky(A).v2
+    Read sky(A).u0: Read sky(A).v0
+    Read sky(A).u1: Read sky(A).v1
+    Read sky(A).u2: Read sky(A).v2
 
     Read sky(A).texture
+    ' Fill in Texture 1 data
+    T1_ImageHandle = SkyBoxRef(sky(A).texture)
+    T1_mblock = _MemImage(T1_ImageHandle)
+    T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
+    T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
+
+    ' any size
+    sky(A).u0 = sky(A).u0 * T1_width: sky(A).v0 = sky(A).v0 * T1_height
+    sky(A).u1 = sky(A).u1 * T1_width: sky(A).v1 = sky(A).v1 * T1_height
+    sky(A).u2 = sky(A).u2 * T1_width: sky(A).v2 = sky(A).v2 * T1_height
 Next A
 
 ' Load Mesh
@@ -436,10 +436,10 @@ Dim matCamera(3, 3) As Single
 
 ' Directional light 1-17-2023
 Dim vLightDir As vec3d
-' Put the light source where the camera starts so you don't go insane when trying to get the specular vectors correct.
-vLightDir.x = 0.0
-vLightDir.y = 0.0 ' +Y is up
-vLightDir.z = Camera_Start_Z
+' When developing, set the light source where the camera starts so you don't go insane when trying to get the specular vectors correct.
+vLightDir.x = 0.7411916
+vLightDir.y = 0.5735765 '+Y is up
+vLightDir.z = -0.3487767 ' Camera_Start_Z
 Vector3_Normalize vLightDir
 Dim Shared Light_Directional As Single
 Dim Shared Light_AmbientVal As Single
@@ -1067,17 +1067,17 @@ Do
                         Vector3_Delta pointWorld2, vCameraPsn, cameraRay2
                         Vector3_Reflect cameraRay2, vertex_normal_C, envMapReflectionRayC
 
-                        vertexA.r = envMapReflectionRayA.x
-                        vertexA.g = envMapReflectionRayA.y
-                        vertexA.b = envMapReflectionRayA.z
+                        vertexA.r = envMapReflectionRayA.x * pointProj0.w
+                        vertexA.g = envMapReflectionRayA.y * pointProj0.w
+                        vertexA.b = envMapReflectionRayA.z * pointProj0.w
 
-                        vertexB.r = envMapReflectionRayB.x
-                        vertexB.g = envMapReflectionRayB.y
-                        vertexB.b = envMapReflectionRayB.z
+                        vertexB.r = envMapReflectionRayB.x * pointProj1.w
+                        vertexB.g = envMapReflectionRayB.y * pointProj1.w
+                        vertexB.b = envMapReflectionRayB.z * pointProj1.w
 
-                        vertexC.r = envMapReflectionRayC.x
-                        vertexC.g = envMapReflectionRayC.y
-                        vertexC.b = envMapReflectionRayC.z
+                        vertexC.r = envMapReflectionRayC.x * pointProj2.w
+                        vertexC.g = envMapReflectionRayC.y * pointProj2.w
+                        vertexC.b = envMapReflectionRayC.z * pointProj2.w
 
                         ReflectionMapTriangle vertexA, vertexB, vertexC
                 End Select
@@ -1095,9 +1095,6 @@ Do
             Lbl_Skip_tri:
         Next tri
     Next renderPass
-
-
-
     render_ms = Timer(.001)
 
     _PutImage , WORK_IMAGE, DISP_IMAGE
@@ -1131,6 +1128,7 @@ Do
     End Select
 
     Print "frame advance"; frame_advance
+    'Print "LookDir:"; vLookDir.x, vLookDir.y, vLookDir.z
 
     _Limit 60
     _Display
@@ -1298,78 +1296,78 @@ SKYBOX:
 Data -10,+10,+10
 Data +10,+10,+10
 Data -10,-10,+10
-Data 0,0,128,0,0,128
+Data 0,0,1,0,0,1
 Data 4
 
 Data +10,+10,+10
 Data +10,-10,+10
 Data -10,-10,+10
-Data 128,0,128,128,0,128
+Data 1,0,1,1,0,1
 Data 4
 
 ' RIGHT X+
 Data +10,+10,+10
 Data +10,+10,-10
 Data +10,-10,+10
-Data 0,0,128,0,0,128
+Data 0,0,1,0,0,1
 Data 0
 
 Data +10,+10,-10
 Data +10,-10,-10
 Data +10,-10,+10
-Data 128,0,128,128,0,128
+Data 1,0,1,1,0,1
 Data 0
 
 ' LEFT X-
 Data -10,+10,-10
 Data -10,+10,+10
 Data -10,-10,-10
-Data 0,0,128,0,0,128
+Data 0,0,1,0,0,1
 Data 1
 
 Data -10,+10,+10
 Data -10,-10,+10
 Data -10,-10,-10
-Data 128,0,128,128,0,128
+Data 1,0,1,1,0,1
 Data 1
 
 ' BACK Z-
 Data +10,+10,-10
 Data -10,+10,-10
 Data +10,-10,-10
-Data 0,0,128,0,0,128
+Data 0,0,1,0,0,1
 Data 5
 
 Data -10,+10,-10
 Data -10,-10,-10
 Data +10,-10,-10
-Data 128,0,128,128,0,128
+Data 1,0,1,1,0,1
 Data 5
 
 ' TOP Y+
 Data -10,+10,-10
 Data +10,+10,-10
 Data -10,+10,+10
-Data 0,0,128,0,0,128
+Data 0,0,1,0,0,1
 Data 2
 
 Data +10,+10,-10
 Data +10,+10,+10
 Data -10,+10,+10
-Data 128,0,128,128,0,128
+Data 1,0,1,1,0,1
 Data 2
 
 ' BOTTOM Y-
 Data -10,-10,+10
 Data 10,-10,+10
 Data -10,-10,-10
-Data 0,0,128,0,0,128
+Data 0,0,1,0,0,1
 Data 3
 
 Data +10,-10,+10
 Data +10,-10,-10
 Data -10,-10,-10
-Data 128,0,128,128,0,128
+Data 1,0,1,1,0,1
 Data 3
 
 $Checking:On
