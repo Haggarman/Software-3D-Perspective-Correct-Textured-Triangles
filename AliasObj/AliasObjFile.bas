@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Alias Object File 35"
+_Title "Alias Object File 36"
 ' 2024 Haggarman
 '  V34 Any size skybox texture dimensions
 '  V31 Mirror Reflective Surface
@@ -30,7 +30,7 @@ Dim Obj_File_Name As String
 
 
 ' MODIFY THESE if you want.
-Obj_File_Name = "" ' "bunny.obj" "cube.obj" "teacup.obj" "spoonfix.obj"
+Obj_File_Name = "" ' "bunny.obj" "cube.obj" "teacup.obj" "spoonfix.obj" empty string shows system open file dialog box.
 Size_Screen_X = 1024
 Size_Screen_Y = 768
 Size_Render_X = Size_Screen_X \ 2 ' render size
@@ -267,32 +267,31 @@ For refIndex = 0 To 5
     End If
 Next refIndex
 
-Dim A As Integer
 Dim Shared Sky_Last_Element As Integer
 Sky_Last_Element = 11
 Dim sky(Sky_Last_Element) As skybox_triangle
 Restore SKYBOX
-For A = 0 To Sky_Last_Element
-    Read sky(A).x0: Read sky(A).y0: Read sky(A).z0
-    Read sky(A).x1: Read sky(A).y1: Read sky(A).z1
-    Read sky(A).x2: Read sky(A).y2: Read sky(A).z2
+For refIndex = 0 To Sky_Last_Element
+    Read sky(refIndex).x0: Read sky(refIndex).y0: Read sky(refIndex).z0
+    Read sky(refIndex).x1: Read sky(refIndex).y1: Read sky(refIndex).z1
+    Read sky(refIndex).x2: Read sky(refIndex).y2: Read sky(refIndex).z2
 
-    Read sky(A).u0: Read sky(A).v0
-    Read sky(A).u1: Read sky(A).v1
-    Read sky(A).u2: Read sky(A).v2
+    Read sky(refIndex).u0: Read sky(refIndex).v0
+    Read sky(refIndex).u1: Read sky(refIndex).v1
+    Read sky(refIndex).u2: Read sky(refIndex).v2
 
-    Read sky(A).texture
+    Read sky(refIndex).texture
     ' Fill in Texture 1 data
-    T1_ImageHandle = SkyBoxRef(sky(A).texture)
+    T1_ImageHandle = SkyBoxRef(sky(refIndex).texture)
     T1_mblock = _MemImage(T1_ImageHandle)
     T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
     T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
     ' any size
-    sky(A).u0 = sky(A).u0 * T1_width: sky(A).v0 = sky(A).v0 * T1_height
-    sky(A).u1 = sky(A).u1 * T1_width: sky(A).v1 = sky(A).v1 * T1_height
-    sky(A).u2 = sky(A).u2 * T1_width: sky(A).v2 = sky(A).v2 * T1_height
-Next A
+    sky(refIndex).u0 = sky(refIndex).u0 * T1_width: sky(refIndex).v0 = sky(refIndex).v0 * T1_height
+    sky(refIndex).u1 = sky(refIndex).u1 * T1_width: sky(refIndex).v1 = sky(refIndex).v1 * T1_height
+    sky(refIndex).u2 = sky(refIndex).u2 * T1_width: sky(refIndex).v2 = sky(refIndex).v2 * T1_height
+Next refIndex
 
 ' Load Mesh
 While Obj_File_Name = ""
@@ -354,6 +353,23 @@ For actor = 1 To Actor_Count
     LoadMesh Obj_File_Name, mesh(), tri, Vertex_Count, TextureCoord_Count, Materials(), vtxnorms()
     Objects(actor).last = tri
 Next actor
+
+' find the furthest out point to be able to pull back camera start position for large objects
+Dim distance As Double
+Dim GreatestDistance As Double
+GreatestDistance = 0.0
+For tri = 1 To Mesh_Last_Element
+    distance = mesh(tri).x0 * mesh(tri).x0 + mesh(tri).y0 * mesh(tri).y0 + mesh(tri).z0 * mesh(tri).z0
+    If distance > GreatestDistance Then GreatestDistance = distance
+    distance = mesh(tri).x1 * mesh(tri).x1 + mesh(tri).y1 * mesh(tri).y1 + mesh(tri).z1 * mesh(tri).z1
+    If distance > GreatestDistance Then GreatestDistance = distance
+    distance = mesh(tri).x2 * mesh(tri).x2 + mesh(tri).y2 * mesh(tri).y2 + mesh(tri).z2 * mesh(tri).z2
+    If distance > GreatestDistance Then GreatestDistance = distance
+Next tri
+GreatestDistance = Sqr(GreatestDistance)
+distance = -2.0 * GreatestDistance
+If distance < Camera_Start_Z Then Camera_Start_Z = distance
+
 
 ' Here are the 3D math and projection vars
 
@@ -457,7 +473,6 @@ Dim face_light_b As Single
 Dim cameraRay1 As vec3d
 Dim cameraRay2 As vec3d
 Dim vLightSpec As vec3d
-Dim vHalfAngle As vec3d
 Dim reflectLightDir0 As vec3d
 Dim reflectLightDir1 As vec3d
 Dim reflectLightDir2 As vec3d
@@ -526,7 +541,7 @@ ExitCode = 0
 Animate_Spin = -1
 T1_Filter_Selection = 2
 Dither_Selection = 0
-Gouraud_Shading_Selection = 4
+Gouraud_Shading_Selection = 2
 actor = 1
 
 fPitch = 0.0
@@ -596,18 +611,18 @@ Do
     ReDim Screen_Z_Buffer(Screen_Z_Buffer_MaxElement)
 
     ' Draw Skybox 2-28-2023
-    For A = 0 To Sky_Last_Element
-        point0.x = sky(A).x0
-        point0.y = sky(A).y0
-        point0.z = sky(A).z0
+    For tri = 0 To Sky_Last_Element
+        point0.x = sky(tri).x0
+        point0.y = sky(tri).y0
+        point0.z = sky(tri).z0
 
-        point1.x = sky(A).x1
-        point1.y = sky(A).y1
-        point1.z = sky(A).z1
+        point1.x = sky(tri).x1
+        point1.y = sky(tri).y1
+        point1.z = sky(tri).z1
 
-        point2.x = sky(A).x2
-        point2.y = sky(A).y2
-        point2.z = sky(A).z2
+        point2.x = sky(tri).x2
+        point2.y = sky(tri).y2
+        point2.z = sky(tri).z2
 
         ' Follow the camera coordinate position (slide)
         ' Skybox is like putting your head inside a floating box that travels with you, but never rotates.
@@ -631,9 +646,9 @@ Do
         Multiply_Vector3_Matrix4 pointWorld2, matView(), pointView2
 
         ' Load up attribute lists here because NearClip will interpolate those too.
-        vatr0.u = sky(A).u0: vatr0.v = sky(A).v0
-        vatr1.u = sky(A).u1: vatr1.v = sky(A).v1
-        vatr2.u = sky(A).u2: vatr2.v = sky(A).v2
+        vatr0.u = sky(tri).u0: vatr0.v = sky(tri).v0
+        vatr1.u = sky(tri).u1: vatr1.v = sky(tri).v1
+        vatr2.u = sky(tri).u2: vatr2.v = sky(tri).v2
 
         ' Clip more often than not in this example
         NearClip pointView0, pointView1, pointView2, pointView3, vatr0, vatr1, vatr2, vatr3, triCount
@@ -675,7 +690,7 @@ Do
             ' No Directional light
 
             ' Fill in Texture 1 data
-            T1_ImageHandle = SkyBoxRef(sky(A).texture)
+            T1_ImageHandle = SkyBoxRef(sky(tri).texture)
             T1_mblock = _MemImage(T1_ImageHandle)
             T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
             T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
@@ -719,18 +734,20 @@ Do
             'Line (SX2, SY2)-(SX3, SY3), _RGB32(0, 128, 128)
             'Line (SX3, SY3)-(SX0, SY0), _RGB32(0, 128, 128)
         End If
-    Next A
-
-    ' It may be faster to pre-rotate the vertex normals.
-    For tri = 1 To Vtx_Normals_Count
-        ' Vertex normals can be rotated around their origin and still retain their effectiveness.
-        'object_vtx_normals(tri) = vtxnorms(tri)
-
-        ' Rotate in Z-Axis
-        Multiply_Vector3_Matrix4 vtxnorms(tri), matRotZ(), pointRotZ0
-        ' Rotate in X-Axis
-        Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), object_vtx_normals(tri)
     Next tri
+
+    If Gouraud_Shading_Selection > 0 Then
+        ' It may be faster to pre-rotate the vertex normals.
+        For tri = 1 To Vtx_Normals_Count
+            ' Vertex normals can be rotated around their origin and still retain their effectiveness.
+            'object_vtx_normals(tri) = vtxnorms(tri)
+
+            ' Rotate in Z-Axis
+            Multiply_Vector3_Matrix4 vtxnorms(tri), matRotZ(), pointRotZ0
+            ' Rotate in X-Axis
+            Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), object_vtx_normals(tri)
+        Next tri
+    End If
 
     ' Draw Triangles
     For renderPass = 0 To 1
@@ -846,7 +863,7 @@ Do
                         ' Specular light
                         ' Instead of a normalized light position pointing out from origin, needs to be pointing inward towards the reflective surface.
                         vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
-                        Vector3_Reflect_unroll vLightSpec, tri_normal, reflectLightDir0
+                        Vector3_Reflect vLightSpec, tri_normal, reflectLightDir0
                         'Vector3_Normalize reflectLightDir0
 
                         ' cameraRay0 was already calculated for backface removal.
@@ -897,12 +914,9 @@ Do
                         ' Instead of a normalized light position pointing out from origin, needs to be pointing inward towards the reflective surface.
                         vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
 
-                        Vector3_Reflect_unroll vLightSpec, vertex_normal_A, reflectLightDir0
-                        'Vector3_Normalize reflectLightDir0
-                        Vector3_Reflect_unroll vLightSpec, vertex_normal_B, reflectLightDir1
-                        'Vector3_Normalize reflectLightDir1
-                        Vector3_Reflect_unroll vLightSpec, vertex_normal_C, reflectLightDir2
-                        'Vector3_Normalize reflectLightDir2
+                        Vector3_Reflect vLightSpec, vertex_normal_A, reflectLightDir0
+                        Vector3_Reflect vLightSpec, vertex_normal_B, reflectLightDir1
+                        Vector3_Reflect vLightSpec, vertex_normal_C, reflectLightDir2
 
                         ' A
                         ' cameraRay0 was already calculated for backface removal.
@@ -949,110 +963,8 @@ Do
                         vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + Light_AmbientVal)
 
                     Case 2:
-                        ' Smooth shading
-                        ' Fake Half-Angle specular per vertex
+                        ' Mirror
 
-                        ' 6-15-2024 pre-rotated normals
-                        vertex_normal_A = object_vtx_normals(mesh(tri).vni0)
-                        vertex_normal_B = object_vtx_normals(mesh(tri).vni1)
-                        vertex_normal_C = object_vtx_normals(mesh(tri).vni2)
-
-                        ' Directional light
-                        light_directional_A = Vector3_DotProduct(vertex_normal_A, vLightDir)
-                        light_directional_B = Vector3_DotProduct(vertex_normal_B, vLightDir)
-                        light_directional_C = Vector3_DotProduct(vertex_normal_C, vLightDir)
-
-                        If light_directional_A < 0.0 Then light_directional_A = 0.0
-                        If light_directional_B < 0.0 Then light_directional_B = 0.0
-                        If light_directional_C < 0.0 Then light_directional_C = 0.0
-
-                        ' Specular light
-                        ' A
-                        ' cameraRay0 was already calculated for backface removal.
-                        Vector3_Normalize cameraRay0
-                        Vector3_Add cameraRay0, vLightDir, vHalfAngle
-                        Vector3_Normalize vHalfAngle
-                        light_specular_A = Vector3_DotProduct!(vHalfAngle, vertex_normal_A)
-                        If light_specular_A > 0.0 Then
-                            ' this power thing only works because it should range from 0..1 again.
-                            ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
-                            light_specular_A = 3.0 * powf(light_specular_A, Default_Specular_HA_Power)
-                        Else
-                            light_specular_A = 0.0
-                        End If
-
-                        ' B
-                        Vector3_Delta vCameraPsn, pointWorld1, cameraRay1
-                        Vector3_Normalize cameraRay1
-                        Vector3_Add cameraRay1, vLightDir, vHalfAngle
-                        Vector3_Normalize vHalfAngle
-                        light_specular_B = Vector3_DotProduct!(vHalfAngle, vertex_normal_B)
-                        If light_specular_B > 0.0 Then
-                            light_specular_B = 3.0 * powf(light_specular_B, Default_Specular_HA_Power)
-                        Else
-                            light_specular_B = 0.0
-                        End If
-
-                        ' C
-                        Vector3_Delta vCameraPsn, pointWorld2, cameraRay2
-                        Vector3_Normalize cameraRay2
-                        Vector3_Add cameraRay2, vLightDir, vHalfAngle
-                        Vector3_Normalize vHalfAngle
-                        light_specular_C = Vector3_DotProduct!(vHalfAngle, vertex_normal_C)
-                        If light_specular_C > 0.0 Then
-                            light_specular_C = 3.0 * powf(light_specular_C, Default_Specular_HA_Power)
-                        Else
-                            light_specular_C = 0.0
-                        End If
-
-                        vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
-                        vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
-                        vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
-
-                        vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + Light_AmbientVal)
-                        vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + Light_AmbientVal)
-                        vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + Light_AmbientVal)
-
-                        vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + Light_AmbientVal)
-                        vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + Light_AmbientVal)
-                        vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + Light_AmbientVal)
-
-                    Case 3:
-                        ' Fake Half-Angle specular per face.
-
-                        ' Directional light
-                        Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
-                        If Light_Directional < 0.0 Then Light_Directional = 0.0
-
-                        ' Specular light
-                        Vector3_Normalize cameraRay0
-                        Vector3_Add cameraRay0, vLightDir, vHalfAngle
-                        Vector3_Normalize vHalfAngle
-
-                        light_specular_A = Vector3_DotProduct!(vHalfAngle, tri_normal)
-                        If light_specular_A > 0.0 Then
-                            light_specular_A = 3 * powf(light_specular_A, Default_Specular_HA_Power)
-                        Else
-                            light_specular_A = 0.0
-                        End If
-
-                        face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
-                        face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
-                        face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
-
-                        vertexA.r = face_light_r
-                        vertexA.g = face_light_g
-                        vertexA.b = face_light_b
-
-                        vertexB.r = face_light_r
-                        vertexB.g = face_light_g
-                        vertexB.b = face_light_b
-
-                        vertexC.r = face_light_r
-                        vertexC.g = face_light_g
-                        vertexC.b = face_light_b
-
-                    Case 4:
                         ' 6-15-2024 pre-rotated normals
                         vertex_normal_A = object_vtx_normals(mesh(tri).vni0)
                         vertex_normal_B = object_vtx_normals(mesh(tri).vni1)
@@ -1082,7 +994,7 @@ Do
                         ReflectionMapTriangle vertexA, vertexB, vertexC
                 End Select
 
-                If Gouraud_Shading_Selection < 4 Then
+                If Gouraud_Shading_Selection < 2 Then
                     TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
                 End If
 
@@ -1120,10 +1032,6 @@ Do
         Case 1
             Print "Gouraud using vertex normals"
         Case 2
-            Print "Fake half-angle specular per vertex"
-        Case 3
-            Print "Fake half-angle specular per face"
-        Case 4
             Print "Mirror"
     End Select
 
@@ -1159,14 +1067,14 @@ Do
             fYaw = 0.0
         ElseIf KeyNow = "G" Then
             Gouraud_Shading_Selection = Gouraud_Shading_Selection + 1
-            If Gouraud_Shading_Selection > 4 Then Gouraud_Shading_Selection = 0
+            If Gouraud_Shading_Selection > 2 Then Gouraud_Shading_Selection = 0
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
     End If
 
     ' overrides
-    'If Vtx_Normals_Count = 0 Then Gouraud_Shading_Selection = 0
+    If Vtx_Normals_Count = 0 Then Gouraud_Shading_Selection = 0
 
     frametimestamp_now_ms = Timer(0.001)
     If frametimestamp_now_ms - frametimestamp_prior_ms < 0.0 Then
@@ -2372,22 +2280,6 @@ Sub Vector3_Normalize (io As vec3d) Static
     End If
 End Sub
 
-Sub Vector3_NormalizeFlip (io As vec3d) Static
-    ' normalize and also flip the direction
-    Dim length As Single
-    length = -Sqr(io.x * io.x + io.y * io.y + io.z * io.z)
-    If length = 0.0 Then
-        io.x = 0.0
-        io.y = 0.0
-        io.z = 0.0
-    Else
-        io.x = io.x / length
-        io.y = io.y / length
-        io.z = io.z / length
-    End If
-End Sub
-
-
 Sub Vector3_Mul (left As vec3d, scale As Single, o As vec3d) Static
     o.x = left.x * scale
     o.y = left.y * scale
@@ -2432,14 +2324,9 @@ Function Vector3_DotProduct! (p0 As vec3d, p1 As vec3d) Static
 End Function
 
 Sub Vector3_Reflect (i As vec3d, normal As vec3d, o As vec3d) Static
-    Static mag As Single
-    Static bounce As vec3d
-    mag = -2.0 * Vector3_DotProduct!(i, normal)
-    Vector3_Mul normal, mag, bounce
-    Vector3_Add bounce, i, o
-End Sub
-
-Sub Vector3_Reflect_unroll (i As vec3d, normal As vec3d, o As vec3d) Static
+    'mag = -2.0 * Vector3_DotProduct!(i, normal)
+    'Vector3_Mul normal, mag, bounce
+    'Vector3_Add bounce, i, o
     Static mag As Single
     mag = -2.0 * (i.x * normal.x + i.y * normal.y + i.z * normal.z)
     o.x = i.x + normal.x * mag
@@ -2473,7 +2360,7 @@ Sub ConvertXYZ_to_CubeIUV (x As Single, y As Single, z As Single, index As Integ
         Else
             ' NEGATIVE X
             ' u (0 to 1) goes from -z to +z
-            ' ?v (0 to 1) goes from -y to +y
+            ' v (0 to 1) goes from -y to +y
             index = 1
             If absX = 0 Then
                 ' Bail out
@@ -2513,7 +2400,7 @@ Sub ConvertXYZ_to_CubeIUV (x As Single, y As Single, z As Single, index As Integ
     If z > 0 Then
         ' POSITIVE Z
         ' u (0 to 1) goes from -x to +x
-        ' ?v (0 to 1) goes from -y to +y
+        ' v (0 to 1) goes from -y to +y
         index = 4
         ' Convert range from -1 to 1 to 0 to 1
         u = 0.5 * (x / absZ + 1.0)
