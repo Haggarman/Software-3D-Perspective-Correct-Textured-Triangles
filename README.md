@@ -47,6 +47,12 @@ Yes | Z-Fight Bias
 ## Language
  This collection of BASIC programs is written for the QB64 compiler.
  https://github.com/QB64-Phoenix-Edition/
+### Compiler Settings
+ Be sure to set the option "Output EXE to Source Folder" in the Run menu. This is so that the .exe can find the texture image files.
+
+ In the Options menu, set "Compile program with C++ optimization flag", because why wouldn't you want a faster running program?
+
+ Also in Options, set "Max C++ Compiler Processes" to the number of your CPU cores, because again why wouldn't you want a quicker compile?
 
 ## Approach
  QBASIC was used because of the very quick edit-compile-test iterations. I wanted this exploration to be fun.

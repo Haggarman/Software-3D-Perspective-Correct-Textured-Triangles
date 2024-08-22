@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Variants 152"
+_Title "Tri-Linear Mipmap Variants 162"
 ' 2024 Haggarman
 ' Trilinear Mip Mapping variants
 '
@@ -199,26 +199,40 @@ Type vertex_attribute7
     t As Single
 End Type
 
+Type particle
+    anim_state As Long
+    anim_start As Long
+    anim_count As Long
+
+    vcenter As vec3d
+    vbegin As vec3d
+    vtarget As vec3d
+
+    relWidth As Single '  *>
+    relHeight As Single ' V
+    u0 As Single ' *...  top left texel
+    v0 As Single ' ....
+    u1 As Single ' ....
+    v1 As Single ' ...*  lower right texel
+
+    texture1 As _Unsigned Long
+    options As _Unsigned Long
+End Type
+
+
 ' Projection Matrix
 Dim Shared Frustum_Near As Single
 Dim Shared Frustum_Far As Single
-Dim Shared Frustum_FOV_deg As Single
 Dim Shared Frustum_Aspect_Ratio As Single
+Dim Shared Frustum_FOV_deg As Single
 Dim Shared Frustum_FOV_ratio As Single
+Dim Shared matProj(3, 3) As Single
 
 Frustum_Near = 0.5
 Frustum_Far = 1000.0
-Frustum_FOV_deg = 80.0
 Frustum_Aspect_Ratio = _Height / _Width
-Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
-
-Dim Shared matProj(3, 3) As Single
-matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-matProj(1, 1) = Frustum_FOV_ratio
-matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-matProj(2, 3) = 1.0
-matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
-matProj(3, 3) = 0.0
+Frustum_FOV_deg = 80.0
+FOVchange
 
 ' Viewing area clipping
 Dim Shared clip_min_y As Long, clip_max_y As Long
@@ -363,23 +377,21 @@ MakeMesh Mesh_Seed
 '     | 3 |
 '     +---+
 
-Dim Shared SkyBoxRef(6) As Long
+Dim Shared SkyBoxRef(5) As Long
 SkyBoxRef(0) = _LoadImage("SkyBoxRight.png", 32)
 SkyBoxRef(1) = _LoadImage("SkyBoxLeft.png", 32)
 SkyBoxRef(2) = _LoadImage("SkyBoxTop.png", 32)
 SkyBoxRef(3) = _LoadImage("SkyBoxBottom.png", 32)
 SkyBoxRef(4) = _LoadImage("SkyBoxFront.png", 32)
 SkyBoxRef(5) = _LoadImage("SkyBoxBack.png", 32)
-SkyBoxRef(6) = _LoadImage("Origin16x16.png", 32)
 
 ' Error _LoadImage returns -1 as an invalid handle if it cannot load the image.
-For refIndex = 0 To 6
+For refIndex = 0 To 5
     If SkyBoxRef(refIndex) = -1 Then
         Print "Could not load texture file for skybox face: "; refIndex
         End
     End If
     Print refIndex; _Width(SkyBoxRef(refIndex)); _Height(SkyBoxRef(refIndex))
-
 Next refIndex
 
 _PutImage (128, 0), SkyBoxRef(2)
@@ -391,7 +403,7 @@ _PutImage (128 * 1, 128 * 2), SkyBoxRef(3)
 
 Dim A As Integer
 Dim Shared Sky_Last_Element As Integer
-Sky_Last_Element = 11 + 1
+Sky_Last_Element = 11
 
 Dim sky(Sky_Last_Element) As skybox_triangle
 Restore SKYBOX
@@ -417,6 +429,10 @@ For A = 0 To Sky_Last_Element
 
     Read sky(A).texture
 Next A
+
+Dim Shared Particle_Last_Element As Integer
+Particle_Last_Element = 0
+Dim particles(Particle_Last_Element) As particle
 
 Sleep 1
 
@@ -537,11 +553,9 @@ Dim Triangles_Drawn As Long
 Dim triCount As Integer
 Dim New_Triangles_Drawn As Long ' because of clipping
 Dim vMove_Player_Forward As vec3d
-Dim vSunPsn As vec3d
 
-Dim vSun0 As vec3d ' begin
-Dim vSun1 As vec3d ' finish
-Dim lightChangeCount As Integer
+Dim interpolater As Single
+Dim vParticlePsn As vec3d
 
 Dim Shared TLMMI_Variant As Integer
 
@@ -561,8 +575,12 @@ T2_Filter_Selection = 1
 fPitch = -10.0
 fYaw = 0.0
 fRoll = 0.0
-lightChangeCount = 0
-vSun1 = vSunDir
+
+particles(0).anim_state = 1
+particles(0).vcenter = vSunDir
+particles(0).relHeight = 0.1
+particles(0).relWidth = 0.1 * Frustum_Aspect_Ratio
+
 
 frametime_fullframe_ms = 1 / 60.0
 frametime_fullframethreshold_ms = 1 / 61.0
@@ -611,33 +629,17 @@ Do
 
     ' Draw Skybox 2-28-2023
     For A = 0 To Sky_Last_Element
-        If A = Sky_Last_Element Then
-            Vector3_Mul vSunDir, 10.0, vSunPsn
-            point0.x = vSunPsn.x
-            point0.y = vSunPsn.y + 1.0
-            point0.z = vSunPsn.z
+        point0.x = sky(A).x0
+        point0.y = sky(A).y0
+        point0.z = sky(A).z0
 
-            point1.x = vSunPsn.x + 1.0
-            point1.y = vSunPsn.y + 1.0
-            point1.z = vSunPsn.z
+        point1.x = sky(A).x1
+        point1.y = sky(A).y1
+        point1.z = sky(A).z1
 
-            point2.x = vSunPsn.x
-            point2.y = vSunPsn.y
-            point2.z = vSunPsn.z
-
-        Else
-            point0.x = sky(A).x0
-            point0.y = sky(A).y0
-            point0.z = sky(A).z0
-
-            point1.x = sky(A).x1
-            point1.y = sky(A).y1
-            point1.z = sky(A).z1
-
-            point2.x = sky(A).x2
-            point2.y = sky(A).y2
-            point2.z = sky(A).z2
-        End If
+        point2.x = sky(A).x2
+        point2.y = sky(A).y2
+        point2.z = sky(A).z2
 
         ' Follow the camera coordinate position (slide)
         ' Skybox is like putting your head inside a floating box that travels with you, but never rotates.
@@ -647,7 +649,7 @@ Do
         Vector3_Add point2, vCameraPsn, pointTrans2
 
         ' Part 2 (Triangle Surface Normal Calculation)
-        CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
+        'CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
 
         ' The dot product to this skybox surface is just the way you are facing.
         ' The surface completely behind you is going to get later removed with NearClip.
@@ -765,21 +767,116 @@ Do
     spotlightAnimationCount = spotlightAnimationCount + 7.0 * frame_advance
     If spotlightAnimationCount >= 360.0 Then spotlightAnimationCount = spotlightAnimationCount - 360.0
 
-    ' dart around the sky
-    If lightChangeCount <= 0 Then
-        vSun0 = vSun1
 
-        vSun1.x = Rnd - 0.5
-        vSun1.y = Rnd ' +Y is up
-        vSun1.z = Rnd - 0.5
+    ' Draw Particles
+    For A = 0 To Particle_Last_Element
+        If particles(A).anim_state > 0 Then
 
-        lightChangeCount = 200
-    Else
-        lightChangeCount = lightChangeCount - 1
-    End If
+            Select Case particles(A).anim_state
+                Case 1
+                    particles(A).vbegin = particles(A).vcenter
+                    particles(A).vtarget.x = Rnd - 0.5
+                    particles(A).vtarget.y = Rnd ' +Y is up
+                    particles(A).vtarget.z = Rnd - 0.5
 
-    Vector3_Lerp vSun1, vSun0, lightChangeCount / 200.0, vSunDir
-    Vector3_Normalize vSunDir
+                    particles(A).anim_start = 200
+                    particles(A).anim_count = 200
+                    particles(A).anim_state = 2
+
+                Case 2
+                    particles(A).anim_count = particles(A).anim_count - 1
+                    If (particles(A).anim_count <= 0) _Orelse (particles(A).anim_start <= 0) Then
+                        particles(A).vcenter = particles(A).vtarget
+                        particles(A).anim_state = 1
+                    Else
+                        interpolater = SmootherStep(particles(A).anim_count / particles(A).anim_start)
+                        Vector3_Lerp particles(A).vtarget, particles(A).vbegin, interpolater, particles(A).vcenter
+                    End If
+
+                Case 3
+                    particles(A).anim_state = 3
+            End Select
+
+            If A = 0 Then
+                ' Sun darts around the sky
+                vSunDir = particles(A).vcenter
+                Vector3_Normalize vSunDir
+                Vector3_Add vSunDir, vCameraPsn, vParticlePsn
+            Else
+                vParticlePsn = particles(A).vcenter
+            End If
+
+            ' Convert World Space --> View Space
+            Multiply_Vector3_Matrix4 vParticlePsn, matView(), pointView0
+
+            If pointView0.z >= Frustum_Near Then
+                ' Project centerpoint from 3D -----------------> 2D
+                ProjectMatrixVector4 pointView0, matProj(), pointProj0
+
+                ' Slide to center, then Scale into viewport
+                'SX0 = (pointProj0.x + 1) * halfWidth
+                'SY0 = (pointProj0.y + 1) * halfHeight
+                'PSet (SX0, SY0), _RGB32(0, 0, 0)
+
+                SX1 = (pointProj0.x + 1 - particles(A).relWidth) * halfWidth
+                SY1 = (pointProj0.y + 1 - particles(A).relHeight) * halfHeight
+
+                SX2 = (pointProj0.x + 1 + particles(A).relWidth) * halfWidth
+                SY2 = (pointProj0.y + 1 + particles(A).relHeight) * halfHeight
+
+
+                T1_CatalogIndex = 2
+                T1_ImageHandle = TextureCatalog(T1_CatalogIndex)
+                T1_mblock = _MemImage(T1_ImageHandle)
+                T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
+                T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
+
+                ' Load Vertex List for Textured triangle
+                vertexA.x = SX1
+                vertexA.y = SY1
+                vertexA.w = 1.0 ' depth
+                vertexA.u = 0
+                vertexA.v = 0
+
+                vertexB.x = SX1
+                vertexB.y = SY2
+                vertexB.w = 1.0 ' depth
+                vertexB.u = 0
+                vertexB.v = T1_height
+
+                vertexC.x = SX2
+                vertexC.y = SY2
+                vertexC.w = 1.0 ' depth
+                vertexC.u = T1_width
+                vertexC.v = T1_height
+
+                TexturedNonlitAlphaTriangle vertexA, vertexB, vertexC
+
+                ' Load Vertex List for Textured triangle
+                vertexA.x = SX1
+                vertexA.y = SY1
+                vertexA.w = 1.0 ' depth
+                vertexA.u = 0
+                vertexA.v = 0
+
+                vertexB.x = SX2
+                vertexB.y = SY1
+                vertexB.w = 1.0 ' depth
+                vertexB.u = T1_width
+                vertexB.v = 0
+
+                vertexC.x = SX2
+                vertexC.y = SY2
+                vertexC.w = 1.0 ' depth
+                vertexC.u = T1_width
+                vertexC.v = T1_height
+
+                TexturedNonlitAlphaTriangle vertexA, vertexB, vertexC
+
+            End If
+
+        End If ' anim_state > 0
+    Next A
 
 
     ' Draw Triangles
@@ -937,7 +1034,6 @@ Do
             vertexB.r = vatr1.r
             vertexB.g = vatr1.g
             vertexB.b = vatr1.b
-
 
             vertexC.x = SX2
             vertexC.y = SY2
@@ -1171,7 +1267,7 @@ For refIndex = TextureCatalog_lastIndex To 0 Step -1
     _FreeImage TextureCatalog(refIndex)
 Next refIndex
 
-For refIndex = 6 To 0 Step -1
+For refIndex = 5 To 0 Step -1
     _FreeImage SkyBoxRef(refIndex)
 Next refIndex
 
@@ -1281,14 +1377,6 @@ Data +10,-10,-10
 Data -10,-10,-10
 Data 128,0,128,128,0,128
 Data 3
-
-' SUN
-Data -1,+1,+10
-Data +1,+1,+10
-Data -1,-1,+10
-Data 0,0,16,0,0,16
-Data 6
-
 
 
 Sub MakeMesh (seed As Long)
@@ -2166,6 +2254,7 @@ End Sub
 
 
 Sub FOVchange
+    ' requires Frustum_FOV_deg, Frustum_Aspect_Ratio, Frustum_Far, Frustum_Near
     If Frustum_FOV_deg < 10.0 Then Frustum_FOV_deg = 10.0
     If Frustum_FOV_deg > 120.0 Then Frustum_FOV_deg = 120.0
     Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
@@ -2502,6 +2591,10 @@ Function Vector3_DotProduct! (p0 As vec3d, p1 As vec3d)
     Vector3_DotProduct! = p0.x * p1.x + p0.y * p1.y + p0.z * p1.z
 End Function
 
+Function SmootherStep (t As Single)
+    SmootherStep = ((6.0 * t - 15.0) * t + 10.0) * t * t * t
+End Function
+
 Sub Matrix4_MakeIdentity (m( 3 , 3) As Single)
     m(0, 0) = 1.0: m(0, 1) = 0.0: m(0, 2) = 0.0: m(0, 3) = 0.0
     m(1, 1) = 0.0: m(1, 1) = 1.0: m(1, 2) = 0.0: m(1, 3) = 0.0
@@ -2595,7 +2688,7 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
     Dim www As Single
     o.x = i.x * m(0, 0) + i.y * m(1, 0) + i.z * m(2, 0) + m(3, 0)
     o.y = i.x * m(0, 1) + i.y * m(1, 1) + i.z * m(2, 1) + m(3, 1)
-    o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
+    'o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
     www = i.x * m(0, 3) + i.y * m(1, 3) + i.z * m(2, 3) + m(3, 3)
 
     ' Normalizing
@@ -2603,7 +2696,7 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
         o.w = 1 / www 'optimization
         o.x = o.x * o.w
         o.y = -o.y * o.w 'because I feel +Y is up
-        o.z = o.z * o.w
+        'o.z = o.z * o.w
     End If
 End Sub
 
@@ -4028,3 +4121,371 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
 
 End Sub
 
+Sub TexturedNonlitAlphaTriangle (A As vertex10, B As vertex10, C As vertex10)
+    ' this is a reduced copy for particle effect drawing
+    ' Texture_options is ignored
+    Static delta2 As vertex5
+    Static delta1 As vertex5
+    Static draw_min_y As Long, draw_max_y As Long
+
+    ' Sort so that vertex A is on top and C is on bottom.
+    ' This seems inverted from math class, but remember that Y increases in value downward on PC monitors
+    If B.y < A.y Then
+        Swap A, B
+    End If
+    If C.y < A.y Then
+        Swap A, C
+    End If
+    If C.y < B.y Then
+        Swap B, C
+    End If
+
+    ' integer window clipping
+    draw_min_y = _Ceil(A.y)
+    If draw_min_y < clip_min_y Then draw_min_y = clip_min_y
+    draw_max_y = _Ceil(C.y) - 1
+    If draw_max_y > clip_max_y Then draw_max_y = clip_max_y
+    If (draw_max_y - draw_min_y) < 0 Then Exit Sub
+
+    ' Determine the deltas (lengths)
+    ' delta 2 is from A to C (the full triangle height)
+    delta2.x = C.x - A.x
+    delta2.y = C.y - A.y
+    delta2.w = C.w - A.w
+    delta2.u = C.u - A.u
+    delta2.v = C.v - A.v
+
+    ' Avoiding div by 0
+    ' Entire Y height less than 1/256 would not have meaningful pixel color change
+    If delta2.y < (1 / 256) Then Exit Sub
+
+    ' Determine vertical Y steps for DDA style math
+    ' DDA is Digital Differential Analyzer
+    ' It is an accumulator that counts from a known start point to an end point, in equal increments defined by the number of steps in-between.
+    ' Probably faster nowadays to do the one division at the start, instead of Bresenham, anyway.
+    Static legx1_step As Single
+    Static legw1_step As Single, legu1_step As Single, legv1_step As Single
+
+    Static legx2_step As Single
+    Static legw2_step As Single, legu2_step As Single, legv2_step As Single
+
+    ' Leg 2 steps from A to C (the full triangle height)
+    legx2_step = delta2.x / delta2.y
+    legw2_step = delta2.w / delta2.y
+    legu2_step = delta2.u / delta2.y
+    legv2_step = delta2.v / delta2.y
+
+    ' Leg 1, Draw top to middle
+    ' For most triangles, draw downward from the apex A to a knee B.
+    ' That knee could be on either the left or right side, but that is handled much later.
+    Static draw_middle_y As Long
+    draw_middle_y = _Ceil(B.y)
+    If draw_middle_y < clip_min_y Then draw_middle_y = clip_min_y
+    ' Do not clip B to max_y. Let the y count expire before reaching the knee if it is past bottom of screen.
+
+    ' Leg 1 is from A to B (right now)
+    delta1.x = B.x - A.x
+    delta1.y = B.y - A.y
+    delta1.w = B.w - A.w
+    delta1.u = B.u - A.u
+    delta1.v = B.v - A.v
+
+    ' If the triangle has no knee, this section gets skipped to avoid divide by 0.
+    ' That is okay, because the recalculate Leg 1 from B to C triggers before actually drawing.
+    If delta1.y > (1 / 256) Then
+        ' Find Leg 1 steps in the y direction from A to B
+        legx1_step = delta1.x / delta1.y
+        legw1_step = delta1.w / delta1.y
+        legu1_step = delta1.u / delta1.y
+        legv1_step = delta1.v / delta1.y
+    End If
+
+    ' Y Accumulators
+    Static leg_x1 As Single
+    Static leg_w1 As Single, leg_u1 As Single, leg_v1 As Single
+
+    Static leg_x2 As Single
+    Static leg_w2 As Single, leg_u2 As Single, leg_v2 As Single
+
+    ' 11-4-2022 Prestep Y
+    Static prestep_y1 As Single
+    ' Basically we are sampling pixels on integer exact rows.
+    ' But we only are able to know the next row by way of forward interpolation. So always round up.
+    ' To get to that next row, we have to prestep by the fractional forward distance from A. _Ceil(A.y) - A.y
+    prestep_y1 = draw_min_y - A.y
+
+    leg_x1 = A.x + prestep_y1 * legx1_step
+    leg_w1 = A.w + prestep_y1 * legw1_step
+    leg_u1 = A.u + prestep_y1 * legu1_step
+    leg_v1 = A.v + prestep_y1 * legv1_step
+
+    leg_x2 = A.x + prestep_y1 * legx2_step
+    leg_w2 = A.w + prestep_y1 * legw2_step
+    leg_u2 = A.u + prestep_y1 * legu2_step
+    leg_v2 = A.v + prestep_y1 * legv2_step
+
+    ' Inner loop vars
+    Static row As Long
+    Static col As Long
+    Static draw_max_x As Long
+    Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
+    Static pixel_value As _Unsigned Long ' The ARGB value to write to screen
+
+    ' Stepping along the X direction
+    Static delta_x As Single
+    Static prestep_x As Single
+    Static tex_w_step As Single, tex_u_step As Single, tex_v_step As Single
+
+    ' X Accumulators
+    Static tex_w As Single, tex_u As Single, tex_v As Single
+
+    ' Screen Memory Pointers
+    Static screen_mem_info As _MEM
+    Static screen_next_row_step As _Offset
+    Static screen_row_base As _Offset ' Calculated every row
+    Static screen_address As _Offset ' Calculated at every starting column
+    screen_mem_info = _MemImage(WORK_IMAGE)
+    screen_next_row_step = 4 * Size_Render_X
+
+    ' caching of 4 texels in bilinear mode
+    Static T1_last_cache As _Unsigned Long
+    T1_last_cache = &HFFFFFFFF ' invalidate
+
+    ' Row Loop from top to bottom
+    row = draw_min_y
+    screen_row_base = screen_mem_info.OFFSET + row * screen_next_row_step
+    While row <= draw_max_y
+
+        If row = draw_middle_y Then
+            ' Reached Leg 1 knee at B, recalculate Leg 1.
+            ' This overwrites Leg 1 to be from B to C. Leg 2 just keeps continuing from A to C.
+            delta1.x = C.x - B.x
+            delta1.y = C.y - B.y
+            delta1.w = C.w - B.w
+            delta1.u = C.u - B.u
+            delta1.v = C.v - B.v
+
+            If delta1.y = 0.0 Then Exit Sub
+
+            ' Full steps in the y direction from B to C
+            legx1_step = delta1.x / delta1.y
+            legw1_step = delta1.w / delta1.y
+            legu1_step = delta1.u / delta1.y
+            legv1_step = delta1.v / delta1.y
+
+            ' 11-4-2022 Prestep Y
+            ' Most cases has B lower downscreen than A.
+            ' B > A usually. Only one case where B = A.
+            prestep_y1 = draw_middle_y - B.y
+
+            ' Re-Initialize DDA start values
+            leg_x1 = B.x + prestep_y1 * legx1_step
+            leg_w1 = B.w + prestep_y1 * legw1_step
+            leg_u1 = B.u + prestep_y1 * legu1_step
+            leg_v1 = B.v + prestep_y1 * legv1_step
+
+        End If
+
+        ' Horizontal Scanline
+        delta_x = Abs(leg_x2 - leg_x1)
+        ' Avoid div/0, this gets tiring.
+        If delta_x >= (1 / 2048) Then
+            ' Calculate step, start, and end values.
+            ' Drawing left to right, as in incrementing from a lower to higher memory address, is usually fastest.
+            If leg_x1 < leg_x2 Then
+                ' leg 1 is on the left
+                tex_w_step = (leg_w2 - leg_w1) / delta_x
+                tex_u_step = (leg_u2 - leg_u1) / delta_x
+                tex_v_step = (leg_v2 - leg_v1) / delta_x
+
+                ' Set the horizontal starting point to (1)
+                col = _Ceil(leg_x1)
+                If col < clip_min_x Then col = clip_min_x
+
+                ' Prestep to find pixel starting point
+                prestep_x = col - leg_x1
+                tex_w = leg_w1 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
+                tex_u = leg_u1 + prestep_x * tex_u_step
+                tex_v = leg_v1 + prestep_x * tex_v_step
+
+                ' ending point is (2)
+                draw_max_x = _Ceil(leg_x2)
+                If draw_max_x > clip_max_x Then draw_max_x = clip_max_x
+
+            Else
+                ' Things are flipped. leg 1 is on the right.
+                tex_w_step = (leg_w1 - leg_w2) / delta_x
+                tex_u_step = (leg_u1 - leg_u2) / delta_x
+                tex_v_step = (leg_v1 - leg_v2) / delta_x
+
+                ' Set the horizontal starting point to (2)
+                col = _Ceil(leg_x2)
+                If col < clip_min_x Then col = clip_min_x
+
+                ' Prestep to find pixel starting point
+                prestep_x = col - leg_x2
+                tex_w = leg_w2 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
+                tex_u = leg_u2 + prestep_x * tex_u_step
+                tex_v = leg_v2 + prestep_x * tex_v_step
+
+                ' ending point is (1)
+                draw_max_x = _Ceil(leg_x1)
+                If draw_max_x > clip_max_x Then draw_max_x = clip_max_x
+
+            End If
+
+            ' Draw the Horizontal Scanline
+            ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
+            ' Relies on some shared T1 variables over by Texture1
+            screen_address = screen_row_base + 4 * col
+            While col < draw_max_x
+
+                Static cc As _Unsigned Integer
+                Static ccp As _Unsigned Integer
+                Static rr As _Unsigned Integer
+                Static rrp As _Unsigned Integer
+
+                Static cm5 As Single
+                Static rm5 As Single
+
+                ' Recover U and V
+                ' Offset so the transition appears in the center of an enlarged texel instead of a corner.
+                cm5 = (tex_u * tex_z) - 0.5
+                rm5 = (tex_v * tex_z) - 0.5
+
+                ' clamp
+                If cm5 < 0.0 Then cm5 = 0.0
+                If cm5 >= T1_width_MASK Then
+                    ' 15.0 and up
+                    cc = T1_width_MASK
+                    ccp = T1_width_MASK
+                Else
+                    ' 0 1 2 .. 13 14.999
+                    cc = Int(cm5)
+                    ccp = cc + 1
+                End If
+
+                ' clamp
+                If rm5 < 0.0 Then rm5 = 0.0
+                If rm5 >= T1_height_MASK Then
+                    ' 15.0 and up
+                    rr = T1_height_MASK
+                    rrp = T1_height_MASK
+                Else
+                    rr = Int(rm5)
+                    rrp = rr + 1
+                End If
+
+                ' 4 point bilinear temp vars
+                Static Frac_cc1_FIX7 As Integer
+                Static Frac_rr1_FIX7 As Integer
+                ' 0 1
+                ' . .
+                Static bi_r0 As Integer
+                Static bi_g0 As Integer
+                Static bi_b0 As Integer
+                Static bi_a0 As Integer
+                ' . .
+                ' 2 3
+                Static bi_r1 As Integer
+                Static bi_g1 As Integer
+                Static bi_b1 As Integer
+                Static bi_a1 As Integer
+
+                ' color blending
+                Static a0 As Integer
+
+                Frac_cc1_FIX7 = (cm5 - Int(cm5)) * 128
+                Frac_rr1_FIX7 = (rm5 - Int(rm5)) * 128
+
+                ' Caching of 4 texels
+                Static T1_this_cache As _Unsigned Long
+                Static T1_uv_0_0 As Long
+                Static T1_uv_1_0 As Long
+                Static T1_uv_0_1 As Long
+                Static T1_uv_1_1 As Long
+
+                T1_this_cache = _ShL(rr, 12) Or cc
+                If T1_this_cache <> T1_last_cache Then
+
+                    _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rr * T1_width) * 4, T1_uv_0_0
+                    _MemGet T1_mblock, T1_mblock.OFFSET + (ccp + rr * T1_width) * 4, T1_uv_1_0
+                    _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rrp * T1_width) * 4, T1_uv_0_1
+                    _MemGet T1_mblock, T1_mblock.OFFSET + (ccp + rrp * T1_width) * 4, T1_uv_1_1
+
+                    T1_last_cache = T1_this_cache
+                End If
+
+                ' determine T1 RGB colors
+                bi_r0 = _Red32(T1_uv_0_0)
+                bi_r0 = _ShR((_Red32(T1_uv_1_0) - bi_r0) * Frac_cc1_FIX7, 7) + bi_r0
+
+                bi_g0 = _Green32(T1_uv_0_0)
+                bi_g0 = _ShR((_Green32(T1_uv_1_0) - bi_g0) * Frac_cc1_FIX7, 7) + bi_g0
+
+                bi_b0 = _Blue32(T1_uv_0_0)
+                bi_b0 = _ShR((_Blue32(T1_uv_1_0) - bi_b0) * Frac_cc1_FIX7, 7) + bi_b0
+
+                bi_r1 = _Red32(T1_uv_0_1)
+                bi_r1 = _ShR((_Red32(T1_uv_1_1) - bi_r1) * Frac_cc1_FIX7, 7) + bi_r1
+
+                bi_g1 = _Green32(T1_uv_0_1)
+                bi_g1 = _ShR((_Green32(T1_uv_1_1) - bi_g1) * Frac_cc1_FIX7, 7) + bi_g1
+
+                bi_b1 = _Blue32(T1_uv_0_1)
+                bi_b1 = _ShR((_Blue32(T1_uv_1_1) - bi_b1) * Frac_cc1_FIX7, 7) + bi_b1
+
+                pixel_value = _RGB32(_ShR((bi_r1 - bi_r0) * Frac_rr1_FIX7, 7) + bi_r0, _ShR((bi_g1 - bi_g0) * Frac_rr1_FIX7, 7) + bi_g0, _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0)
+
+                ' determine Alpha channel
+                bi_a0 = _Alpha32(T1_uv_0_0)
+                bi_a0 = _ShR((_Alpha32(T1_uv_1_0) - bi_a0) * Frac_cc1_FIX7, 7) + bi_a0
+
+                bi_a1 = _Alpha32(T1_uv_0_1)
+                bi_a1 = _ShR((_Alpha32(T1_uv_1_1) - bi_a1) * Frac_cc1_FIX7, 7) + bi_a1
+
+                a0 = _ShR((bi_a1 - bi_a0) * Frac_rr1_FIX7, 7) + bi_a0
+
+                If a0 < 255 Then
+                    ' Alpha blend
+                    Static pixel_existing As _Unsigned Long
+                    Static pixel_alpha As Single
+                    pixel_alpha = a0 / 255.0
+                    pixel_existing = _MemGet(screen_mem_info, screen_address, _Unsigned Long)
+
+                    pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
+                                         (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
+                                         ( _Blue32(pixel_value) - _Blue32(pixel_existing))  * pixel_alpha +  _blue32(pixel_existing))
+                End If
+
+                _MemPut screen_mem_info, screen_address, pixel_value
+                'PSet (col, row), pixel_value
+
+                tex_w = tex_w + tex_w_step
+                tex_z = 1 / tex_w ' execution time for this can be absorbed when result not required immediately
+                tex_u = tex_u + tex_u_step
+                tex_v = tex_v + tex_v_step
+                screen_address = screen_address + 4
+                col = col + 1
+            Wend ' col
+
+        End If ' end div/0 avoidance
+
+        ' DDA next step
+        leg_x1 = leg_x1 + legx1_step
+        leg_w1 = leg_w1 + legw1_step
+        leg_u1 = leg_u1 + legu1_step
+        leg_v1 = leg_v1 + legv1_step
+
+        leg_x2 = leg_x2 + legx2_step
+        leg_w2 = leg_w2 + legw2_step
+        leg_u2 = leg_u2 + legu2_step
+        leg_v2 = leg_v2 + legv2_step
+
+        screen_row_base = screen_row_base + screen_next_row_step
+        row = row + 1
+    Wend ' row
+
+End Sub
