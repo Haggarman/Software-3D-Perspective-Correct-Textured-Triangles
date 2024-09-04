@@ -1,14 +1,18 @@
 ## Description
  How were 3D triangles drawn by the first PC graphics accelerators in 1997? This was my deep dive into understanding the software algorithms involved in drawing triangles line by line.
- 
- This is a software simulation only approach. I do not seek to mimic exact hardware pipelines, command registers, or video memory controller implementations. Draw the pixels to a framebuffer using entirely the CPU to perform the 3D math, and then let whatever GPU take that framebuffer and display it in a window. The point here was to understand what the digital logic on a low-end PC level 3D Graphics Accelerator was doing in that time period based on the Silicon Graphics hardware rendering pipeline model.
+
+ This is a software simulation only approach. I do not seek to mimic exact hardware pipelines, command registers, or video memory controller implementations. Draw the pixels to a framebuffer using entirely the CPU to perform the 3D math, and then let whatever GPU take that framebuffer and display it in a window.
+
+ The point here was to understand what the digital logic on a low-end PC level 3D Graphics Accelerator was doing in that time period based on the Silicon Graphics hardware rendering pipeline model.
 
 ## Inspiration
  I tried this project once before in the mid 1990s. Back on my first PC with Windows 95 and a ViRGE Graphics Accelerator, I noticed that the DirectX D3D Software Reference Rasterizer on a Pentium 200 was performing on par or often better than the S3 hardware (to put it lightly). The software textured triangles were good looking and more specifically were perspective correct. So, I had direct evidence it was possible.
- 
+
  The books on 3D Graphics at the time felt condescending, always assuming the reader is starting from the beginning, wasting page after page with personal anecdotes, and when finally getting at the meat of the problem would say the most hurtful thing a technical author can say, which is "that is beyond the scope of this book". Me shocked in disbelief as the author then continued with their dated affine mapping and DOS 8086 palletized 256 color VGA. As a result with everything so secret and so poorly described, I basically didn't pursue 3D anything as a career. If I couldn't understand it at the core mathematical level, I didn't want to deal with it.
 
- If someone would have just said to me, the secret to perspective correct texturing is to interpolate 1/Z aross the face of the triangle instead of Z, that would have been enough for me to keep rolling along. I would have naturally figured out with things now expressed "per Z", to interpolate the (U, V) texel coordinates also as U/Z and V/Z. Instead, it had to be decades later when a random Youtube video suggestion led me to javidx9 "Code-It-Yourself! 3D Graphics Engine" series. To him I am eternally grateful for cutting through the rubbish and explaining things in a straightforward manner. I was once again able to soar, getting to write performant realtime tri-linear mip-mapping, which was the darling technology of the time.
+ If someone would have just said to me, the secret to perspective correct texturing is to interpolate 1/Z aross the face of the triangle instead of Z, that would have been enough for me to keep rolling along. I would have naturally figured out with things now expressed "per Z", to interpolate the (U, V) texel coordinates also as U/Z and V/Z.
+
+ Instead, it had to be decades later when a random Youtube video suggestion led me to javidx9 "Code-It-Yourself! 3D Graphics Engine" series. To him I am eternally grateful for cutting through the rubbish and explaining things in a straightforward manner. I was once again able to soar, getting to write performant realtime tri-linear mip-mapping, which was the darling technology of the time.
 
 ### Era Applicable Cards
 - 3Dfx Voodoo 1 & 2
@@ -378,34 +382,43 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 
  A program named *TextureWrapOptions.bas* in the Concepts folder was used to develop the Tile versus Clamp options. It draws a 2D visual as the options are changed by pressing number keys on the keyboard.
 
+## Color Blending
+ To arrive at the blended color for a given pixel, Graphics Accelerators made available a linear interpolation circuit in the form of:
+```
+Color = (A - B) * C + D
+```
+ Variables A thru D could be configured from a numbered list of various signal sources, much like how patch cables can be moved around on an audio modular synthesizer.
+
+ Since multi-texturing or alpha blending from a reference texture requires at least two passes of this equation, the SGI Ultra 64 RDP had what they termed "2 cycle mode" to allow the output from the first pass of color blending to be combined with a second pass (at the cost of speed). The 3dfx Voodoo series has provisions for up to 3 physical TMU chips, allowing the output of of the first TMU to patch into the next TMU.
+
 ## Fog (Depth Cueing)
  Pixel Fog (Table Fog) is calculated at the end of the pixel blending process. Fog is usually intended to have objects blend into a background color with increasing distance from the viewer. Fog is just a general term, and could also represent smoke or liquid water, but I think you get the picture.
- 
+
  It is implemented here as a gradient, where the input color values blend linearly into the fog color for Z values between the *fog_near* and *fog_far* variables. If the input Z value is closer than the *fog_near* value, the input color values are passed through unchanged. At the *fog_far* Z value and beyond, the input color is replaced with the fog color but yet the Z-Buffer is still updated and the screen pixel is still drawn.
- 
+
  At the time of writing the code, I could not arrive at a rational reason why fog tables existed, so just the linear gradient is implemented here for simplicity sake. For different batches of triangles with different visual rendering requirements, the depths *fog_near* and *fog_far* could be adjusted accordingly.
- 
+
  I have since learned that if the W value is used instead of the Z value for distance from the viewer, fog calculation becomes a non-linear function. So a lookup table is required to re-linearize. I have also learned that this so-called table fog was a vendor-specific implementation (3dfx). Although a few competitor chips did mostly achieve equivalency for a short while, table fog was dropped from future models in favor of vertex alpha-channel fog. The reason for that is seeing unsatisfactory or inconsistent results depending on the precision and representation (fixed or floating point) of the depth buffer. A fog table must be recalculated based on the precision of the depth buffer. Applications or games that did not, or could not, have this adjustment programmed in experienced wildly different fog results.
 
 ## Mipmapping
 
  Mipmapping is a solution to the resulting visual noise (aliasing) when rendering a large texture onto a comparatively smaller triangle. High contrast textures fare the worst. For example, imagine the terrible interference patterns a fence texture like |||| would render out to when vanishing off into the distance.
- 
+
  In technical terms, texture sample aliasing occurs when the delta change in texel coordinates between adjacent screen pixels is greater than one. Meaning that entire texture cells are being skipped and not contributing to the color.
 
 ### Definitions
 
  M.I.P. stands for *multum in parvo*. Academics like latin because they must do something with this otherwise useless language they learned. Many in the bundle. Basically you have a stack of 2 or more texture maps you can look at.
- 
+
  A complete mipmap set has each subsequent textures at half the dimension of the one preceding it.
- 
+
  For example, index 0 could be a 64x64 texture, index 1 is then 32x32, index 2 is 16x16, index 3 is 8x8, index 4 is 4x4, index 5 is 2x2, and index 6 is 1x1. Just an example. Indexes don't define the dimensions, just the lineup.
 
  A full mipmap stackup is often referred to as a Pyramid for obvious reasons due to its shape. For a given size base texture, a mipmap Pyramid takes 4/3 more storage memory.
- 
+
 ### Level of Detail (LOD)
 
- Now that you have a stack of at least two texture maps (a mipmap), how do you choose which one to use? If you said, distance from the viewer you're on the wrong track.
+ Now with a stack of at least two texture maps (a mipmap), how do you choose which one to use? If you said, distance from the viewer you're on the wrong track.
  
  If we were to display a triangle at the exact 1:1 ratio where one onscreen pixel maps to one texel, LOD = 0.
  If one pixel maps to the area of 4 texels, LOD = 1.

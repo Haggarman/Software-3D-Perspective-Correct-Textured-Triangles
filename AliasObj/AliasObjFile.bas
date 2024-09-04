@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Alias Object File 36"
+_Title "Alias Object File 39"
 ' 2024 Haggarman
 '  V34 Any size skybox texture dimensions
 '  V31 Mirror Reflective Surface
@@ -428,6 +428,7 @@ vCameraPsn.x = 0.0
 vCameraPsn.y = 0.0
 vCameraPsn.z = Camera_Start_Z
 
+Dim vCameraPsnNext As vec3d
 Dim cameraRay0 As vec3d
 Dim dotProductCam As Single
 
@@ -435,9 +436,9 @@ Dim dotProductCam As Single
 Dim fPitch As Single ' FPS Camera rotation in YZ plane (X)
 Dim fYaw As Single ' FPS Camera rotation in XZ plane (Y)
 Dim fRoll As Single
-Dim matCameraRot(3, 3) As Single
+Dim Shared matCameraRot(3, 3) As Single
 
-Dim vCameraHomeFwd As vec3d ' Home angle orientation is facing down the Z line.
+Dim Shared vCameraHomeFwd As vec3d ' Home angle orientation is facing down the Z line.
 vCameraHomeFwd.x = 0.0: vCameraHomeFwd.y = 0.0: vCameraHomeFwd.z = 1.0
 
 Dim vCameraTripod As vec3d ' Home angle orientation of which way is up.
@@ -512,7 +513,9 @@ spinAngleDegX = 0.0
 
 ' code execution time
 Dim start_ms As Double
+Dim trimesh_ms As Double
 Dim render_ms As Double
+Dim render_period_ms As Double
 
 ' physics framerate
 Dim frametime_fullframe_ms As Double
@@ -531,9 +534,9 @@ Dim triCount As Integer
 Dim Animate_Spin As Integer
 Dim Shared Dither_Selection As Integer
 Dim Gouraud_Shading_Selection As Integer
-Dim vMove_Player_Forward As vec3d
 Dim thisMaterial As newmtl_type
-
+Dim triloop_input_poll As Long
+Dim Shared Pixels_Drawn_This_Frame As Long
 
 main:
 $Checking:Off
@@ -558,8 +561,8 @@ Do
     If Animate_Spin Then
         spinAngleDegZ = spinAngleDegZ + frame_advance * 0.355
         spinAngleDegX = spinAngleDegX - frame_advance * 0.23
-        'fYaw = fYaw + 1
     End If
+    frame_advance = 0
 
     ' Set up rotation matrices
     ' _D2R is just a built-in degrees to radians conversion
@@ -749,6 +752,11 @@ Do
         Next tri
     End If
 
+    triloop_input_poll = 0
+    vCameraPsnNext = vCameraPsn ' capture where the camera is before starting triangle draw loop
+    trimesh_ms = Timer(0.001)
+    Pixels_Drawn_This_Frame = 0
+
     ' Draw Triangles
     For renderPass = 0 To 1
         For tri = Objects(actor).first To Objects(actor).last
@@ -872,7 +880,7 @@ Do
                         If light_specular_A > 0.0 Then
                             ' this power thing only works because it should range from 0..1 again.
                             ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
-                            light_specular_A = 3 * powf(light_specular_A, Default_Specular_Power)
+                            light_specular_A = powf(light_specular_A, Default_Specular_Power)
                         Else
                             light_specular_A = 0.0
                         End If
@@ -892,6 +900,8 @@ Do
                         vertexC.r = face_light_r
                         vertexC.g = face_light_g
                         vertexC.b = face_light_b
+
+                        TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
 
                     Case 1:
                         ' Smooth shading
@@ -925,7 +935,7 @@ Do
                         If light_specular_A > 0.0 Then
                             ' this power thing only works because it should range from 0..1 again.
                             ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
-                            light_specular_A = 3.0 * powf(light_specular_A, Default_Specular_Power)
+                            light_specular_A = powf(light_specular_A, Default_Specular_Power)
                         Else
                             light_specular_A = 0.0
                         End If
@@ -935,7 +945,7 @@ Do
                         Vector3_Normalize cameraRay1
                         light_specular_B = Vector3_DotProduct!(reflectLightDir1, cameraRay1)
                         If light_specular_B > 0.0 Then
-                            light_specular_B = 3.0 * powf(light_specular_B, Default_Specular_Power)
+                            light_specular_B = powf(light_specular_B, Default_Specular_Power)
                         Else
                             light_specular_B = 0.0
                         End If
@@ -945,7 +955,7 @@ Do
                         Vector3_Normalize cameraRay2
                         light_specular_C = Vector3_DotProduct!(reflectLightDir2, cameraRay2)
                         If light_specular_C > 0.0 Then
-                            light_specular_C = 3.0 * powf(light_specular_C, Default_Specular_Power)
+                            light_specular_C = powf(light_specular_C, Default_Specular_Power)
                         Else
                             light_specular_C = 0.0
                         End If
@@ -961,6 +971,8 @@ Do
                         vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + Light_AmbientVal)
                         vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + Light_AmbientVal)
                         vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + Light_AmbientVal)
+
+                        TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
 
                     Case 2:
                         ' Mirror
@@ -994,15 +1006,32 @@ Do
                         ReflectionMapTriangle vertexA, vertexB, vertexC
                 End Select
 
-                If Gouraud_Shading_Selection < 2 Then
-                    TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
-                End If
-
                 ' Wireframe triangle
                 'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 128, 128)
                 'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 128, 128)
                 'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
             End If
+
+            ' Improve camera control feeling by polling the keyboard every so often during this main triangle draw loop.
+            triloop_input_poll = triloop_input_poll + 1
+            If triloop_input_poll < 30000 GoTo Lbl_Skip_tri
+            triloop_input_poll = 0
+            '
+            frametimestamp_now_ms = Timer(0.001) ' this function is slow
+            If frametimestamp_now_ms - frametimestamp_prior_ms < 0.0 Then
+                ' timer rollover
+                ' without over-analyzing just use the previous delta, even if it is somewhat wrong it is a better guess than 0.
+                frametimestamp_prior_ms = frametimestamp_now_ms - frametimestamp_delta_ms
+            Else
+                frametimestamp_delta_ms = frametimestamp_now_ms - frametimestamp_prior_ms
+            End If
+            While frametimestamp_delta_ms > frametime_fullframethreshold_ms
+                frametimestamp_prior_ms = frametimestamp_prior_ms + frametime_fullframe_ms
+                frametimestamp_delta_ms = frametimestamp_delta_ms - frametime_fullframe_ms
+
+                frame_advance = frame_advance + 1
+                CameraPoll vCameraPsnNext, fYaw, fPitch
+            Wend ' frametime
 
             Lbl_Skip_tri:
         Next tri
@@ -1035,13 +1064,35 @@ Do
             Print "Mirror"
     End Select
 
-    Print "frame advance"; frame_advance
-    'Print "LookDir:"; vLookDir.x, vLookDir.y, vLookDir.z
+    render_period_ms = render_ms - trimesh_ms
+    If render_period_ms < 0.001 Then render_period_ms = 0.001
+    Print Using "mesh time #.###"; render_period_ms
+    Print "Pixels Drawn"; Pixels_Drawn_This_Frame
+    Print "Pixels/Second"; Int(Pixels_Drawn_This_Frame / render_period_ms)
 
     _Limit 60
     _Display
 
     $Checking:On
+    vCameraPsn = vCameraPsnNext
+
+    ' keyboard polling for camera movement
+    frametimestamp_now_ms = Timer(0.001)
+    If frametimestamp_now_ms - frametimestamp_prior_ms < 0.0 Then
+        ' timer rollover
+        ' without over-analyzing just use the previous delta, even if it is somewhat wrong it is a better guess than 0.
+        frametimestamp_prior_ms = frametimestamp_now_ms - frametimestamp_delta_ms
+    Else
+        frametimestamp_delta_ms = frametimestamp_now_ms - frametimestamp_prior_ms
+    End If
+    While frametimestamp_delta_ms > frametime_fullframethreshold_ms
+        frametimestamp_delta_ms = frametimestamp_delta_ms - frametime_fullframe_ms
+        frametimestamp_prior_ms = frametimestamp_prior_ms + frametime_fullframe_ms
+
+        frame_advance = frame_advance + 1
+        CameraPoll vCameraPsn, fYaw, fPitch
+    Wend ' frametime
+
     KeyNow = UCase$(InKey$)
     If KeyNow <> "" Then
 
@@ -1053,12 +1104,6 @@ Do
         ElseIf KeyNow = "D" Then
             Dither_Selection = Dither_Selection + 1
             If Dither_Selection > 2 Then Dither_Selection = 0
-        ElseIf KeyNow = "Z" Then
-            fPitch = fPitch + 5.0
-            If fPitch > 85.0 Then fPitch = 85.0
-        ElseIf KeyNow = "Q" Then
-            fPitch = fPitch - 5.0
-            If fPitch < -85.0 Then fPitch = -85.0
         ElseIf KeyNow = "R" Then
             vCameraPsn.x = 0.0
             vCameraPsn.y = 0.0
@@ -1075,58 +1120,6 @@ Do
 
     ' overrides
     If Vtx_Normals_Count = 0 Then Gouraud_Shading_Selection = 0
-
-    frametimestamp_now_ms = Timer(0.001)
-    If frametimestamp_now_ms - frametimestamp_prior_ms < 0.0 Then
-        ' timer rollover
-        ' without over-analyzing just use the previous delta, even if it is somewhat wrong it is a better guess than 0.
-        frametimestamp_prior_ms = frametimestamp_now_ms - frametimestamp_delta_ms
-    Else
-        frametimestamp_delta_ms = frametimestamp_now_ms - frametimestamp_prior_ms
-    End If
-
-    frame_advance = 0
-    While frametimestamp_delta_ms > frametime_fullframethreshold_ms
-        frame_advance = frame_advance + 1
-
-        If _KeyDown(32) Then
-            ' Spacebar
-            vCameraPsn.y = vCameraPsn.y + 0.2
-        End If
-
-        If _KeyDown(118) Or _KeyDown(86) Then
-            'V
-            vCameraPsn.y = vCameraPsn.y - 0.2
-        End If
-
-        If _KeyDown(19712) Then
-            ' Right arrow
-            fYaw = fYaw - 1.2
-        End If
-
-        If _KeyDown(19200) Then
-            ' Left arrow
-            fYaw = fYaw + 1.2
-        End If
-
-        ' Move the player
-        Matrix4_MakeRotation_Y fYaw, matCameraRot()
-        Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), vMove_Player_Forward
-        Vector3_Mul vMove_Player_Forward, 0.2, vMove_Player_Forward
-
-        If _KeyDown(18432) Then
-            ' Up arrow
-            Vector3_Add vCameraPsn, vMove_Player_Forward, vCameraPsn
-        End If
-
-        If _KeyDown(20480) Then
-            ' Down arrow
-            Vector3_Delta vCameraPsn, vMove_Player_Forward, vCameraPsn
-        End If
-
-        frametimestamp_prior_ms = frametimestamp_prior_ms + frametime_fullframe_ms
-        frametimestamp_delta_ms = frametimestamp_delta_ms - frametime_fullframe_ms
-    Wend ' frametime
 
 Loop Until ExitCode <> 0
 
@@ -1279,6 +1272,57 @@ Data 1,0,1,1,0,1
 Data 3
 
 $Checking:On
+Sub CameraPoll (camloc As vec3d, yaw As Single, pitch As Single)
+    Static cammove As vec3d
+
+    If _KeyDown(32) Then
+        ' Spacebar
+        camloc.y = camloc.y + 0.2
+    End If
+
+    If _KeyDown(118) Or _KeyDown(86) Then
+        'V
+        camloc.y = camloc.y - 0.2
+    End If
+
+    If _KeyDown(19712) Then
+        ' Right arrow
+        yaw = yaw - 1.2
+    End If
+
+    If _KeyDown(19200) Then
+        ' Left arrow
+        yaw = yaw + 1.2
+    End If
+
+    ' forward camera movement vector
+    Matrix4_MakeRotation_Y yaw, matCameraRot()
+    Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), cammove
+    Vector3_Mul cammove, 0.2, cammove
+
+    If _KeyDown(18432) Then
+        ' Up arrow
+        Vector3_Add camloc, cammove, camloc
+    End If
+
+    If _KeyDown(20480) Then
+        ' Down arrow
+        Vector3_Delta camloc, cammove, camloc
+    End If
+
+    If _KeyDown(122) Or _KeyDown(90) Then
+        ' Z
+        pitch = pitch + 1.0
+        If pitch > 85.0 Then pitch = 85.0
+    End If
+
+    If _KeyDown(113) Or _KeyDown(81) Then
+        ' Q
+        pitch = pitch - 1.0
+        If pitch < -85.0 Then pitch = -85.0
+    End If
+End Sub
+
 Sub PrescanMesh (thefile As String, requiredTriangles As Long, totalVertex As Long, totalTextureCoords As Long, totalNormals As Long, totalMaterialLibrary As Long, materialFile As String)
     ' Primary purpose is to determine the required amount of triangles.
     ' This is not straightforward as any size n-gons are allowed, although typically faces with 3 or 4 vertexes is encountered.
@@ -2507,7 +2551,7 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
     Dim www As Single
     o.x = i.x * m(0, 0) + i.y * m(1, 0) + i.z * m(2, 0) + m(3, 0)
     o.y = i.x * m(0, 1) + i.y * m(1, 1) + i.z * m(2, 1) + m(3, 1)
-    o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
+    'o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
     www = i.x * m(0, 3) + i.y * m(1, 3) + i.z * m(2, 3) + m(3, 3)
 
     ' Normalizing
@@ -2515,7 +2559,7 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
         o.w = 1 / www 'optimization
         o.x = o.x * o.w
         o.y = -o.y * o.w 'because I feel +Y is up
-        o.z = o.z * o.w
+        'o.z = o.z * o.w
     End If
 End Sub
 
@@ -3218,6 +3262,9 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
 
             End If
 
+            ' metrics
+            If col < draw_max_x Then Pixels_Drawn_This_Frame = Pixels_Drawn_This_Frame + (draw_max_x - col)
+
             ' Draw the Horizontal Scanline
             ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
             work_address = work_row_base + 4 * col
@@ -3509,6 +3556,9 @@ Sub TexturedNonlitTriangle (A As vertex9, B As vertex9, C As vertex9)
                 If draw_max_x > clip_max_x Then draw_max_x = clip_max_x
 
             End If
+
+            ' metrics
+            If col < draw_max_x Then Pixels_Drawn_This_Frame = Pixels_Drawn_This_Frame + (draw_max_x - col)
 
             ' Draw the Horizontal Scanline
             ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
@@ -3913,6 +3963,9 @@ Sub ReflectionMapTriangle (A As vertex9, B As vertex9, C As vertex9)
                 If draw_max_x > clip_max_x Then draw_max_x = clip_max_x
 
             End If
+
+            ' metrics
+            If col < draw_max_x Then Pixels_Drawn_This_Frame = Pixels_Drawn_This_Frame + (draw_max_x - col)
 
             ' Draw the Horizontal Scanline
             ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
