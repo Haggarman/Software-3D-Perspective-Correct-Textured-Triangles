@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 39"
+_Title "Alias Object File 41"
 ' 2024 Haggarman
+'  V41 obj illumination model
 '  V34 Any size skybox texture dimensions
 '  V31 Mirror Reflective Surface
 '  V30 Skybox
@@ -152,15 +153,29 @@ Type objectlist_type
 End Type
 
 Type newmtl_type
-    Kd_r As Single
+    illum As Long '  illumination model
+    Kd_r As Single ' diffuse color (main color)
     Kd_g As Single
     Kd_b As Single
-    Ks_r As Single
+    Ks_r As Single ' specular color
     Ks_g As Single
     Ks_b As Single
-    diaphaneity As Single ' translucency factor
+    Ns As Single ' specular power exponent (0 to 1000)
+    diaphaneity As Single ' translucency factor, for some strange reason Alias documentation calls this dissolve.
     textName As String
 End Type
+
+Const illum_model_constant_color = 0 ' Kd only
+Const illum_model_lambertian = 1 ' ambient constant term plus a diffuse shading term for the angle of each light source
+Const illum_model_blinn_phong = 2 ' ambient constant term, plus a diffuse and specular shading term for each light source
+Const illum_model_reflection_map_raytrace = 3 ' like model 2, plus Ks * (reflection map + raytracing)
+Const illum_model_glass_map_raytrace = 4 ' When dissolve < 0.1, specular highlights from lights or reflections become imperceptible.
+Const illum_model_fresnel = 5
+Const illum_model_refraction = 6 ' uses optical density (Ni) and resulting light is filtered by Tf (transmission filter)
+Const illum_model_fresnel_refraction = 7
+Const illum_model_reflection_map = 8 ' like model 2, plus Ks * reflection map. (but without raytracing)
+Const illum_model_glass_map = 9 ' like model 4, but without raytrace
+Const illum_model_shadow_only = 10 ' movie film shadowmatte
 
 ' Projection Matrix
 Dim Shared Frustum_Near As Single
@@ -227,6 +242,14 @@ Const T1_option_no_T1 = 65536
 ' That means: 2,4,8,16,32,64,128,256...
 T1_width = 16: T1_width_MASK = T1_width - 1
 T1_height = 16: T1_height_MASK = T1_height - 1
+
+' Texture1 math
+Dim Shared T1_mod_R As Single ' simulate a generic color register
+Dim Shared T1_mod_G As Single
+Dim Shared T1_mod_B As Single
+T1_mod_R = 1.0
+T1_mod_G = 1.0
+T1_mod_B = 1.0
 
 ' Load Texture1 Array from Data
 Dim Shared Texture1(T1_width_MASK, T1_height_MASK) As _Unsigned Long
@@ -331,12 +354,16 @@ End If
 ' always create at least one material. 0 just creates a single element index 0.
 Dim Shared Materials(Materials_Count) As newmtl_type
 ' sensible defaults to at least show something.
+Materials(0).illum = 2
 Materials(0).diaphaneity = 1.0
 Materials(0).Kd_r = 0.5: Materials(0).Kd_g = 0.5: Materials(0).Kd_b = 0.5
 Materials(0).Ks_r = 0.25: Materials(0).Ks_g = 0.25: Materials(0).Ks_b = 0.25
+Materials(0).Ns = 18
 
 If Material_File_Count >= 1 Then
     LoadMaterialFile Material_File_Name, Materials(), Materials_Count
+Else
+    Print "No Material File specified"
 End If
 
 ' create and start reading in the triangle mesh
@@ -480,11 +507,6 @@ Dim reflectLightDir2 As vec3d
 Dim light_specular_A As Single
 Dim light_specular_B As Single
 Dim light_specular_C As Single
-Dim Default_Specular_Power As Single
-Dim Default_Specular_HA_Power As Single
-Default_Specular_Power = 16.0 ' when bouncing the ray.
-' Half angle specular power needs to obey conservation of energy.
-Default_Specular_HA_Power = 4.0 * Default_Specular_Power
 
 ' Screen Scaling
 Dim halfWidth As Single
@@ -524,6 +546,10 @@ Dim frametimestamp_now_ms As Double
 Dim frametimestamp_prior_ms As Double
 Dim frametimestamp_delta_ms As Double
 Dim frame_advance As Integer
+Dim frame_tracking_size As Integer
+frame_tracking_size = 30
+Dim frame_ts(frame_tracking_size) As Double
+Dim frame_early_polls(frame_tracking_size) As Long
 
 ' Main loop stuff
 Dim renderPass As Integer
@@ -544,7 +570,7 @@ ExitCode = 0
 Animate_Spin = -1
 T1_Filter_Selection = 2
 Dither_Selection = 0
-Gouraud_Shading_Selection = 2
+Gouraud_Shading_Selection = 1
 actor = 1
 
 fPitch = 0.0
@@ -699,11 +725,6 @@ Do
             T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
             TexturedNonlitTriangle vertexA, vertexB, vertexC
-
-            ' Wireframe triangle
-            'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 0, 128)
-            'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 0, 128)
-            'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 0, 128)
         End If
         If triCount = 2 Then
 
@@ -731,15 +752,10 @@ Do
             vertexC.v = vatr3.v * pointProj3.w
 
             TexturedNonlitTriangle vertexA, vertexB, vertexC
-
-            ' Wireframe triangle
-            'Line (SX0, SY0)-(SX2, SY2), _RGB32(0, 128, 128)
-            'Line (SX2, SY2)-(SX3, SY3), _RGB32(0, 128, 128)
-            'Line (SX3, SY3)-(SX0, SY0), _RGB32(0, 128, 128)
         End If
     Next tri
 
-    If Gouraud_Shading_Selection > 0 Then
+    If Vtx_Normals_Count > 0 Then
         ' It may be faster to pre-rotate the vertex normals.
         For tri = 1 To Vtx_Normals_Count
             ' Vertex normals can be rotated around their origin and still retain their effectiveness.
@@ -752,15 +768,16 @@ Do
         Next tri
     End If
 
-    triloop_input_poll = 0
+    triloop_input_poll = 25000 ' because of all of the other stuff above, trigger the first check early.
     vCameraPsnNext = vCameraPsn ' capture where the camera is before starting triangle draw loop
     trimesh_ms = Timer(0.001)
     Pixels_Drawn_This_Frame = 0
+    ReDim frame_early_polls(frame_tracking_size) As Long
 
     ' Draw Triangles
     For renderPass = 0 To 1
         For tri = Objects(actor).first To Objects(actor).last
-            transparencyFactor = Materials(mesh(tri).material).diaphaneity
+            transparencyFactor = Materials(mesh(tri).material).diaphaneity ' all illumination models use d
             If ((renderPass = 0) And (transparencyFactor < 1.0)) Or ((renderPass = 1) And (transparencyFactor = 1.0)) Then GoTo Lbl_Skip_tri
 
             point0.x = mesh(tri).x0
@@ -833,61 +850,39 @@ Do
                 vertexA.x = SX0
                 vertexA.y = SY0
                 vertexA.w = pointProj0.w ' depth
-                vertexA.u = mesh(tri).u0 * T1_width * pointProj0.w
-                vertexA.v = mesh(tri).v0 * T1_height * pointProj0.w
                 vertexA.a = transparencyFactor * pointProj0.w
 
                 vertexB.x = SX1
                 vertexB.y = SY1
                 vertexB.w = pointProj1.w ' depth
-                vertexB.u = mesh(tri).u1 * T1_width * pointProj1.w
-                vertexB.v = mesh(tri).v1 * T1_height * pointProj1.w
                 vertexB.a = transparencyFactor * pointProj1.w
 
                 vertexC.x = SX2
                 vertexC.y = SY2
                 vertexC.w = pointProj2.w ' depth
-                vertexC.u = mesh(tri).u2 * T1_width * pointProj2.w
-                vertexC.v = mesh(tri).v2 * T1_height * pointProj2.w
                 vertexC.a = transparencyFactor * pointProj2.w
 
                 T1_options = mesh(tri).options
-
                 If mesh(tri).texture = 0 Then
-                    ' start with the diffuse color
+                    ' just use diffuse color
                     T1_options = T1_options Or T1_option_no_T1
+                Else
+                    vertexA.u = mesh(tri).u0 * T1_width * pointProj0.w
+                    vertexA.v = mesh(tri).v0 * T1_height * pointProj0.w
+                    vertexB.u = mesh(tri).u1 * T1_width * pointProj1.w
+                    vertexB.v = mesh(tri).v1 * T1_height * pointProj1.w
+                    vertexC.u = mesh(tri).u2 * T1_width * pointProj2.w
+                    vertexC.v = mesh(tri).v2 * T1_height * pointProj2.w
                 End If
 
                 thisMaterial = Materials(mesh(tri).material)
 
-                Select Case Gouraud_Shading_Selection
-                    Case 0:
-                        ' Flat face shading
-
-                        ' Directional light 1-17-2023
-                        Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
-                        If Light_Directional < 0.0 Then Light_Directional = 0.0
-
-                        ' Specular light
-                        ' Instead of a normalized light position pointing out from origin, needs to be pointing inward towards the reflective surface.
-                        vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
-                        Vector3_Reflect vLightSpec, tri_normal, reflectLightDir0
-                        'Vector3_Normalize reflectLightDir0
-
-                        ' cameraRay0 was already calculated for backface removal.
-                        Vector3_Normalize cameraRay0
-                        light_specular_A = Vector3_DotProduct!(reflectLightDir0, cameraRay0)
-                        If light_specular_A > 0.0 Then
-                            ' this power thing only works because it should range from 0..1 again.
-                            ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
-                            light_specular_A = powf(light_specular_A, Default_Specular_Power)
-                        Else
-                            light_specular_A = 0.0
-                        End If
-
-                        face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
-                        face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
-                        face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
+                Select Case thisMaterial.illum
+                    Case illum_model_constant_color
+                        ' Kd only
+                        face_light_r = 255.0 * thisMaterial.Kd_r
+                        face_light_g = 255.0 * thisMaterial.Kd_g
+                        face_light_b = 255.0 * thisMaterial.Kd_b
 
                         vertexA.r = face_light_r
                         vertexA.g = face_light_g
@@ -903,84 +898,203 @@ Do
 
                         TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
 
-                    Case 1:
-                        ' Smooth shading
+                    Case illum_model_lambertian
+                        ' ambient constant term plus a diffuse shading term for the angle of each light source
 
-                        ' 6-15-2024 pre-rotated normals
-                        vertex_normal_A = object_vtx_normals(mesh(tri).vni0)
-                        vertex_normal_B = object_vtx_normals(mesh(tri).vni1)
-                        vertex_normal_C = object_vtx_normals(mesh(tri).vni2)
+                        Select Case Gouraud_Shading_Selection
+                            Case 0:
+                                ' Flat face shading
+                                Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
+                                If Light_Directional < 0.0 Then Light_Directional = 0.0
 
-                        ' Directional light
-                        light_directional_A = Vector3_DotProduct(vertex_normal_A, vLightDir)
-                        light_directional_B = Vector3_DotProduct(vertex_normal_B, vLightDir)
-                        light_directional_C = Vector3_DotProduct(vertex_normal_C, vLightDir)
+                                face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional)
+                                face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional)
+                                face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional)
 
-                        If light_directional_A < 0.0 Then light_directional_A = 0.0
-                        If light_directional_B < 0.0 Then light_directional_B = 0.0
-                        If light_directional_C < 0.0 Then light_directional_C = 0.0
+                                vertexA.r = face_light_r
+                                vertexA.g = face_light_g
+                                vertexA.b = face_light_b
 
-                        ' Specular at Vertex
-                        ' Instead of a normalized light position pointing out from origin, needs to be pointing inward towards the reflective surface.
-                        vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
+                                vertexB.r = face_light_r
+                                vertexB.g = face_light_g
+                                vertexB.b = face_light_b
 
-                        Vector3_Reflect vLightSpec, vertex_normal_A, reflectLightDir0
-                        Vector3_Reflect vLightSpec, vertex_normal_B, reflectLightDir1
-                        Vector3_Reflect vLightSpec, vertex_normal_C, reflectLightDir2
+                                vertexC.r = face_light_r
+                                vertexC.g = face_light_g
+                                vertexC.b = face_light_b
 
-                        ' A
-                        ' cameraRay0 was already calculated for backface removal.
-                        Vector3_Normalize cameraRay0
-                        light_specular_A = Vector3_DotProduct!(reflectLightDir0, cameraRay0)
-                        If light_specular_A > 0.0 Then
-                            ' this power thing only works because it should range from 0..1 again.
-                            ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
-                            light_specular_A = powf(light_specular_A, Default_Specular_Power)
-                        Else
-                            light_specular_A = 0.0
-                        End If
+                                TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
 
-                        ' B
-                        Vector3_Delta vCameraPsn, pointWorld1, cameraRay1
-                        Vector3_Normalize cameraRay1
-                        light_specular_B = Vector3_DotProduct!(reflectLightDir1, cameraRay1)
-                        If light_specular_B > 0.0 Then
-                            light_specular_B = powf(light_specular_B, Default_Specular_Power)
-                        Else
-                            light_specular_B = 0.0
-                        End If
+                            Case 1:
+                                ' Smooth shading
 
-                        ' C
-                        Vector3_Delta vCameraPsn, pointWorld2, cameraRay2
-                        Vector3_Normalize cameraRay2
-                        light_specular_C = Vector3_DotProduct!(reflectLightDir2, cameraRay2)
-                        If light_specular_C > 0.0 Then
-                            light_specular_C = powf(light_specular_C, Default_Specular_Power)
-                        Else
-                            light_specular_C = 0.0
-                        End If
+                                ' 6-15-2024 pre-rotated normals
+                                vertex_normal_A = object_vtx_normals(mesh(tri).vni0)
+                                vertex_normal_B = object_vtx_normals(mesh(tri).vni1)
+                                vertex_normal_C = object_vtx_normals(mesh(tri).vni2)
 
-                        vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
-                        vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
-                        vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
+                                ' Directional light
+                                light_directional_A = Vector3_DotProduct(vertex_normal_A, vLightDir)
+                                light_directional_B = Vector3_DotProduct(vertex_normal_B, vLightDir)
+                                light_directional_C = Vector3_DotProduct(vertex_normal_C, vLightDir)
 
-                        vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + Light_AmbientVal)
-                        vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + Light_AmbientVal)
-                        vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + Light_AmbientVal)
+                                If light_directional_A < 0.0 Then light_directional_A = 0.0
+                                If light_directional_B < 0.0 Then light_directional_B = 0.0
+                                If light_directional_C < 0.0 Then light_directional_C = 0.0
 
-                        vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + Light_AmbientVal)
-                        vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + Light_AmbientVal)
-                        vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + Light_AmbientVal)
+                                vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A)
+                                vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A)
+                                vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A)
 
-                        TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B)
+                                vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B)
+                                vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B)
 
-                    Case 2:
+                                vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C)
+                                vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C)
+                                vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C)
+
+                                TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+                        End Select
+
+
+                    Case illum_model_blinn_phong
+                        ' ambient constant term, plus a diffuse and specular shading term for each light source
+                        Select Case Gouraud_Shading_Selection
+                            Case 0:
+                                ' Flat face shading
+
+                                ' Directional light 1-17-2023
+                                Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
+                                If Light_Directional < 0.0 Then Light_Directional = 0.0
+
+                                ' Specular light
+                                ' Instead of a normalized light position pointing out from origin, needs to be pointing inward towards the reflective surface.
+                                vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
+                                Vector3_Reflect vLightSpec, tri_normal, reflectLightDir0
+                                'Vector3_Normalize reflectLightDir0
+
+                                ' cameraRay0 was already calculated for backface removal.
+                                Vector3_Normalize cameraRay0
+                                light_specular_A = Vector3_DotProduct!(reflectLightDir0, cameraRay0)
+                                If light_specular_A > 0.0 Then
+                                    ' this power thing only works because it should range from 0..1 again.
+                                    ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
+                                    light_specular_A = powf(light_specular_A, thisMaterial.Ns)
+                                Else
+                                    light_specular_A = 0.0
+                                End If
+
+                                face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
+                                face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
+                                face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
+
+                                vertexA.r = face_light_r
+                                vertexA.g = face_light_g
+                                vertexA.b = face_light_b
+
+                                vertexB.r = face_light_r
+                                vertexB.g = face_light_g
+                                vertexB.b = face_light_b
+
+                                vertexC.r = face_light_r
+                                vertexC.g = face_light_g
+                                vertexC.b = face_light_b
+
+                                TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+
+                            Case 1:
+                                ' Smooth shading
+
+                                ' 6-15-2024 pre-rotated normals
+                                vertex_normal_A = object_vtx_normals(mesh(tri).vni0)
+                                vertex_normal_B = object_vtx_normals(mesh(tri).vni1)
+                                vertex_normal_C = object_vtx_normals(mesh(tri).vni2)
+
+                                ' Directional light
+                                light_directional_A = Vector3_DotProduct(vertex_normal_A, vLightDir)
+                                light_directional_B = Vector3_DotProduct(vertex_normal_B, vLightDir)
+                                light_directional_C = Vector3_DotProduct(vertex_normal_C, vLightDir)
+
+                                If light_directional_A < 0.0 Then light_directional_A = 0.0
+                                If light_directional_B < 0.0 Then light_directional_B = 0.0
+                                If light_directional_C < 0.0 Then light_directional_C = 0.0
+
+                                ' Specular at Vertex
+                                ' Instead of a normalized light position pointing out from origin, needs to be pointing inward towards the reflective surface.
+                                vLightSpec.x = -vLightDir.x: vLightSpec.y = -vLightDir.y: vLightSpec.z = -vLightDir.z
+
+                                Vector3_Reflect vLightSpec, vertex_normal_A, reflectLightDir0
+                                Vector3_Reflect vLightSpec, vertex_normal_B, reflectLightDir1
+                                Vector3_Reflect vLightSpec, vertex_normal_C, reflectLightDir2
+
+                                ' A
+                                ' cameraRay0 was already calculated for backface removal.
+                                Vector3_Normalize cameraRay0
+                                light_specular_A = Vector3_DotProduct!(reflectLightDir0, cameraRay0)
+                                If light_specular_A > 0.0 Then
+                                    ' this power thing only works because it should range from 0..1 again.
+                                    ' so what it actually does is a higher power pushes the number towards 0 and makes the rolloff steeper.
+                                    light_specular_A = powf(light_specular_A, thisMaterial.Ns)
+                                Else
+                                    light_specular_A = 0.0
+                                End If
+
+                                ' B
+                                Vector3_Delta vCameraPsn, pointWorld1, cameraRay1
+                                Vector3_Normalize cameraRay1
+                                light_specular_B = Vector3_DotProduct!(reflectLightDir1, cameraRay1)
+                                If light_specular_B > 0.0 Then
+                                    light_specular_B = powf(light_specular_B, thisMaterial.Ns)
+                                Else
+                                    light_specular_B = 0.0
+                                End If
+
+                                ' C
+                                Vector3_Delta vCameraPsn, pointWorld2, cameraRay2
+                                Vector3_Normalize cameraRay2
+                                light_specular_C = Vector3_DotProduct!(reflectLightDir2, cameraRay2)
+                                If light_specular_C > 0.0 Then
+                                    light_specular_C = powf(light_specular_C, thisMaterial.Ns)
+                                Else
+                                    light_specular_C = 0.0
+                                End If
+
+                                vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
+                                vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
+                                vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
+
+                                vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + Light_AmbientVal)
+                                vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + Light_AmbientVal)
+                                vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + Light_AmbientVal)
+
+                                vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + Light_AmbientVal)
+                                vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + Light_AmbientVal)
+                                vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + Light_AmbientVal)
+
+                                TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+                        End Select
+
+
+                    Case illum_model_reflection_map, illum_model_glass_map
                         ' Mirror
+                        ' the reflection map is modulated by the specular factor
+                        T1_mod_R = thisMaterial.Ks_r
+                        T1_mod_G = thisMaterial.Ks_g
+                        T1_mod_B = thisMaterial.Ks_b
 
-                        ' 6-15-2024 pre-rotated normals
-                        vertex_normal_A = object_vtx_normals(mesh(tri).vni0)
-                        vertex_normal_B = object_vtx_normals(mesh(tri).vni1)
-                        vertex_normal_C = object_vtx_normals(mesh(tri).vni2)
+                        Select Case Gouraud_Shading_Selection
+                            Case 0:
+                                ' Flat face shading
+                                vertex_normal_A = tri_normal
+                                vertex_normal_B = tri_normal
+                                vertex_normal_C = tri_normal
+                            Case 1:
+                                ' 6-15-2024 pre-rotated normals
+                                vertex_normal_A = object_vtx_normals(mesh(tri).vni0)
+                                vertex_normal_B = object_vtx_normals(mesh(tri).vni1)
+                                vertex_normal_C = object_vtx_normals(mesh(tri).vni2)
+                        End Select
 
                         Vector3_Delta pointWorld0, vCameraPsn, cameraRay0
                         Vector3_Reflect cameraRay0, vertex_normal_A, envMapReflectionRayA
@@ -991,7 +1105,7 @@ Do
                         Vector3_Delta pointWorld2, vCameraPsn, cameraRay2
                         Vector3_Reflect cameraRay2, vertex_normal_C, envMapReflectionRayC
 
-                        vertexA.r = envMapReflectionRayA.x * pointProj0.w
+                        vertexA.r = envMapReflectionRayA.x * pointProj0.w ' RGB holds (X,Y,Z) instead
                         vertexA.g = envMapReflectionRayA.y * pointProj0.w
                         vertexA.b = envMapReflectionRayA.z * pointProj0.w
 
@@ -1004,19 +1118,17 @@ Do
                         vertexC.b = envMapReflectionRayC.z * pointProj2.w
 
                         ReflectionMapTriangle vertexA, vertexB, vertexC
-                End Select
 
-                ' Wireframe triangle
-                'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 128, 128)
-                'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 128, 128)
-                'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
+                    Case Else:
+                End Select
             End If
 
             ' Improve camera control feeling by polling the keyboard every so often during this main triangle draw loop.
             triloop_input_poll = triloop_input_poll + 1
             If triloop_input_poll < 30000 GoTo Lbl_Skip_tri
-            triloop_input_poll = 0
-            '
+            triloop_input_poll = triloop_input_poll - 6000 ' in case too early
+            frame_early_polls(frame_advance) = frame_early_polls(frame_advance) + 1
+
             frametimestamp_now_ms = Timer(0.001) ' this function is slow
             If frametimestamp_now_ms - frametimestamp_prior_ms < 0.0 Then
                 ' timer rollover
@@ -1026,11 +1138,14 @@ Do
                 frametimestamp_delta_ms = frametimestamp_now_ms - frametimestamp_prior_ms
             End If
             While frametimestamp_delta_ms > frametime_fullframethreshold_ms
+                frame_advance = frame_advance + 1
+                frame_ts(frame_advance) = frametimestamp_delta_ms
+
                 frametimestamp_prior_ms = frametimestamp_prior_ms + frametime_fullframe_ms
                 frametimestamp_delta_ms = frametimestamp_delta_ms - frametime_fullframe_ms
 
-                frame_advance = frame_advance + 1
                 CameraPoll vCameraPsnNext, fYaw, fPitch
+                triloop_input_poll = 0 ' did the poll so go back
             Wend ' frametime
 
             Lbl_Skip_tri:
@@ -1067,8 +1182,17 @@ Do
     render_period_ms = render_ms - trimesh_ms
     If render_period_ms < 0.001 Then render_period_ms = 0.001
     Print Using "mesh time #.###"; render_period_ms
-    Print "Pixels Drawn"; Pixels_Drawn_This_Frame
-    Print "Pixels/Second"; Int(Pixels_Drawn_This_Frame / render_period_ms)
+    'Print "Pixels Drawn"; Pixels_Drawn_This_Frame
+    'Print "Pixels/Second"; Int(Pixels_Drawn_This_Frame / render_period_ms)
+
+    'For tri = 0 To frame_advance
+    '    Print Using "#.### "; frame_ts(tri);
+    'Next tri
+    'Print " "
+    'For tri = 0 To frame_advance
+    '    Print Using "##### "; frame_early_polls(tri);
+    'Next tri
+
 
     _Limit 60
     _Display
@@ -1112,7 +1236,7 @@ Do
             fYaw = 0.0
         ElseIf KeyNow = "G" Then
             Gouraud_Shading_Selection = Gouraud_Shading_Selection + 1
-            If Gouraud_Shading_Selection > 2 Then Gouraud_Shading_Selection = 0
+            If Gouraud_Shading_Selection > 1 Then Gouraud_Shading_Selection = 0
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
@@ -2016,6 +2140,15 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
             ' diaphaneity
             mats(totalMaterials).diaphaneity = Val(Mid$(trimString, 3))
 
+        ElseIf Left$(trimString, 3) = "Ns " Then
+            ' specular power exponent
+            mats(totalMaterials).Ns = Val(Mid$(trimString, 4))
+
+        ElseIf Left$(trimString, 6) = "illum " Then
+            ' illumination model
+            mats(totalMaterials).illum = Int(Val(Mid$(trimString, 7)))
+
+
         End If
         BAIL_INDENT_MATERIAL:
     Loop
@@ -2024,7 +2157,7 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
     Print totalMaterials, "Total Materials"
     Dim i As Long
     For i = 1 To totalMaterials
-        Print i, mats(i).textName; mats(i).Kd_r; mats(i).Kd_g; mats(i).Kd_b; mats(i).diaphaneity
+        Print i, mats(i).textName; mats(i).Kd_r; mats(i).Kd_g; mats(i).Kd_b; mats(i).diaphaneity; mats(i).Ns; mats(i).illum
     Next i
     'Dim temp$
     'Input "waiting..."; temp$
@@ -4084,7 +4217,7 @@ Sub ReflectionMapTriangle (A As vertex9, B As vertex9, C As vertex9)
                     '--- End Inline Texel Read
 
                     Static pixel_combine As _Unsigned Long
-                    pixel_combine = _RGB32(r0, g0, b0)
+                    pixel_combine = _RGB32(r0 * T1_mod_R, g0 * T1_mod_G, b0 * T1_mod_B)
 
                     Static pixel_existing As _Unsigned Long
                     pixel_alpha = tex_a * tex_z
