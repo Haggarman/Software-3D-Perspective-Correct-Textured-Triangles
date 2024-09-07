@@ -3716,7 +3716,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
                         'PSet (col, row), pixel_value
                         _MemPut screen_mem_info, screen_address, pixel_value
-                    End If ' a0
+                    End If ' a1
 
                 End If ' tex_z
 
