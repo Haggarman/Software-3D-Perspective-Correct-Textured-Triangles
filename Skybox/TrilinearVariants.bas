@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Variants 162"
+_Title "Tri-Linear Mipmap Variants 164"
 ' 2024 Haggarman
 ' Trilinear Mip Mapping variants
 '
@@ -300,6 +300,7 @@ Dim Shared T1_height As _Unsigned Integer, T1_height_MASK As _Unsigned Integer
 Dim Shared T1_Filter_Selection As Integer
 Dim Shared T1_mblock As _MEM
 Dim Shared T1_Alpha_Threshold As Integer
+Const oneOver255 = 1.0 / 255.0
 
 ' T2 calculates before T1
 Dim Shared T2_ImageHandle As Long
@@ -322,6 +323,7 @@ Const T2_option_clamp_width = 64
 Const T2_option_clamp_height = 128
 Const T2_option_alpha_channel = 256
 Const T2_option_no_backface_cull = 512
+Const T2_option_color_sum = 1024
 
 ' Give sensible defaults to avoid crashes
 ' Optimization requires that width and height be powers of 2.
@@ -338,6 +340,14 @@ T2_mblock = _MemImage(TextureCatalog(0))
 T2_Alpha_Threshold = 250 ' below this alpha channel value, do not update z buffer (0..255)
 T2_Offset_S = 0.0
 T2_Offset_T = 0.0
+
+' Color Combiner math
+Dim Shared CC_mod_red As Single
+Dim Shared CC_mod_green As Single
+Dim Shared CC_mod_blue As Single
+CC_mod_red = 1.0
+CC_mod_green = 1.0
+CC_mod_blue = 1.0
 
 ' Mipmap Level of Detail
 Dim Shared LOD_mode As Integer
@@ -498,15 +508,24 @@ Dim vCameraTarget As vec3d
 Dim matCamera(3, 3) As Single
 
 
-' Directional light 1-17-2023
+' Sun
 Dim vSunDir As vec3d
 vSunDir.x = -0.5
 vSunDir.y = 0.4375 ' +Y is up
 vSunDir.z = 1.0
 Vector3_Normalize vSunDir
-Dim Shared Light_Directional As Single
-Dim Shared Light_AmbientVal As Single
-Light_AmbientVal = 0.3
+Dim Sun_Rv As Single
+Dim Sun_Gv As Single
+Dim Sun_Bv As Single
+Sun_Rv = 254 * oneOver255
+Sun_Gv = 255 * oneOver255
+Sun_Bv = 250 * oneOver255
+
+' Directional light 1-17-2023
+Dim Light_Diffuse As Single
+Dim Light_Directional As Single
+Dim Light_Ambient As Single
+Light_Ambient = 0.3
 
 
 ' Screen Scaling
@@ -621,9 +640,6 @@ Do
     'Cls , Fog_color
 
     ' Clear Z-Buffer
-    'For L = 0 To Screen_Z_Buffer_MaxElement
-    'Screen_Z_Buffer(L) = 0.0
-    'Next L
     ' This is a qbasic only optimization. it sets the array to zero. it saves 10 ms.
     ReDim Screen_Z_Buffer(Screen_Z_Buffer_MaxElement)
 
@@ -713,11 +729,6 @@ Do
             T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
             TexturedNonlitTriangle vertexA, vertexB, vertexC
-
-            ' Wireframe triangle
-            'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 0, 128)
-            'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 0, 128)
-            'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 0, 128)
             Triangles_Drawn = Triangles_Drawn + 1
         End If
         If triCount = 2 Then
@@ -746,11 +757,6 @@ Do
             vertexC.v = vatr3.v * pointProj3.w
 
             TexturedNonlitTriangle vertexA, vertexB, vertexC
-
-            ' Wireframe triangle
-            'Line (SX0, SY0)-(SX2, SY2), _RGB32(0, 128, 128)
-            'Line (SX2, SY2)-(SX3, SY3), _RGB32(0, 128, 128)
-            'Line (SX3, SY3)-(SX0, SY0), _RGB32(0, 128, 128)
             New_Triangles_Drawn = New_Triangles_Drawn + 1
         End If
     Next A
@@ -814,16 +820,18 @@ Do
                 ProjectMatrixVector4 pointView0, matProj(), pointProj0
 
                 ' Slide to center, then Scale into viewport
+                ' centerpoint
                 'SX0 = (pointProj0.x + 1) * halfWidth
                 'SY0 = (pointProj0.y + 1) * halfHeight
                 'PSet (SX0, SY0), _RGB32(0, 0, 0)
 
+                ' top left
                 SX1 = (pointProj0.x + 1 - particles(A).relWidth) * halfWidth
                 SY1 = (pointProj0.y + 1 - particles(A).relHeight) * halfHeight
 
+                ' bottom right
                 SX2 = (pointProj0.x + 1 + particles(A).relWidth) * halfWidth
                 SY2 = (pointProj0.y + 1 + particles(A).relHeight) * halfHeight
-
 
                 T1_CatalogIndex = 2
                 T1_ImageHandle = TextureCatalog(T1_CatalogIndex)
@@ -872,7 +880,7 @@ Do
                 vertexC.v = T1_height
 
                 TexturedNonlitAlphaTriangle vertexA, vertexB, vertexC
-
+                Triangles_Drawn = Triangles_Drawn + 2
             End If
 
         End If ' anim_state > 0
@@ -916,7 +924,6 @@ Do
             vatr0.u = mesh(A).u0: vatr0.v = mesh(A).v0
             vatr1.u = mesh(A).u1: vatr1.v = mesh(A).v1
             vatr2.u = mesh(A).u2: vatr2.v = mesh(A).v2
-
 
             If mesh(A).texture2 = 2 Then
                 'road piece
@@ -976,6 +983,10 @@ Do
                 If Light_Directional > 0.0 Then Light_Directional = 0.0
                 Light_Directional = Abs(Light_Directional)
             End If
+            Light_Diffuse = Light_Ambient + Light_Directional
+            CC_mod_red = Light_Diffuse * Sun_Rv
+            CC_mod_green = Light_Diffuse * Sun_Gv
+            CC_mod_blue = Light_Diffuse * Sun_Bv
 
             ' Fill in Texture 1 data
             T1_CatalogIndex = mesh(A).texture1
@@ -1047,11 +1058,6 @@ Do
             vertexC.b = vatr2.b
 
             TwoTextureTriangle vertexA, vertexB, vertexC
-
-            ' Wireframe triangle
-            'Line (SX0, SY0)-(SX1, SY1), _RGB32(128, 128, 128)
-            'Line (SX1, SY1)-(SX2, SY2), _RGB32(128, 128, 128)
-            'Line (SX2, SY2)-(SX0, SY0), _RGB32(128, 128, 128)
             Triangles_Drawn = Triangles_Drawn + 1
 
             Lbl_Skip012:
@@ -1105,11 +1111,6 @@ Do
                 vertexC.b = vatr3.b
 
                 TwoTextureTriangle vertexA, vertexB, vertexC
-
-                ' Wireframe triangle
-                'Line (SX0, SY0)-(SX2, SY2), _RGB32(128, 128, 128)
-                'Line (SX2, SY2)-(SX3, SY3), _RGB32(128, 128, 128)
-                'Line (SX3, SY3)-(SX0, SY0), _RGB32(128, 128, 128)
                 New_Triangles_Drawn = New_Triangles_Drawn + 1
 
             End If
@@ -1565,7 +1566,7 @@ Sub SpawnRoad (A As Integer, streetlight As Long, left00 As vec3d, left05 As vec
     T1c = 3 ' road mipmap level 0
     T1w = _Width(TextureCatalog(T1c))
     T1h = _Height(TextureCatalog(T1c))
-    T1o = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel
+    T1o = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel Or T2_option_color_sum
 
     Dim T2c As Long
     Dim T2w As Long
@@ -1657,7 +1658,7 @@ Sub SpawnRoadCurveLeft (A As Integer, streetlight As Long, left00 As vec3d, left
     T1c = 3 ' road mipmap level 0
     T1w = _Width(TextureCatalog(T1c))
     T1h = _Height(TextureCatalog(T1c))
-    T1o = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel
+    T1o = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel Or T2_option_color_sum
 
     Dim T2c As Long
     Dim T2w As Long
@@ -1784,7 +1785,7 @@ Sub SpawnRoadCurveRight (A As Integer, streetlight As Long, left00 As vec3d, lef
     T1c = 3 ' road mipmap level 0
     T1w = _Width(TextureCatalog(T1c))
     T1h = _Height(TextureCatalog(T1c))
-    T1o = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel
+    T1o = T1_option_clamp_width Or T1_option_alpha_channel Or T2_option_clamp_width Or T2_option_clamp_height Or T2_option_alpha_channel Or T2_option_color_sum
 
     Dim T2c As Long
     Dim T2w As Long
@@ -3295,7 +3296,6 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     Static r0 As Integer
                     Static g0 As Integer
                     Static b0 As Integer
-                    Static a0 As Integer
 
                     ' This is about the limit of understanding for inlining.
                     ' I wish QB64 subroutines removed the stack setup and teardown when only static vars are used.
@@ -3632,17 +3632,13 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     End If ' Texture 3
 
 
-                    ' Color Combiner Alpha Channel Source
-                    ' Real hardware would mux this from a small list
-                    a0 = a1
-
                     ' Color Combiner RGB Channels
                     ' Template CC Equation is: (Source2 - Source1) * Scale + Offset
-                    ' Typical accelerator hardware lets you mux select each of these 4 vars from a small list.
-                    ' for example Source1 could be 0, 1, fixed color, vertex color, texture color, etc.
+                    ' Typical accelerator hardware lets you select each of these 4 vars from a small mux list.
+                    ' for example Source1 could be 0, 1, fixed color, vertex color, or texture color, etc.
                     ' I chose not to do that muxing here but just be aware that is how it was accomplished.
 
-                    If a0 > 0 Then
+                    If a1 > 0 Then
 
                         If tex_z >= Fog_far Then
                             ' use table fog (pixel fog) color
@@ -3652,32 +3648,30 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             ' Stage 1 - Texture
                             '
 
-                            ' alpha2 determines contribution of t2 color versus t1 color
+                            ' Alpha channel of T2 determines contribution of T2 color versus T1 color.
                             Static T2_weight As Single
-                            T2_weight = a2 / 255.0
+                            T2_weight = a2 * oneOver255
 
-                            If 0 = 1 Then
-                                ' this path not taken. look at the else.
-                                ' interpolate. Please see explanation above about Template CC Equation.
-                                r0 = (r2 - r1) * T2_weight + r1
-                                g0 = (g2 - g1) * T2_weight + g1
-                                b0 = (b2 - b1) * T2_weight + b1
-                            Else
-                                ' sum. Please see explanation above about Template CC Equation.
+                            If Texture_options And T2_option_color_sum Then
+                                ' color addition. Please see explanation above about Color Combiner Equation.
                                 ' notice here how "Source1" is 0 instead of the texture 1 RGB color for interpolate.
                                 r0 = (r2 - 0) * T2_weight + r1
                                 g0 = (g2 - 0) * T2_weight + g1
                                 b0 = (b2 - 0) * T2_weight + b1
+                            Else
+                                ' decal
+                                ' color blend T2 with T1 based on T2 alpha channel. Please see explanation above for Color Combiner Equation.
+                                r0 = (r2 - r1) * T2_weight + r1
+                                g0 = (g2 - g1) * T2_weight + g1
+                                b0 = (b2 - b1) * T2_weight + b1
                             End If
 
                             '
-                            ' Stage 2 - Lighting
+                            ' Stage 2 - Color Combiner Lighting
                             '
-                            Static light_scale As Single
-                            light_scale = Light_Directional + Light_AmbientVal ' oversaturate the bright colors
-                            r0 = (tex_r + r0) * light_scale
-                            g0 = (tex_g + g0) * light_scale
-                            b0 = (tex_b + b0) * light_scale
+                            r0 = (tex_r + r0) * CC_mod_red
+                            g0 = (tex_g + g0) * CC_mod_green
+                            b0 = (tex_b + b0) * CC_mod_blue
 
                             If tex_z <= Fog_near Then
                                 ' apply no fog
@@ -3690,11 +3684,11 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             End If
                         End If ' fog_far
 
-                        If a0 < 255 Then
+                        If a1 < 255 Then
                             ' Alpha blend
                             Static pixel_existing As _Unsigned Long
                             Static pixel_alpha As Single
-                            pixel_alpha = a0 / 255.0
+                            pixel_alpha = a1 * oneOver255
                             pixel_existing = _MemGet(screen_mem_info, screen_address, _Unsigned Long)
 
                             pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
@@ -3708,7 +3702,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                         ' Update the Z-Buffer, with a small bias
                         ' The simplest way to describe threshold is how potentially noticable do you want a ghosting/glowing halo around the solid parts.
                         ' Best value is entirely dependent upon the alpha (transparency) channel ranges in the source texture and the colors involved.
-                        If a0 >= T1_Alpha_Threshold Then Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
+                        If a1 >= T1_Alpha_Threshold Then Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
 
                         If Toggle_Cache_FalseColor Then
                             If T1_cache_miss_event = 1 Then
@@ -3722,7 +3716,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
                         'PSet (col, row), pixel_value
                         _MemPut screen_mem_info, screen_address, pixel_value
-                    End If
+                    End If ' a0
 
                 End If ' tex_z
 
@@ -4418,27 +4412,6 @@ Sub TexturedNonlitAlphaTriangle (A As vertex10, B As vertex10, C As vertex10)
                     T1_last_cache = T1_this_cache
                 End If
 
-                ' determine T1 RGB colors
-                bi_r0 = _Red32(T1_uv_0_0)
-                bi_r0 = _ShR((_Red32(T1_uv_1_0) - bi_r0) * Frac_cc1_FIX7, 7) + bi_r0
-
-                bi_g0 = _Green32(T1_uv_0_0)
-                bi_g0 = _ShR((_Green32(T1_uv_1_0) - bi_g0) * Frac_cc1_FIX7, 7) + bi_g0
-
-                bi_b0 = _Blue32(T1_uv_0_0)
-                bi_b0 = _ShR((_Blue32(T1_uv_1_0) - bi_b0) * Frac_cc1_FIX7, 7) + bi_b0
-
-                bi_r1 = _Red32(T1_uv_0_1)
-                bi_r1 = _ShR((_Red32(T1_uv_1_1) - bi_r1) * Frac_cc1_FIX7, 7) + bi_r1
-
-                bi_g1 = _Green32(T1_uv_0_1)
-                bi_g1 = _ShR((_Green32(T1_uv_1_1) - bi_g1) * Frac_cc1_FIX7, 7) + bi_g1
-
-                bi_b1 = _Blue32(T1_uv_0_1)
-                bi_b1 = _ShR((_Blue32(T1_uv_1_1) - bi_b1) * Frac_cc1_FIX7, 7) + bi_b1
-
-                pixel_value = _RGB32(_ShR((bi_r1 - bi_r0) * Frac_rr1_FIX7, 7) + bi_r0, _ShR((bi_g1 - bi_g0) * Frac_rr1_FIX7, 7) + bi_g0, _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0)
-
                 ' determine Alpha channel
                 bi_a0 = _Alpha32(T1_uv_0_0)
                 bi_a0 = _ShR((_Alpha32(T1_uv_1_0) - bi_a0) * Frac_cc1_FIX7, 7) + bi_a0
@@ -4447,21 +4420,45 @@ Sub TexturedNonlitAlphaTriangle (A As vertex10, B As vertex10, C As vertex10)
                 bi_a1 = _ShR((_Alpha32(T1_uv_1_1) - bi_a1) * Frac_cc1_FIX7, 7) + bi_a1
 
                 a0 = _ShR((bi_a1 - bi_a0) * Frac_rr1_FIX7, 7) + bi_a0
+                If a0 > 0 Then
 
-                If a0 < 255 Then
-                    ' Alpha blend
-                    Static pixel_existing As _Unsigned Long
-                    Static pixel_alpha As Single
-                    pixel_alpha = a0 / 255.0
-                    pixel_existing = _MemGet(screen_mem_info, screen_address, _Unsigned Long)
+                    ' determine T1 RGB colors
+                    bi_r0 = _Red32(T1_uv_0_0)
+                    bi_r0 = _ShR((_Red32(T1_uv_1_0) - bi_r0) * Frac_cc1_FIX7, 7) + bi_r0
 
-                    pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
-                                         (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
-                                         ( _Blue32(pixel_value) - _Blue32(pixel_existing))  * pixel_alpha +  _blue32(pixel_existing))
-                End If
+                    bi_g0 = _Green32(T1_uv_0_0)
+                    bi_g0 = _ShR((_Green32(T1_uv_1_0) - bi_g0) * Frac_cc1_FIX7, 7) + bi_g0
 
-                _MemPut screen_mem_info, screen_address, pixel_value
-                'PSet (col, row), pixel_value
+                    bi_b0 = _Blue32(T1_uv_0_0)
+                    bi_b0 = _ShR((_Blue32(T1_uv_1_0) - bi_b0) * Frac_cc1_FIX7, 7) + bi_b0
+
+                    bi_r1 = _Red32(T1_uv_0_1)
+                    bi_r1 = _ShR((_Red32(T1_uv_1_1) - bi_r1) * Frac_cc1_FIX7, 7) + bi_r1
+
+                    bi_g1 = _Green32(T1_uv_0_1)
+                    bi_g1 = _ShR((_Green32(T1_uv_1_1) - bi_g1) * Frac_cc1_FIX7, 7) + bi_g1
+
+                    bi_b1 = _Blue32(T1_uv_0_1)
+                    bi_b1 = _ShR((_Blue32(T1_uv_1_1) - bi_b1) * Frac_cc1_FIX7, 7) + bi_b1
+
+                    pixel_value = _RGB32(_ShR((bi_r1 - bi_r0) * Frac_rr1_FIX7, 7) + bi_r0, _ShR((bi_g1 - bi_g0) * Frac_rr1_FIX7, 7) + bi_g0, _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0)
+
+
+                    If a0 < 255 Then
+                        ' Alpha blend
+                        Static pixel_existing As _Unsigned Long
+                        Static pixel_alpha As Single
+                        pixel_alpha = a0 * oneOver255
+                        pixel_existing = _MemGet(screen_mem_info, screen_address, _Unsigned Long)
+
+                        pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
+                                             (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
+                                             ( _Blue32(pixel_value) - _Blue32(pixel_existing))  * pixel_alpha +  _blue32(pixel_existing))
+                    End If
+
+                    _MemPut screen_mem_info, screen_address, pixel_value
+                    'PSet (col, row), pixel_value
+                End If ' a0
 
                 tex_w = tex_w + tex_w_step
                 tex_z = 1 / tex_w ' execution time for this can be absorbed when result not required immediately
