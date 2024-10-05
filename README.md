@@ -20,15 +20,15 @@
 - S3 ViRGE series
 - SGI Ultra 64 RDP
 ## Screenshots
- ![Textured Cube Plains 640](https://user-images.githubusercontent.com/96515734/224503609-ac961d99-c086-400e-b1f9-a1a8c639f918.PNG)
- ![Vertex Color Cube](https://user-images.githubusercontent.com/96515734/219141230-6d9a9d36-ec02-4c5a-94eb-a01773a02b5b.PNG)
- ![Dither Color Cube](https://user-images.githubusercontent.com/96515734/219270641-b560848f-5ef0-429c-9c9c-6191e8ac88a9.png)
- ![Vertex Alpha](https://user-images.githubusercontent.com/96515734/225165954-80881ea9-3c7f-4ebb-9fe2-b48b3d54a161.PNG)
- ![Texture Z Fight Donut](https://user-images.githubusercontent.com/96515734/224503149-33eb6e8a-73cc-473b-a61c-5c3262b0c93f.PNG)
- ![Skybox Long Tube 800](https://user-images.githubusercontent.com/96515734/224502776-09c13ed1-60a6-4074-a7d4-dd2b05e30085.png)
- ![Skybox Treess](https://user-images.githubusercontent.com/96515734/234192793-af9a3844-cfc6-4cdb-a988-e38d5a0ae531.PNG)
- ![Tri-Linear Mipmap Road](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/ee802200-7212-4442-bb50-ee5cc7a9e2e0)
+ ![trimaxion_obj](https://github.com/user-attachments/assets/b85fc515-f41e-4645-8b1c-48d4fc339d3d)
  ![BunnyObj](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/f6e3e8e6-e13b-46d6-8eab-6df68b563cd6)
+ ![Tri-Linear Mipmap Road](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/ee802200-7212-4442-bb50-ee5cc7a9e2e0)
+ ![Skybox Treess](https://user-images.githubusercontent.com/96515734/234192793-af9a3844-cfc6-4cdb-a988-e38d5a0ae531.PNG)
+ ![Skybox Long Tube 800](https://user-images.githubusercontent.com/96515734/224502776-09c13ed1-60a6-4074-a7d4-dd2b05e30085.png)
+ ![Texture Z Fight Donut](https://user-images.githubusercontent.com/96515734/224503149-33eb6e8a-73cc-473b-a61c-5c3262b0c93f.PNG)
+ ![Vertex Alpha](https://user-images.githubusercontent.com/96515734/225165954-80881ea9-3c7f-4ebb-9fe2-b48b3d54a161.PNG)
+ ![Dither Color Cube](https://user-images.githubusercontent.com/96515734/219270641-b560848f-5ef0-429c-9c9c-6191e8ac88a9.png)
+ ![Textured Cube Plains 640](https://user-images.githubusercontent.com/96515734/224503609-ac961d99-c086-400e-b1f9-a1a8c639f918.PNG)
 
 ## Capabilities
  Let's list what has currently been implemented or explored, Final Reality Advanced benchmark style.
