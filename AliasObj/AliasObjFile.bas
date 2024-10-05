@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Alias Object File 41"
+_Title "Alias Object File 42"
 ' 2024 Haggarman
 '  V41 obj illumination model
 '  V34 Any size skybox texture dimensions
@@ -27,11 +27,11 @@ Dim Shared Size_Render_X As Integer, Size_Render_Y As Integer
 Dim Actor_Count As Integer
 Actor_Count = 1 ' keep at 1 for now
 Dim Shared Camera_Start_Z
-Dim Obj_File_Name As String
+Dim Obj_File_Path As String
 
 
 ' MODIFY THESE if you want.
-Obj_File_Name = "" ' "bunny.obj" "cube.obj" "teacup.obj" "spoonfix.obj" empty string shows system open file dialog box.
+Obj_File_Path = "" ' "bunny.obj" "cube.obj" "teacup.obj" "spoonfix.obj" empty string shows system open file dialog box.
 Size_Screen_X = 1024
 Size_Screen_Y = 768
 Size_Render_X = Size_Screen_X \ 2 ' render size
@@ -317,9 +317,9 @@ For refIndex = 0 To Sky_Last_Element
 Next refIndex
 
 ' Load Mesh
-While Obj_File_Name = ""
-    Obj_File_Name = _OpenFileDialog$("Load Alias Object File", , "*.OBJ|*.obj")
-    If Obj_File_Name = "" Then End
+While Obj_File_Path = ""
+    Obj_File_Path = _OpenFileDialog$("Load Alias Object File", , "*.OBJ|*.obj")
+    If Obj_File_Path = "" Then End
 Wend
 
 Dim Shared Objects_Last_Element As Integer
@@ -332,21 +332,39 @@ Dim Shared Vertex_Count As Long ' 3 is the minimum
 Dim Shared TextureCoord_Count As Long ' can be 0, textures are optional
 Dim Shared Vtx_Normals_Count As Long ' can be 0, vertex normals are optional
 Dim Shared Material_File_Count As Long
+Dim Shared Obj_Directory As String
 Dim Shared Material_File_Name As String
+Dim Shared Material_File_Path As String
 Dim Shared Materials_Count As Long
 
-PrescanMesh Obj_File_Name, Mesh_Last_Element, Vertex_Count, TextureCoord_Count, Vtx_Normals_Count, Material_File_Count, Material_File_Name
+PrescanMesh Obj_File_Path, Mesh_Last_Element, Vertex_Count, TextureCoord_Count, Vtx_Normals_Count, Material_File_Count, Material_File_Name
 If Mesh_Last_Element = 0 Then
     Color _RGB(249, 161, 50)
-    Print "Error Loading Object File "; Obj_File_Name
+    Print "Error Loading Object File "; Obj_File_Path
     End
 End If
 
+' Isolate the object directory from its full file path.
+' This is because an object file refers to other files that need to be loaded.
+Dim fpps As Integer
+fpps = 1
+Dim i As Integer
+For i = Len(Obj_File_Path) To 1 Step -1
+    If Asc(Obj_File_Path, i) = 92 Or Asc(Obj_File_Path, i) = 47 Then
+        ' found a / slash \
+        fpps = i
+        Exit For
+    End If
+Next i
+Obj_Directory = Left$(Obj_File_Path, fpps)
+Material_File_Path = Obj_Directory + Material_File_Name
+
 If Material_File_Count >= 1 Then
-    PrescanMaterialFile Material_File_Name, Materials_Count
+    PrescanMaterialFile Material_File_Path, Materials_Count
     If Materials_Count = 0 Then
         Color _RGB(249, 161, 50)
         Print "Error Loading Material File "; Material_File_Name
+        Print "Material Full Path "; Material_File_Path
         End
     End If
 End If
@@ -361,7 +379,7 @@ Materials(0).Ks_r = 0.25: Materials(0).Ks_g = 0.25: Materials(0).Ks_b = 0.25
 Materials(0).Ns = 18
 
 If Material_File_Count >= 1 Then
-    LoadMaterialFile Material_File_Name, Materials(), Materials_Count
+    LoadMaterialFile Material_File_Path, Materials(), Materials_Count
 Else
     Print "No Material File specified"
 End If
@@ -377,7 +395,7 @@ Dim tri As Long
 tri = 0
 For actor = 1 To Actor_Count
     Objects(actor).first = tri + 1
-    LoadMesh Obj_File_Name, mesh(), tri, Vertex_Count, TextureCoord_Count, Materials(), vtxnorms()
+    LoadMesh Obj_File_Path, mesh(), tri, Vertex_Count, TextureCoord_Count, Materials(), vtxnorms()
     Objects(actor).last = tri
 Next actor
 
