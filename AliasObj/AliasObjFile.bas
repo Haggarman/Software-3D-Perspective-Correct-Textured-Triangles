@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 42"
+_Title "Alias Object File 43"
 ' 2024 Haggarman
+'  V43 Pre-rotate the vertexes to gain about 10 ms on large objects.
 '  V41 obj illumination model
 '  V34 Any size skybox texture dimensions
 '  V31 Mirror Reflective Surface
@@ -61,18 +62,16 @@ Type vec4d
     w As Single
 End Type
 
-Type triangle
-    x0 As Single
-    y0 As Single
-    z0 As Single
-    x1 As Single
-    y1 As Single
-    z1 As Single
-    x2 As Single
-    y2 As Single
-    z2 As Single
+Type mesh_triangle
+    i0 As Long ' vertex index
+    i1 As Long
+    i2 As Long
 
-    u0 As Single
+    vni0 As Long ' vector normal index
+    vni1 As Long
+    vni2 As Long
+
+    u0 As Single ' texture coords
     v0 As Single
     u1 As Single
     v1 As Single
@@ -82,9 +81,6 @@ Type triangle
     texture As _Unsigned Long
     options As _Unsigned Long
     material As Long
-    vni0 As Long ' vector normal index
-    vni1 As Long
-    vni2 As Long
 End Type
 
 Type skybox_triangle
@@ -333,21 +329,15 @@ Dim Shared TextureCoord_Count As Long ' can be 0, textures are optional
 Dim Shared Vtx_Normals_Count As Long ' can be 0, vertex normals are optional
 Dim Shared Material_File_Count As Long
 Dim Shared Obj_Directory As String
+Dim Shared Obj_FileNameOnly As String
 Dim Shared Material_File_Name As String
 Dim Shared Material_File_Path As String
 Dim Shared Materials_Count As Long
 
-PrescanMesh Obj_File_Path, Mesh_Last_Element, Vertex_Count, TextureCoord_Count, Vtx_Normals_Count, Material_File_Count, Material_File_Name
-If Mesh_Last_Element = 0 Then
-    Color _RGB(249, 161, 50)
-    Print "Error Loading Object File "; Obj_File_Path
-    End
-End If
-
-' Isolate the object directory from its full file path.
+' Isolate the object's directory from its full file path.
 ' This is because an object file refers to other files that need to be loaded.
 Dim fpps As Integer
-fpps = 1
+fpps = 0
 Dim i As Integer
 For i = Len(Obj_File_Path) To 1 Step -1
     If Asc(Obj_File_Path, i) = 92 Or Asc(Obj_File_Path, i) = 47 Then
@@ -356,9 +346,25 @@ For i = Len(Obj_File_Path) To 1 Step -1
         Exit For
     End If
 Next i
-Obj_Directory = Left$(Obj_File_Path, fpps)
-Material_File_Path = Obj_Directory + Material_File_Name
 
+If fpps > 0 Then
+    Obj_Directory = Left$(Obj_File_Path, fpps)
+    Obj_FileNameOnly = Mid$(Obj_File_Path, fpps + 1)
+Else
+    ' within current working directory
+    Obj_Directory = ""
+    Obj_FileNameOnly = Obj_File_Path
+End If
+Print "Loading "; Obj_FileNameOnly
+
+PrescanMesh Obj_File_Path, Mesh_Last_Element, Vertex_Count, TextureCoord_Count, Vtx_Normals_Count, Material_File_Count, Material_File_Name
+If Mesh_Last_Element = 0 Then
+    Color _RGB(249, 161, 50)
+    Print "Error Loading Object File "; Obj_File_Path
+    End
+End If
+
+Material_File_Path = Obj_Directory + Material_File_Name
 If Material_File_Count >= 1 Then
     PrescanMaterialFile Material_File_Path, Materials_Count
     If Materials_Count = 0 Then
@@ -385,30 +391,38 @@ Else
 End If
 
 ' create and start reading in the triangle mesh
-Dim Shared mesh(Mesh_Last_Element) As triangle
+Dim Shared mesh(Mesh_Last_Element) As mesh_triangle
 
-' 6-1-2024
-Dim Shared vtxnorms(Vtx_Normals_Count) As vec3d
+' 10-5-2024
+Dim VertexList(Vertex_Count) As vec3d
+Dim VtxNorms(Vtx_Normals_Count) As vec3d
+
 
 Dim actor As Integer
 Dim tri As Long
 tri = 0
 For actor = 1 To Actor_Count
     Objects(actor).first = tri + 1
-    LoadMesh Obj_File_Path, mesh(), tri, Vertex_Count, TextureCoord_Count, Materials(), vtxnorms()
+    LoadMesh Obj_File_Path, mesh(), tri, VertexList(), TextureCoord_Count, VtxNorms(), Materials()
     Objects(actor).last = tri
 Next actor
 
 ' find the furthest out point to be able to pull back camera start position for large objects
+Dim index_v As Long
 Dim distance As Double
 Dim GreatestDistance As Double
 GreatestDistance = 0.0
 For tri = 1 To Mesh_Last_Element
-    distance = mesh(tri).x0 * mesh(tri).x0 + mesh(tri).y0 * mesh(tri).y0 + mesh(tri).z0 * mesh(tri).z0
+    index_v = mesh(tri).i0
+    distance = VertexList(index_v).x * VertexList(index_v).x + VertexList(index_v).y * VertexList(index_v).y + VertexList(index_v).z * VertexList(index_v).z
     If distance > GreatestDistance Then GreatestDistance = distance
-    distance = mesh(tri).x1 * mesh(tri).x1 + mesh(tri).y1 * mesh(tri).y1 + mesh(tri).z1 * mesh(tri).z1
+
+    index_v = mesh(tri).i1
+    distance = VertexList(index_v).x * VertexList(index_v).x + VertexList(index_v).y * VertexList(index_v).y + VertexList(index_v).z * VertexList(index_v).z
     If distance > GreatestDistance Then GreatestDistance = distance
-    distance = mesh(tri).x2 * mesh(tri).x2 + mesh(tri).y2 * mesh(tri).y2 + mesh(tri).z2 * mesh(tri).z2
+
+    index_v = mesh(tri).i2
+    distance = VertexList(index_v).x * VertexList(index_v).x + VertexList(index_v).y * VertexList(index_v).y + VertexList(index_v).z * VertexList(index_v).z
     If distance > GreatestDistance Then GreatestDistance = distance
 Next tri
 GreatestDistance = Sqr(GreatestDistance)
@@ -417,22 +431,16 @@ If distance < Camera_Start_Z Then Camera_Start_Z = distance
 
 
 ' Here are the 3D math and projection vars
+Dim object_vertexes(Vertex_Count) As vec3d
 
 ' Rotation
 Dim matRotZ(3, 3) As Single
 Dim matRotX(3, 3) As Single
+Dim pointRotZ0 As vec3d
 
 Dim point0 As vec3d
 Dim point1 As vec3d
 Dim point2 As vec3d
-
-Dim pointRotZ0 As vec3d
-Dim pointRotZ1 As vec3d
-Dim pointRotZ2 As vec3d
-
-Dim pointRotZX0 As vec3d
-Dim pointRotZX1 As vec3d
-Dim pointRotZX2 As vec3d
 
 ' Translation (as in offset)
 Dim pointWorld0 As vec3d
@@ -773,14 +781,21 @@ Do
         End If
     Next tri
 
-    If Vtx_Normals_Count > 0 Then
-        ' It may be faster to pre-rotate the vertex normals.
-        For tri = 1 To Vtx_Normals_Count
-            ' Vertex normals can be rotated around their origin and still retain their effectiveness.
-            'object_vtx_normals(tri) = vtxnorms(tri)
+    ' pre-rotate the vertexes
+    ' object_vertexes() = vertexList()
+    For tri = 1 To Vertex_Count
+        ' Rotate in Z-Axis
+        Multiply_Vector3_Matrix4 VertexList(tri), matRotZ(), pointRotZ0
+        ' Rotate in X-Axis
+        Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), object_vertexes(tri)
+    Next tri
 
+    If Vtx_Normals_Count > 0 Then
+        ' Vertex normals can be rotated around their origin and still retain their effectiveness.
+        'object_vtx_normals() = vtxnorms()
+        For tri = 1 To Vtx_Normals_Count
             ' Rotate in Z-Axis
-            Multiply_Vector3_Matrix4 vtxnorms(tri), matRotZ(), pointRotZ0
+            Multiply_Vector3_Matrix4 VtxNorms(tri), matRotZ(), pointRotZ0
             ' Rotate in X-Axis
             Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), object_vtx_normals(tri)
         Next tri
@@ -798,33 +813,10 @@ Do
             transparencyFactor = Materials(mesh(tri).material).diaphaneity ' all illumination models use d
             If ((renderPass = 0) And (transparencyFactor < 1.0)) Or ((renderPass = 1) And (transparencyFactor = 1.0)) Then GoTo Lbl_Skip_tri
 
-            point0.x = mesh(tri).x0
-            point0.y = mesh(tri).y0
-            point0.z = mesh(tri).z0
-
-            point1.x = mesh(tri).x1
-            point1.y = mesh(tri).y1
-            point1.z = mesh(tri).z1
-
-            point2.x = mesh(tri).x2
-            point2.y = mesh(tri).y2
-            point2.z = mesh(tri).z2
-
-            ' Rotate in Z-Axis
-            Multiply_Vector3_Matrix4 point0, matRotZ(), pointRotZ0
-            Multiply_Vector3_Matrix4 point1, matRotZ(), pointRotZ1
-            Multiply_Vector3_Matrix4 point2, matRotZ(), pointRotZ2
-
-            ' Rotate in X-Axis
-            Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), pointRotZX0
-            Multiply_Vector3_Matrix4 pointRotZ1, matRotX(), pointRotZX1
-            Multiply_Vector3_Matrix4 pointRotZ2, matRotX(), pointRotZX2
-
-            ' Offset into the screen
-            pointWorld0 = pointRotZX0
-            pointWorld1 = pointRotZX1
-            pointWorld2 = pointRotZX2
-
+            ' the object vertexes have been rotated already, so we just need to reference them
+            pointWorld0 = object_vertexes(mesh(tri).i0)
+            pointWorld1 = object_vertexes(mesh(tri).i1)
+            pointWorld2 = object_vertexes(mesh(tri).i2)
 
             ' Part 2 (Triangle Surface Normal Calculation)
             CalcSurfaceNormal_3Point pointWorld0, pointWorld1, pointWorld2, tri_normal
@@ -1566,13 +1558,12 @@ Sub PrescanMesh (thefile As String, requiredTriangles As Long, totalVertex As Lo
     Print totalNormals, "Vertex Normals"
     Print totalFaces, "Faces"
     Print totalMaterialLibrary, "Material Libraries"
-    Print materialFile
-
+    If totalMaterialLibrary > 0 Then Print materialFile
     'Dim temp$
     'Input "waiting..."; temp$
 End Sub
 
-Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, leVertexList As Long, leVertexTexelList As Long, mats() As newmtl_type, vn() As vec3d)
+Sub LoadMesh (thefile As String, tris() As mesh_triangle, indexTri As Long, v() As vec3d, leVertexTexelList As Long, vn() As vec3d, mats() As newmtl_type)
     Dim ParameterStorage(10, 2) As Double
 
     Dim totalVertex As Long
@@ -1586,10 +1577,10 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, leVertexL
     Dim useMaterialNumber As Long
     Dim totalVertexNormals As Long
     Dim totalVertexTexels As Long
-    Dim VertexList(leVertexList) As vec3d ' this gets tossed after loading mesh()
+    'Dim VertexList(leVertexList) As vec3d ' this is now global
     Dim TexelCoord(leVertexTexelList) As vec3d ' this gets tossed after loading mesh()
 
-    totalVertex = 0
+    totalVertex = 0 ' refers to v() array
     totalVertexNormals = 0 ' refers to vn() array
 
     lineCount = 0
@@ -1651,9 +1642,9 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, leVertexL
             'Print parameterIndex; " EOL"
 
             If parameterIndex >= 3 Then
-                VertexList(totalVertex).x = ParameterStorage(1, 0)
-                VertexList(totalVertex).y = ParameterStorage(2, 0)
-                VertexList(totalVertex).z = ParameterStorage(3, 0)
+                v(totalVertex).x = ParameterStorage(1, 0)
+                v(totalVertex).y = ParameterStorage(2, 0)
+                v(totalVertex).z = ParameterStorage(3, 0)
                 'Print "v "; ParameterStorage(1); ParameterStorage(2); ParameterStorage(3)
             End If
 
@@ -1756,10 +1747,10 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, leVertexL
     mostRecentVertexNormal = 0
     mostRecentVertexTexel = 0
 
-    Dim tri0 As Long
-    Dim tri1 As Long
-    Dim tri2 As Long
-    Dim tri3 As Long
+    Dim i0 As Long
+    Dim i1 As Long
+    Dim i2 As Long
+    Dim i3 As Long
     Dim tex0 As Long
     Dim tex1 As Long
     Dim tex2 As Long
@@ -1845,20 +1836,14 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, leVertexL
             BAIL_FACES:
             'Print parameterIndex; " EOL"
             If parameterIndex >= 3 Then
-                tri0 = FindVertexNumAbsOrRel(ParameterStorage(1, 0), mostRecentVertex)
-                tri1 = FindVertexNumAbsOrRel(ParameterStorage(2, 0), mostRecentVertex)
-                tri2 = FindVertexNumAbsOrRel(ParameterStorage(3, 0), mostRecentVertex)
+                i0 = FindVertexNumAbsOrRel(ParameterStorage(1, 0), mostRecentVertex)
+                i1 = FindVertexNumAbsOrRel(ParameterStorage(2, 0), mostRecentVertex)
+                i2 = FindVertexNumAbsOrRel(ParameterStorage(3, 0), mostRecentVertex)
 
                 indexTri = indexTri + 1
-                tris(indexTri).x0 = VertexList(tri0).x
-                tris(indexTri).y0 = VertexList(tri0).y
-                tris(indexTri).z0 = VertexList(tri0).z
-                tris(indexTri).x1 = VertexList(tri1).x
-                tris(indexTri).y1 = VertexList(tri1).y
-                tris(indexTri).z1 = VertexList(tri1).z
-                tris(indexTri).x2 = VertexList(tri2).x
-                tris(indexTri).y2 = VertexList(tri2).y
-                tris(indexTri).z2 = VertexList(tri2).z
+                tris(indexTri).i0 = i0
+                tris(indexTri).i1 = i1
+                tris(indexTri).i2 = i2
                 tris(indexTri).options = 0
                 tris(indexTri).material = useMaterialNumber
 
@@ -1894,19 +1879,13 @@ Sub LoadMesh (thefile As String, tris() As triangle, indexTri As Long, leVertexL
             End If
 
             If parameterIndex = 4 Then
-                tri3 = FindVertexNumAbsOrRel(ParameterStorage(4, 0), mostRecentVertex)
+                i3 = FindVertexNumAbsOrRel(ParameterStorage(4, 0), mostRecentVertex)
                 tex3 = FindVertexNumAbsOrRel(ParameterStorage(4, 1), mostRecentVertexTexel)
 
                 indexTri = indexTri + 1
-                tris(indexTri).x0 = VertexList(tri0).x
-                tris(indexTri).y0 = VertexList(tri0).y
-                tris(indexTri).z0 = VertexList(tri0).z
-                tris(indexTri).x1 = VertexList(tri2).x
-                tris(indexTri).y1 = VertexList(tri2).y
-                tris(indexTri).z1 = VertexList(tri2).z
-                tris(indexTri).x2 = VertexList(tri3).x
-                tris(indexTri).y2 = VertexList(tri3).y
-                tris(indexTri).z2 = VertexList(tri3).z
+                tris(indexTri).i0 = i0
+                tris(indexTri).i1 = i2
+                tris(indexTri).i2 = i3
                 tris(indexTri).options = 0
                 tris(indexTri).material = useMaterialNumber
 
