@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 43"
+_Title "Alias Object File 46"
 ' 2024 Haggarman
+'  V44 Load Kd texture maps
 '  V43 Pre-rotate the vertexes to gain about 10 ms on large objects.
 '  V41 obj illumination model
 '  V34 Any size skybox texture dimensions
@@ -19,6 +20,8 @@ _Title "Alias Object File 43"
 Declare Library ""
     ' grab a C99 function from math.h
     Function powf! (ByVal ba!, Byval ex!)
+    Function fmodf! (ByVal x!, Byval byy!)
+    Function floorf! (ByVal x!)
 End Declare
 
 Dim Shared DISP_IMAGE As Long
@@ -78,7 +81,6 @@ Type mesh_triangle
     u2 As Single
     v2 As Single
 
-    texture As _Unsigned Long
     options As _Unsigned Long
     material As Long
 End Type
@@ -150,6 +152,7 @@ End Type
 
 Type newmtl_type
     illum As Long '  illumination model
+    map_Kd As Long ' image handle to diffuse texture map if -2 or lower
     Kd_r As Single ' diffuse color (main color)
     Kd_g As Single
     Kd_b As Single
@@ -159,6 +162,11 @@ Type newmtl_type
     Ns As Single ' specular power exponent (0 to 1000)
     diaphaneity As Single ' translucency factor, for some strange reason Alias documentation calls this dissolve.
     textName As String
+End Type
+
+Type texture_catalog_type
+    textName As String
+    imageHandle As Long
 End Type
 
 Const illum_model_constant_color = 0 ' Kd only
@@ -226,13 +234,14 @@ Dim Shared T1_ImageHandle As Long
 Dim Shared T1_width As Integer, T1_height As Integer
 Dim Shared T1_width_MASK As Integer, T1_height_MASK As Integer
 Dim Shared T1_mblock As _MEM
-Dim Shared T1_Filter_Selection As Integer
-Dim Shared T1_last_cache As _Unsigned Long
-Dim Shared T1_options As _Unsigned Long
+
+' Texture sampling
+Dim Shared Texture_options As _Unsigned Long
 Const T1_option_clamp_width = 1
 Const T1_option_clamp_height = 2
 Const T1_option_no_Z_write = 4
 Const T1_option_no_T1 = 65536
+Const oneOver255 = 1.0 / 255.0
 
 ' Later optimization in ReadTexel requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
@@ -247,18 +256,10 @@ T1_mod_R = 1.0
 T1_mod_G = 1.0
 T1_mod_B = 1.0
 
-' Load Texture1 Array from Data
-Dim Shared Texture1(T1_width_MASK, T1_height_MASK) As _Unsigned Long
-Dim dvalue As _Unsigned Long
-Restore Texture1Data
-Dim row As Integer, col As Integer
-For row = 0 To T1_height_MASK
-    For col = 0 To T1_width_MASK
-        Read dvalue
-        Texture1(col, row) = dvalue
-        'PSet (col, row), dvalue
-    Next col
-Next row
+Dim Shared TextureCatalog(20) As texture_catalog_type
+Dim Shared TextureCatalog_nextIndex
+TextureCatalog_nextIndex = 0
+
 
 ' Load Skybox
 '     +---+
@@ -513,7 +514,7 @@ vLightDir.z = -0.3487767 ' Camera_Start_Z
 Vector3_Normalize vLightDir
 Dim Shared Light_Directional As Single
 Dim Shared Light_AmbientVal As Single
-Light_AmbientVal = 0.2
+Light_AmbientVal = 0.24 ' High Ambient just washes out the image but whatever it's part of the light model
 
 ' Directional lighting using vertex normals
 Dim light_directional_A As Single
@@ -594,7 +595,6 @@ main:
 $Checking:Off
 ExitCode = 0
 Animate_Spin = -1
-T1_Filter_Selection = 2
 Dither_Selection = 0
 Gouraud_Shading_Selection = 1
 actor = 1
@@ -872,20 +872,26 @@ Do
                 vertexC.w = pointProj2.w ' depth
                 vertexC.a = transparencyFactor * pointProj2.w
 
-                T1_options = mesh(tri).options
-                If mesh(tri).texture = 0 Then
-                    ' just use diffuse color
-                    T1_options = T1_options Or T1_option_no_T1
-                Else
-                    vertexA.u = mesh(tri).u0 * T1_width * pointProj0.w
-                    vertexA.v = mesh(tri).v0 * T1_height * pointProj0.w
-                    vertexB.u = mesh(tri).u1 * T1_width * pointProj1.w
-                    vertexB.v = mesh(tri).v1 * T1_height * pointProj1.w
-                    vertexC.u = mesh(tri).u2 * T1_width * pointProj2.w
-                    vertexC.v = mesh(tri).v2 * T1_height * pointProj2.w
-                End If
-
+                Texture_options = mesh(tri).options 'Or T1_option_clamp_width Or T1_option_clamp_height
                 thisMaterial = Materials(mesh(tri).material)
+
+                If thisMaterial.map_Kd >= -1 Then
+                    ' just use diffuse color
+                    Texture_options = Texture_options Or T1_option_no_T1
+                Else
+                    ' Fill in Texture 1 data
+                    T1_ImageHandle = thisMaterial.map_Kd
+                    T1_mblock = _MemImage(T1_ImageHandle)
+                    T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
+                    T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
+
+                    vertexA.u = mesh(tri).u0 * pointProj0.w * T1_width
+                    vertexA.v = mesh(tri).v0 * pointProj0.w * T1_height
+                    vertexB.u = mesh(tri).u1 * pointProj1.w * T1_width
+                    vertexB.v = mesh(tri).v1 * pointProj1.w * T1_height
+                    vertexC.u = mesh(tri).u2 * pointProj2.w * T1_width
+                    vertexC.v = mesh(tri).v2 * pointProj2.w * T1_height
+                End If
 
                 Select Case thisMaterial.illum
                     Case illum_model_constant_color
@@ -906,7 +912,7 @@ Do
                         vertexC.g = face_light_g
                         vertexC.b = face_light_b
 
-                        TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+                        VertexColorAlphaTriangle vertexA, vertexB, vertexC
 
                     Case illum_model_lambertian
                         ' ambient constant term plus a diffuse shading term for the angle of each light source
@@ -917,23 +923,45 @@ Do
                                 Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
                                 If Light_Directional < 0.0 Then Light_Directional = 0.0
 
-                                face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional)
-                                face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional)
-                                face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional)
+                                If Texture_options And T1_option_no_T1 Then
+                                    ' define as 8 bit values
+                                    face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Kd_r * Light_AmbientVal)
+                                    face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Kd_g * Light_AmbientVal)
+                                    face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Kd_b * Light_AmbientVal)
 
-                                vertexA.r = face_light_r
-                                vertexA.g = face_light_g
-                                vertexA.b = face_light_b
+                                    vertexA.r = face_light_r
+                                    vertexA.g = face_light_g
+                                    vertexA.b = face_light_b
 
-                                vertexB.r = face_light_r
-                                vertexB.g = face_light_g
-                                vertexB.b = face_light_b
+                                    vertexB.r = face_light_r
+                                    vertexB.g = face_light_g
+                                    vertexB.b = face_light_b
 
-                                vertexC.r = face_light_r
-                                vertexC.g = face_light_g
-                                vertexC.b = face_light_b
+                                    vertexC.r = face_light_r
+                                    vertexC.g = face_light_g
+                                    vertexC.b = face_light_b
 
-                                TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                    VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                Else
+                                    ' range from 0 to 1
+                                    face_light_r = (thisMaterial.Kd_r * Light_Directional + thisMaterial.Kd_r * Light_AmbientVal)
+                                    face_light_g = (thisMaterial.Kd_g * Light_Directional + thisMaterial.Kd_g * Light_AmbientVal)
+                                    face_light_b = (thisMaterial.Kd_b * Light_Directional + thisMaterial.Kd_b * Light_AmbientVal)
+
+                                    vertexA.r = face_light_r
+                                    vertexA.g = face_light_g
+                                    vertexA.b = face_light_b
+
+                                    vertexB.r = face_light_r
+                                    vertexB.g = face_light_g
+                                    vertexB.b = face_light_b
+
+                                    vertexC.r = face_light_r
+                                    vertexC.g = face_light_g
+                                    vertexC.b = face_light_b
+
+                                    TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                                End If
 
                             Case 1:
                                 ' Smooth shading
@@ -952,19 +980,37 @@ Do
                                 If light_directional_B < 0.0 Then light_directional_B = 0.0
                                 If light_directional_C < 0.0 Then light_directional_C = 0.0
 
-                                vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A)
-                                vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A)
-                                vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A)
+                                If Texture_options And T1_option_no_T1 Then
+                                    ' define as 8 bit values
+                                    vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Kd_b * Light_AmbientVal)
 
-                                vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B)
-                                vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B)
-                                vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B)
+                                    vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Kd_b * Light_AmbientVal)
 
-                                vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C)
-                                vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C)
-                                vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C)
+                                    vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Kd_b * Light_AmbientVal)
 
-                                TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                    VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                Else
+                                    ' range from 0 to 1
+                                    vertexA.r = (thisMaterial.Kd_r * light_directional_A + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexA.g = (thisMaterial.Kd_g * light_directional_A + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexA.b = (thisMaterial.Kd_b * light_directional_A + thisMaterial.Kd_b * Light_AmbientVal)
+
+                                    vertexB.r = (thisMaterial.Kd_r * light_directional_B + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexB.g = (thisMaterial.Kd_g * light_directional_B + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexB.b = (thisMaterial.Kd_b * light_directional_B + thisMaterial.Kd_b * Light_AmbientVal)
+
+                                    vertexC.r = (thisMaterial.Kd_r * light_directional_C + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexC.g = (thisMaterial.Kd_g * light_directional_C + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexC.b = (thisMaterial.Kd_b * light_directional_C + thisMaterial.Kd_b * Light_AmbientVal)
+
+                                    TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                                End If
                         End Select
 
 
@@ -995,23 +1041,45 @@ Do
                                     light_specular_A = 0.0
                                 End If
 
-                                face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
-                                face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
-                                face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
+                                If Texture_options And T1_option_no_T1 Then
+                                    ' define as 8 bit values
+                                    face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + thisMaterial.Kd_r * Light_AmbientVal)
+                                    face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + thisMaterial.Kd_g * Light_AmbientVal)
+                                    face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + thisMaterial.Kd_b * Light_AmbientVal)
 
-                                vertexA.r = face_light_r
-                                vertexA.g = face_light_g
-                                vertexA.b = face_light_b
+                                    vertexA.r = face_light_r
+                                    vertexA.g = face_light_g
+                                    vertexA.b = face_light_b
 
-                                vertexB.r = face_light_r
-                                vertexB.g = face_light_g
-                                vertexB.b = face_light_b
+                                    vertexB.r = face_light_r
+                                    vertexB.g = face_light_g
+                                    vertexB.b = face_light_b
 
-                                vertexC.r = face_light_r
-                                vertexC.g = face_light_g
-                                vertexC.b = face_light_b
+                                    vertexC.r = face_light_r
+                                    vertexC.g = face_light_g
+                                    vertexC.b = face_light_b
 
-                                TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                    VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                Else
+                                    ' range from 0 to 1
+                                    face_light_r = (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + thisMaterial.Kd_r * Light_AmbientVal)
+                                    face_light_g = (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + thisMaterial.Kd_g * Light_AmbientVal)
+                                    face_light_b = (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + thisMaterial.Kd_b * Light_AmbientVal)
+
+                                    vertexA.r = face_light_r
+                                    vertexA.g = face_light_g
+                                    vertexA.b = face_light_b
+
+                                    vertexB.r = face_light_r
+                                    vertexB.g = face_light_g
+                                    vertexB.b = face_light_b
+
+                                    vertexC.r = face_light_r
+                                    vertexC.g = face_light_g
+                                    vertexC.b = face_light_b
+
+                                    TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                                End If
 
                             Case 1:
                                 ' Smooth shading
@@ -1070,19 +1138,38 @@ Do
                                     light_specular_C = 0.0
                                 End If
 
-                                vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + Light_AmbientVal)
-                                vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + Light_AmbientVal)
-                                vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + Light_AmbientVal)
 
-                                vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + Light_AmbientVal)
-                                vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + Light_AmbientVal)
-                                vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + Light_AmbientVal)
+                                If Texture_options And T1_option_no_T1 Then
+                                    ' define as 8 bit values
+                                    vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + thisMaterial.Kd_b * Light_AmbientVal)
 
-                                vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + Light_AmbientVal)
-                                vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + Light_AmbientVal)
-                                vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + Light_AmbientVal)
+                                    vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + thisMaterial.Kd_b * Light_AmbientVal)
 
-                                TexturedVertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                    vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + thisMaterial.Kd_b * Light_AmbientVal)
+
+                                    VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                Else
+                                    ' range from 0 to 1
+                                    vertexA.r = (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexA.g = (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexA.b = (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + thisMaterial.Kd_b * Light_AmbientVal)
+
+                                    vertexB.r = (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexB.g = (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexB.b = (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + thisMaterial.Kd_b * Light_AmbientVal)
+
+                                    vertexC.r = (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + thisMaterial.Kd_r * Light_AmbientVal)
+                                    vertexC.g = (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + thisMaterial.Kd_g * Light_AmbientVal)
+                                    vertexC.b = (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + thisMaterial.Kd_b * Light_AmbientVal)
+
+                                    TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                                End If
                         End Select
 
 
@@ -1230,14 +1317,8 @@ Do
     KeyNow = UCase$(InKey$)
     If KeyNow <> "" Then
 
-        If KeyNow = "F" Then
-            T1_Filter_Selection = T1_Filter_Selection + 1
-            If T1_Filter_Selection > 3 Then T1_Filter_Selection = 0
-        ElseIf KeyNow = "S" Then
+        If KeyNow = "S" Then
             Animate_Spin = Not Animate_Spin
-        ElseIf KeyNow = "D" Then
-            Dither_Selection = Dither_Selection + 1
-            If Dither_Selection > 2 Then Dither_Selection = 0
         ElseIf KeyNow = "R" Then
             vCameraPsn.x = 0.0
             vCameraPsn.y = 0.0
@@ -1263,44 +1344,6 @@ Next refIndex
 
 End
 $Checking:Off
-
-Texture1Data:
-'Red_Brick', 16x16px
-Data &HFF000000,&HFFdd340a,&HFFd93f0f,&HFFcfcbd2,&HFFd93f0f,&HFFdd3d1b,&HFFd93509,&HFFe04609,&HFFd93f0f,&HFFe14a1b,&HFFcf380a,&HFFd1d1d1,&HFFd93f0f,&HFFde4712,&HFFd93f0f,&HFFd93f0f
-Data &HFFb33409,&HFFb33409,&HFFbe3912,&HFFdce1d7,&HFFe1501b,&HFFb33409,&HFFae2a0a,&HFFac2213,&HFFb33409,&HFFaa320f,&HFFbf3806,&HFFd6ceda,&HFFd93f0f,&HFFb73508,&HFFb33409,&HFFb43705
-Data &HFFb33409,&HFFba3e19,&HFFac2903,&HFFd1d1d1,&HFFd93f0f,&HFFa93b13,&HFFb33409,&HFFa83207,&HFFb33409,&HFFb33409,&HFFb33409,&HFFd1d1d1,&HFFd12d02,&HFFc04110,&HFFb33409,&HFFbc4107
-Data &HFFb89f91,&HFFb89a8a,&HFFae8e8f,&HFFd1d1d1,&HFFb29291,&HFFb3938b,&HFFb3938b,&HFFaf8f81,&HFFb3938b,&HFFbb9d8d,&HFFc3898d,&HFFd7dee4,&HFFb3938b,&HFFb3938b,&HFFaa8d8c,&HFFc8a597
-Data &HFFd0320a,&HFFd93f0f,&HFFd93f0f,&HFFd93f0f,&HFFd93f0f,&HFFd73907,&HFFd93f0f,&HFFd1d1d1,&HFFde4619,&HFFd94915,&HFFe23d14,&HFFd93f0f,&HFFd93f0f,&HFFd93f0f,&HFFd93f0f,&HFFd0d0ca
-Data &HFFd93f0f,&HFFb33409,&HFFc1481e,&HFFb33409,&HFFa92902,&HFFb33409,&HFFb73006,&HFFd1d1d1,&HFFd93f0f,&HFFb33409,&HFFaf2e05,&HFFb33409,&HFFac2b00,&HFFb33409,&HFFb33409,&HFFcbd9d5
-Data &HFFd93f0f,&HFFa62600,&HFFb83c15,&HFFb02b00,&HFFb33409,&HFFaf2103,&HFFb33409,&HFFcfe0dd,&HFFdb4b15,&HFFaa2e02,&HFFb63b0f,&HFFad3209,&HFFb33409,&HFFb33409,&HFFb33409,&HFFd4cfd1
-Data &HFFb3938b,&HFFb3938b,&HFFb3938b,&HFFaa938b,&HFFb0918e,&HFFc1998f,&HFFb3938b,&HFFd1d1d1,&HFFb3938b,&HFFb3938b,&HFFb3878b,&HFFb3938b,&HFFb3938b,&HFFb3938b,&HFFb69384,&HFFd1d1d1
-Data &HFFdf3f14,&HFFd93f0f,&HFFd93f0f,&HFFd1d1d1,&HFFda3d08,&HFFd93f0f,&HFFda4515,&HFFee5519,&HFFde3f19,&HFFd93f0f,&HFFd93f0f,&HFFd1d1d1,&HFFd93f0f,&HFFd93f0f,&HFFe95407,&HFFc62f00
-Data &HFFb33409,&HFFb33409,&HFFb33409,&HFFc8cfd1,&HFFde3419,&HFFb33409,&HFFb1350d,&HFFb33409,&HFFb93c0d,&HFFb64305,&HFFb92f0a,&HFFcfcacd,&HFFd93f0f,&HFFbb3a17,&HFFb33409,&HFFb33409
-Data &HFFb14310,&HFFb33409,&HFFbc3b0f,&HFFd8dede,&HFFd93f0f,&HFFb33409,&HFFb0150c,&HFFb33409,&HFFb52500,&HFFb23a18,&HFFb33409,&HFFcad1d3,&HFFd93f0f,&HFFb33409,&HFFb53d0f,&HFFb33409
-Data &HFFb3938b,&HFFb3938b,&HFFa58588,&HFFd1d1d1,&HFFb3938b,&HFFb3938b,&HFFb3938b,&HFFb3938b,&HFFb3938b,&HFFb3938b,&HFFad9092,&HFFd1d5d8,&HFFba8e88,&HFFb99e96,&HFFa89283,&HFFaa9784
-Data &HFFca4a0f,&HFFd84118,&HFFe14a18,&HFFd93f0f,&HFFd93f0f,&HFFd93f0f,&HFFcf3d06,&HFFc7cbcf,&HFFd93b02,&HFFdd561a,&HFFd93f0f,&HFFd93f0f,&HFFd83c15,&HFFd93f0f,&HFFdd3f12,&HFFdee0e0
-Data &HFFd93f0f,&HFFb33409,&HFFa93515,&HFFae3709,&HFFb33409,&HFFb33409,&HFFaa2709,&HFFc4cdcc,&HFFd93f0f,&HFFbd2d09,&HFFb33409,&HFFb33409,&HFFb33409,&HFFb43507,&HFFb73510,&HFFd1d1d1
-Data &HFFd93f0f,&HFFa61800,&HFFb93a1a,&HFFb33409,&HFFb33409,&HFFb33409,&HFFb33409,&HFFd1d3d4,&HFFd93f0f,&HFFb33409,&HFFb33409,&HFFb33409,&HFFb63521,&HFFb33409,&HFFaf3c0c,&HFFd1d1d1
-Data &HFFb3938b,&HFFb59181,&HFFa5857c,&HFFb59895,&HFFb3938b,&HFFb09a96,&HFFb3938b,&HFFd1d1d1,&HFFbaa085,&HFFb3938b,&HFFad8c8a,&HFFb3938b,&HFFbc9a8e,&HFFb3938b,&HFFb3938b,&HFFbec7c9
-
-'Origin16x16', 16x16px
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
-Data &HFFffdbc4,&HFFff7f27,&HFFffdbc4,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
-Data &HFFffac75,&HFFff7f27,&HFFffac75,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
-Data &HFFff7f27,&HFFff7f27,&HFFff7f27,&HFFffffff,&HFFff7f27,&HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFff7f27,&HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFff7f27,&HFFffdbc4,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFF00a2e8,&HFFffffff,&HFF00a2e8,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFff7f27,&HFFffdbc4,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFF00a2e8,&HFF9de1ff,&HFF00a2e8,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFF00a2e8,&HFFffffff,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFF00a2e8,&HFF9de1ff,&HFF00a2e8,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFF00a2e8,&HFFffffff,&HFF00a2e8,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff
-Data &HFFffffff,&HFFff7f27,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFF00a2e8,&HFF64d0ff,&HFF9de1ff,&HFFffffff
-Data &HFFffffff,&HFFa349a4,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8,&HFF00a2e8
-Data &HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFFffffff,&HFF00a2e8,&HFF64d0ff,&HFF9de1ff,&HFFffffff
-
 
 ' u,v texture coords use fencepost counting.
 '
@@ -1457,6 +1500,35 @@ Sub CameraPoll (camloc As vec3d, yaw As Single, pitch As Single)
     End If
 End Sub
 
+Sub InsertCatalogTexture (thefile As String, h As Long)
+    ' returns -1 in h if texture cannot be loaded
+    Dim i As Integer
+    If TextureCatalog_nextIndex > UBound(TextureCatalog) Then
+        Print "need to increase texture catalog size"
+        End
+    End If
+
+    For i = 0 To TextureCatalog_nextIndex
+        If TextureCatalog(i).textName = thefile Then
+            'match
+            'Print i; " match "; thefile; TextureCatalog(i).imageHandle
+            h = TextureCatalog(i).imageHandle
+            '_Delay 2
+            Exit Sub
+        End If
+    Next i
+
+    h = _LoadImage(Obj_Directory + thefile, 32)
+    If h = -1 Then
+        Print "texture not loaded: "; thefile
+        Exit Sub
+    End If
+
+    TextureCatalog(TextureCatalog_nextIndex).imageHandle = h
+    TextureCatalog(TextureCatalog_nextIndex).textName = thefile
+    TextureCatalog_nextIndex = TextureCatalog_nextIndex + 1
+End Sub
+
 Sub PrescanMesh (thefile As String, requiredTriangles As Long, totalVertex As Long, totalTextureCoords As Long, totalNormals As Long, totalMaterialLibrary As Long, materialFile As String)
     ' Primary purpose is to determine the required amount of triangles.
     ' This is not straightforward as any size n-gons are allowed, although typically faces with 3 or 4 vertexes is encountered.
@@ -1590,12 +1662,12 @@ Sub LoadMesh (thefile As String, tris() As mesh_triangle, indexTri As Long, v() 
     Dim parameter As String
 
     If _FileExists(thefile) = 0 Then
-        Print "The file was not found"
+        Print "The object file was not found"
         Exit Sub
     End If
     Open thefile For Binary As #2
     If LOF(2) = 0 Then
-        Print "The file is empty"
+        Print "The object file is empty"
         Close #2
         Exit Sub
     End If
@@ -1728,8 +1800,8 @@ Sub LoadMesh (thefile As String, tris() As mesh_triangle, indexTri As Long, v() 
             'Print parameterIndex; " EOL"
 
             If parameterIndex >= 2 Then
-                TexelCoord(totalVertexTexels).x = ParameterStorage(1, 0)
-                TexelCoord(totalVertexTexels).y = ParameterStorage(2, 0)
+                TexelCoord(totalVertexTexels).x = ParameterStorage(1, 0) ' it is amazing how bad at following the standard people are.
+                TexelCoord(totalVertexTexels).y = ParameterStorage(2, 0) ' it is only supposed to range from 0.0 to 1.0
                 'Print "vt "; ParameterStorage(1, 0); ParameterStorage(2, 0);
             End If
 
@@ -2017,17 +2089,18 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
     Dim rawString As String
     Dim trimString As String
     Dim parameter As String
+    Dim textureFilename As String
 
     totalMaterials = 0
     lineCount = 0
 
     If _FileExists(theFile) = 0 Then
-        Print "The file was not found"
+        Print "The mtl file was not found"
         Exit Sub
     End If
     Open theFile For Binary As #2
     If LOF(2) = 0 Then
-        Print "The file is empty"
+        Print "The mtl file is empty"
         Close #2
         Exit Sub
     End If
@@ -2054,6 +2127,12 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
             mats(totalMaterials).textName = _Trim$(Mid$(trimString, 8))
             ' set any defaults that are non-zero
             mats(totalMaterials).diaphaneity = 1.0
+            mats(totalMaterials).illum = 2
+            mats(totalMaterials).Ns = 10.0
+
+        ElseIf Left$(trimString, 7) = "map_Kd " Then
+            textureFilename = _Trim$(Mid$(trimString, 8))
+            InsertCatalogTexture textureFilename, mats(totalMaterials).map_Kd
 
         ElseIf Left$(trimString, 3) = "Kd " Then
             ' Diffuse color is the most dominant color
@@ -2714,339 +2793,6 @@ Sub QuickSort_ViewZ (start As Long, finish As Long, J() As objectlist_type)
 End Sub
 
 
-Function ReadTexel& (ccol As Single, rrow As Single) Static
-    Select Case T1_Filter_Selection
-        Case 0
-            ReadTexel& = ReadTexelNearest&(ccol, rrow)
-        Case 1
-            ReadTexel& = ReadTexel3Point&(ccol, rrow)
-        Case 2
-            ReadTexel& = ReadTexelBiLinearFix&(ccol, rrow)
-        Case 3
-            ReadTexel& = ReadTexelBiLinear&(ccol, rrow)
-    End Select
-End Function
-
-
-Function ReadTexelNearest& (ccol As Single, rrow As Single) Static
-    ' Relies on some shared variables over by Texture1
-    Static cc As Integer
-    Static rr As Integer
-
-    ' Decided just to tile the texture if out of bounds
-    cc = Int(ccol) And T1_width_MASK
-    rr = Int(rrow) And T1_height_MASK
-
-    ReadTexelNearest& = Texture1(cc, rr)
-End Function
-
-
-Function ReadTexel3Point& (ccol As Single, rrow As Single) Static
-    ' Relies on some shared T1 variables over by Texture1
-    Static cc As Integer
-    Static rr As Integer
-    Static cc1 As Integer
-    Static rr1 As Integer
-
-    Static Frac_cc1 As Single
-    Static Frac_rr1 As Single
-
-    Static Area_00 As Single
-    Static Area_11 As Single
-    Static Area_2f As Single
-
-    Static uv_0_0 As Long
-    Static uv_1_1 As Long
-    Static uv_f As Long
-
-    Static r0 As Long
-    Static g0 As Long
-    Static b0 As Long
-
-    Static cm5 As Single
-    Static rm5 As Single
-
-    ' Offset so the transition appears in the center of an enlarged texel instead of a corner.
-    cm5 = ccol - 0.5
-    rm5 = rrow - 0.5
-
-    If T1_options And T1_option_clamp_width Then
-        ' clamp
-        If cm5 < 0.0 Then cm5 = 0.0
-        If cm5 >= T1_width_MASK Then
-            ' 15.0 and up
-            cc = T1_width_MASK
-            cc1 = T1_width_MASK
-        Else
-            ' 0 1 2 .. 13 14.999
-            cc = Int(cm5)
-            cc1 = cc + 1
-        End If
-    Else
-        ' tile the texture
-        cc = Int(cm5) And T1_width_MASK
-        cc1 = (cc + 1) And T1_width_MASK
-    End If
-
-    If T1_options And T1_option_clamp_height Then
-        ' clamp
-        If rm5 < 0.0 Then rm5 = 0.0
-        If rm5 >= T1_height_MASK Then
-            rr = T1_height_MASK
-            rr1 = T1_height_MASK
-        Else
-            rr = Int(rm5)
-            rr1 = rr + 1
-        End If
-    Else
-        ' tile
-        rr = Int(rm5) And T1_height_MASK
-        rr1 = (rr + 1) And T1_height_MASK
-    End If
-
-    uv_0_0 = Texture1(cc, rr)
-    uv_1_1 = Texture1(cc1, rr1)
-
-    Frac_cc1 = cm5 - Int(cm5)
-    Frac_rr1 = rm5 - Int(rm5)
-
-    If Frac_cc1 > Frac_rr1 Then
-        ' top-right
-        ' Area of a triangle = 1/2 * base * height
-        ' Using twice the areas (rectangles) to eliminate a multiply by 1/2 and a later divide by 1/2
-        Area_11 = Frac_rr1
-        Area_00 = 1.0 - Frac_cc1
-        uv_f = Texture1(cc1, rr)
-    Else
-        ' bottom-left
-        Area_00 = 1.0 - Frac_rr1
-        Area_11 = Frac_cc1
-        uv_f = Texture1(cc, rr1)
-    End If
-
-    Area_2f = 1.0 - (Area_00 + Area_11) '1.0 here is twice the total triangle area.
-
-    r0 = _Red32(uv_f) * Area_2f + _Red32(uv_0_0) * Area_00 + _Red32(uv_1_1) * Area_11
-    g0 = _Green32(uv_f) * Area_2f + _Green32(uv_0_0) * Area_00 + _Green32(uv_1_1) * Area_11
-    b0 = _Blue32(uv_f) * Area_2f + _Blue32(uv_0_0) * Area_00 + _Blue32(uv_1_1) * Area_11
-
-    'ReadTexel3Point& = _RGB32(r0, g0, b0)
-    ReadTexel3Point& = _ShL(r0, 16) Or _ShL(g0, 8) Or b0
-End Function
-
-
-Function ReadTexelBiLinear& (ccol As Single, rrow As Single) Static
-    ' Relies on some shared variables over by Texture1
-    Static cc As Integer
-    Static rr As Integer
-    Static cc1 As Integer
-    Static rr1 As Integer
-
-    Static frac_cc1 As Single
-    Static frac_rr1 As Single
-
-    ' caching of 4 texels
-    Static this_cache As _Unsigned Long
-    Static uv_0_0 As Long
-    Static uv_0_1 As Long
-    Static uv_1_0 As Long
-    Static uv_1_1 As Long
-
-    Static r0 As Long
-    Static g0 As Long
-    Static b0 As Long
-    Static r1 As Long
-    Static g1 As Long
-    Static b1 As Long
-
-    Static cm5 As Single
-    Static rm5 As Single
-
-    cm5 = ccol - 0.5
-    rm5 = rrow - 0.5
-
-    If T1_options And T1_option_clamp_width Then
-        ' clamp
-        If cm5 < 0.0 Then cm5 = 0.0
-        If cm5 >= T1_width_MASK Then
-            ' 15.0 and up
-            cc = T1_width_MASK
-            cc1 = T1_width_MASK
-        Else
-            ' 0 1 2 .. 13 14.999
-            cc = Int(cm5)
-            cc1 = cc + 1
-        End If
-    Else
-        ' tile the texture
-        cc = Int(cm5) And T1_width_MASK
-        cc1 = (cc + 1) And T1_width_MASK
-    End If
-
-    If T1_options And T1_option_clamp_height Then
-        ' clamp
-        If rm5 < 0.0 Then rm5 = 0.0
-        If rm5 >= T1_height_MASK Then
-            rr = T1_height_MASK
-            rr1 = T1_height_MASK
-        Else
-            rr = Int(rm5)
-            rr1 = rr + 1
-        End If
-    Else
-        ' tile
-        rr = Int(rm5) And T1_height_MASK
-        rr1 = (rr + 1) And T1_height_MASK
-    End If
-
-    uv_0_0 = Texture1(cc, rr)
-    uv_1_0 = Texture1(cc1, rr)
-    uv_0_1 = Texture1(cc, rr1)
-    uv_1_1 = Texture1(cc1, rr1)
-
-    this_cache = _ShL(rr, 16) Or cc
-    If this_cache <> T1_last_cache Then
-        uv_0_0 = Texture1(cc, rr)
-        uv_1_0 = Texture1(cc1, rr)
-        uv_0_1 = Texture1(cc, rr1)
-        uv_1_1 = Texture1(cc1, rr1)
-        T1_last_cache = this_cache
-        ' uncomment below to show cache miss in yellow
-        'ReadTexelBiLinearFix& = _RGB32(255, 255, 127)
-        'Exit Function
-    End If
-
-    frac_cc1 = cm5 - Int(cm5)
-    frac_rr1 = rm5 - Int(rm5)
-
-    r0 = _Red32(uv_0_0)
-    r0 = (_Red32(uv_1_0) - r0) * frac_cc1 + r0
-
-    g0 = _Green32(uv_0_0)
-    g0 = (_Green32(uv_1_0) - g0) * frac_cc1 + g0
-
-    b0 = _Blue32(uv_0_0)
-    b0 = (_Blue32(uv_1_0) - b0) * frac_cc1 + b0
-
-    r1 = _Red32(uv_0_1)
-    r1 = (_Red32(uv_1_1) - r1) * frac_cc1 + r1
-
-    g1 = _Green32(uv_0_1)
-    g1 = (_Green32(uv_1_1) - g1) * frac_cc1 + g1
-
-    b1 = _Blue32(uv_0_1)
-    b1 = (_Blue32(uv_1_1) - b1) * frac_cc1 + b1
-
-    ReadTexelBiLinear& = _RGB32((r1 - r0) * frac_rr1 + r0, (g1 - g0) * frac_rr1 + g0, (b1 - b0) * frac_rr1 + b0)
-End Function
-
-
-Function ReadTexelBiLinearFix& (ccol As Single, rrow As Single) Static
-    ' caching of 4 texels
-    Static this_cache As _Unsigned Long
-    Static uv_0_0 As Long
-    Static uv_0_1 As Long
-    Static uv_1_0 As Long
-    Static uv_1_1 As Long
-
-    ' Relies on some shared variables over by Texture1
-    Static cc As _Unsigned Integer
-    Static rr As _Unsigned Integer
-    Static cc1 As _Unsigned Integer
-    Static rr1 As _Unsigned Integer
-
-    'Static Frac_cc1 As Single
-    'Static Frac_rr1 As Single
-
-    Static Frac_cc1_FIX7 As Integer
-    Static Frac_rr1_FIX7 As Integer
-
-    Static r0 As Integer
-    Static g0 As Integer
-    Static b0 As Integer
-    Static r1 As Integer
-    Static g1 As Integer
-    Static b1 As Integer
-
-    Static cm5 As Single
-    Static rm5 As Single
-
-    cm5 = ccol - 0.5
-    rm5 = rrow - 0.5
-
-    If T1_options And T1_option_clamp_width Then
-        ' clamp
-        If cm5 < 0.0 Then cm5 = 0.0
-        If cm5 >= T1_width_MASK Then
-            ' 15.0 and up
-            cc = T1_width_MASK
-            cc1 = T1_width_MASK
-        Else
-            ' 0 1 2 .. 13 14.999
-            cc = Int(cm5)
-            cc1 = cc + 1
-        End If
-    Else
-        ' tile the texture
-        cc = Int(cm5) And T1_width_MASK
-        cc1 = (cc + 1) And T1_width_MASK
-    End If
-
-    If T1_options And T1_option_clamp_height Then
-        ' clamp
-        If rm5 < 0.0 Then rm5 = 0.0
-        If rm5 >= T1_height_MASK Then
-            rr = T1_height_MASK
-            rr1 = T1_height_MASK
-        Else
-            rr = Int(rm5)
-            rr1 = rr + 1
-        End If
-    Else
-        ' tile
-        rr = Int(rm5) And T1_height_MASK
-        rr1 = (rr + 1) And T1_height_MASK
-    End If
-
-    'Frac_cc1 = cm5 - Int(cm5)
-    Frac_cc1_FIX7 = (cm5 - Int(cm5)) * 128
-    'Frac_rr1 = rm5 - Int(rm5)
-    Frac_rr1_FIX7 = (rm5 - Int(rm5)) * 128
-
-    ' cache
-    this_cache = _ShL(rr, 16) Or cc
-    If this_cache <> T1_last_cache Then
-        uv_0_0 = Texture1(cc, rr)
-        uv_1_0 = Texture1(cc1, rr)
-        uv_0_1 = Texture1(cc, rr1)
-        uv_1_1 = Texture1(cc1, rr1)
-        T1_last_cache = this_cache
-        ' uncomment below to show cache miss in yellow
-        'ReadTexelBiLinearFix& = _RGB32(255, 255, 127)
-        'Exit Function
-    End If
-
-    r0 = _Red32(uv_0_0)
-    r0 = _ShR((_Red32(uv_1_0) - r0) * Frac_cc1_FIX7, 7) + r0
-
-    g0 = _Green32(uv_0_0)
-    g0 = _ShR((_Green32(uv_1_0) - g0) * Frac_cc1_FIX7, 7) + g0
-
-    b0 = _Blue32(uv_0_0)
-    b0 = _ShR((_Blue32(uv_1_0) - b0) * Frac_cc1_FIX7, 7) + b0
-
-    r1 = _Red32(uv_0_1)
-    r1 = _ShR((_Red32(uv_1_1) - r1) * Frac_cc1_FIX7, 7) + r1
-
-    g1 = _Green32(uv_0_1)
-    g1 = _ShR((_Green32(uv_1_1) - g1) * Frac_cc1_FIX7, 7) + g1
-
-    b1 = _Blue32(uv_0_1)
-    b1 = _ShR((_Blue32(uv_1_1) - b1) * Frac_cc1_FIX7, 7) + b1
-
-    ReadTexelBiLinearFix& = _ShL(_ShR((r1 - r0) * Frac_rr1_FIX7, 7) + r0, 16) Or _ShL(_ShR((g1 - g0) * Frac_rr1_FIX7, 7) + g0, 8) Or _ShR((b1 - b0) * Frac_rr1_FIX7, 7) + b0
-End Function
-
 
 Function RGB_Fog& (zz As Single, RGB_color As _Unsigned Long) Static
     Static r0 As Long
@@ -3116,7 +2862,7 @@ Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long) Stat
     RGB_Modulate& = _RGB32(_ShR(r1 * r2, 8), _ShR(g1 * g2, 8), _ShR(b1 * b2, 8))
 End Function
 
-Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
+Sub VertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
     Static delta2 As vertex9
     Static delta1 As vertex9
     Static draw_min_y As Long, draw_max_y As Long
@@ -3277,8 +3023,9 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
     work_mem_info = _MemImage(WORK_IMAGE)
     work_next_row_step = 4 * Size_Render_X
 
-    ' Invalidate texel cache
-    T1_last_cache = &HFFFFFFFF
+    ' caching of 4 texels in bilinear mode
+    Static T1_last_cache As _Unsigned Long
+    T1_last_cache = &HFFFFFFFF ' Invalidate texel cache
 
     ' Row Loop from top to bottom
     row = draw_min_y
@@ -3402,16 +3149,12 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
             While col < draw_max_x
 
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
-                    If (T1_options And T1_option_no_Z_write) = 0 Then
+                    If (Texture_options And T1_option_no_Z_write) = 0 Then
                         Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
                     End If
 
                     Static pixel_combine As _Unsigned Long
-                    If (T1_option_no_T1 And T1_options) Then
-                        pixel_combine = _RGB32(tex_r, tex_g, tex_b)
-                    Else
-                        pixel_combine = RGB_Modulate(ReadTexel&(tex_u * tex_z, tex_v * tex_z), _RGB32(tex_r, tex_g, tex_b))
-                    End If
+                    pixel_combine = _RGB32(tex_r, tex_g, tex_b)
 
                     Static pixel_existing As _Unsigned Long
                     pixel_alpha = tex_a * tex_z
@@ -3425,12 +3168,484 @@ Sub TexturedVertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                         ' x = (1.0 - ratio) * p0 + ratio * p1
                     End If
                     _MemPut work_mem_info, work_address, pixel_combine
-                    'If Dither_Selection > 0 Then
-                    '    RGB_Dither555 col, row, pixel_value
-                    'Else
-                    '    PSet (col, row), pixel_value
-                    'End If
 
+                End If ' tex_z
+                zbuf_index = zbuf_index + 1
+                tex_w = tex_w + tex_w_step
+                tex_z = 1 / tex_w ' floating point divide can be done in parallel when result not required immediately.
+                tex_u = tex_u + tex_u_step
+                tex_v = tex_v + tex_v_step
+                tex_r = tex_r + tex_r_step
+                tex_g = tex_g + tex_g_step
+                tex_b = tex_b + tex_b_step
+                tex_a = tex_a + tex_a_step
+                work_address = work_address + 4
+                col = col + 1
+            Wend ' col
+
+        End If ' end div/0 avoidance
+
+        ' DDA next step
+        leg_x1 = leg_x1 + legx1_step
+        leg_w1 = leg_w1 + legw1_step
+        leg_u1 = leg_u1 + legu1_step
+        leg_v1 = leg_v1 + legv1_step
+        leg_r1 = leg_r1 + legr1_step
+        leg_g1 = leg_g1 + legg1_step
+        leg_b1 = leg_b1 + legb1_step
+        leg_a1 = leg_a1 + lega1_step
+
+        leg_x2 = leg_x2 + legx2_step
+        leg_w2 = leg_w2 + legw2_step
+        leg_u2 = leg_u2 + legu2_step
+        leg_v2 = leg_v2 + legv2_step
+        leg_r2 = leg_r2 + legr2_step
+        leg_g2 = leg_g2 + legg2_step
+        leg_b2 = leg_b2 + legb2_step
+        leg_a2 = leg_a2 + lega2_step
+
+        work_row_base = work_row_base + work_next_row_step
+        row = row + 1
+    Wend ' row
+
+End Sub
+
+Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
+    Static delta2 As vertex9
+    Static delta1 As vertex9
+    Static draw_min_y As Long, draw_max_y As Long
+
+    ' Sort so that vertex A is on top and C is on bottom.
+    ' This seems inverted from math class, but remember that Y increases in value downward on PC monitors
+    If B.y < A.y Then
+        Swap A, B
+    End If
+    If C.y < A.y Then
+        Swap A, C
+    End If
+    If C.y < B.y Then
+        Swap B, C
+    End If
+
+    ' integer window clipping
+    draw_min_y = _Ceil(A.y)
+    If draw_min_y < clip_min_y Then draw_min_y = clip_min_y
+    draw_max_y = _Ceil(C.y) - 1
+    If draw_max_y > clip_max_y Then draw_max_y = clip_max_y
+    If (draw_max_y - draw_min_y) < 0 Then Exit Sub
+
+    ' Determine the deltas (lengths)
+    ' delta 2 is from A to C (the full triangle height)
+    delta2.x = C.x - A.x
+    delta2.y = C.y - A.y
+    delta2.w = C.w - A.w
+    delta2.u = C.u - A.u
+    delta2.v = C.v - A.v
+    delta2.r = C.r - A.r
+    delta2.g = C.g - A.g
+    delta2.b = C.b - A.b
+    delta2.a = C.a - A.a
+
+    ' Avoiding div by 0
+    ' Entire Y height less than 1/256 would not have meaningful pixel color change
+    If delta2.y < (1 / 256) Then Exit Sub
+
+    ' Determine vertical Y steps for DDA style math
+    ' DDA is Digital Differential Analyzer
+    ' It is an accumulator that counts from a known start point to an end point, in equal increments defined by the number of steps in-between.
+    ' Probably faster nowadays to do the one division at the start, instead of Bresenham, anyway.
+    Static legx1_step As Single
+    Static legw1_step As Single, legu1_step As Single, legv1_step As Single
+    Static legr1_step As Single, legg1_step As Single, legb1_step As Single
+    Static lega1_step As Single
+
+    Static legx2_step As Single
+    Static legw2_step As Single, legu2_step As Single, legv2_step As Single
+    Static legr2_step As Single, legg2_step As Single, legb2_step As Single
+    Static lega2_step As Single
+
+    ' Leg 2 steps from A to C (the full triangle height)
+    legx2_step = delta2.x / delta2.y
+    legw2_step = delta2.w / delta2.y
+    legu2_step = delta2.u / delta2.y
+    legv2_step = delta2.v / delta2.y
+    legr2_step = delta2.r / delta2.y
+    legg2_step = delta2.g / delta2.y
+    legb2_step = delta2.b / delta2.y
+    lega2_step = delta2.a / delta2.y
+
+    ' Leg 1, Draw top to middle
+    ' For most triangles, draw downward from the apex A to a knee B.
+    ' That knee could be on either the left or right side, but that is handled much later.
+    Static draw_middle_y As Long
+    draw_middle_y = _Ceil(B.y)
+    If draw_middle_y < clip_min_y Then draw_middle_y = clip_min_y
+    ' Do not clip B to max_y. Let the y count expire before reaching the knee if it is past bottom of screen.
+
+    ' Leg 1 is from A to B (right now)
+    delta1.x = B.x - A.x
+    delta1.y = B.y - A.y
+    delta1.w = B.w - A.w
+    delta1.u = B.u - A.u
+    delta1.v = B.v - A.v
+    delta1.r = B.r - A.r
+    delta1.g = B.g - A.g
+    delta1.b = B.b - A.b
+    delta1.a = B.a - A.a
+
+    ' If the triangle has no knee, this section gets skipped to avoid divide by 0.
+    ' That is okay, because the recalculate Leg 1 from B to C triggers before actually drawing.
+    If delta1.y > (1 / 256) Then
+        ' Find Leg 1 steps in the y direction from A to B
+        legx1_step = delta1.x / delta1.y
+        legw1_step = delta1.w / delta1.y
+        legu1_step = delta1.u / delta1.y
+        legv1_step = delta1.v / delta1.y
+        legr1_step = delta1.r / delta1.y
+        legg1_step = delta1.g / delta1.y
+        legb1_step = delta1.b / delta1.y
+        lega1_step = delta1.a / delta1.y
+    End If
+
+    ' Y Accumulators
+    Static leg_x1 As Single
+    Static leg_w1 As Single, leg_u1 As Single, leg_v1 As Single
+    Static leg_r1 As Single, leg_g1 As Single, leg_b1 As Single
+    Static leg_a1 As Single
+
+    Static leg_x2 As Single
+    Static leg_w2 As Single, leg_u2 As Single, leg_v2 As Single
+    Static leg_r2 As Single, leg_g2 As Single, leg_b2 As Single
+    Static leg_a2 As Single
+
+    ' 11-4-2022 Prestep Y
+    Static prestep_y1 As Single
+    ' Basically we are sampling pixels on integer exact rows.
+    ' But we only are able to know the next row by way of forward interpolation. So always round up.
+    ' To get to that next row, we have to prestep by the fractional forward distance from A. _Ceil(A.y) - A.y
+    prestep_y1 = draw_min_y - A.y
+
+    leg_x1 = A.x + prestep_y1 * legx1_step
+    leg_w1 = A.w + prestep_y1 * legw1_step
+    leg_u1 = A.u + prestep_y1 * legu1_step
+    leg_v1 = A.v + prestep_y1 * legv1_step
+    leg_r1 = A.r + prestep_y1 * legr1_step
+    leg_g1 = A.g + prestep_y1 * legg1_step
+    leg_b1 = A.b + prestep_y1 * legb1_step
+    leg_a1 = A.a + prestep_y1 * lega1_step
+
+    leg_x2 = A.x + prestep_y1 * legx2_step
+    leg_w2 = A.w + prestep_y1 * legw2_step
+    leg_u2 = A.u + prestep_y1 * legu2_step
+    leg_v2 = A.v + prestep_y1 * legv2_step
+    leg_r2 = A.r + prestep_y1 * legr2_step
+    leg_g2 = A.g + prestep_y1 * legg2_step
+    leg_b2 = A.b + prestep_y1 * legb2_step
+    leg_a2 = A.a + prestep_y1 * lega2_step
+
+    ' Inner loop vars
+    Static row As Long
+    Static col As Long
+    Static draw_max_x As Long
+    Static zbuf_index As _Unsigned Long ' Z-Buffer
+    Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
+    Static pixel_value As _Unsigned Long ' The ARGB value to write to screen
+
+    ' Stepping along the X direction
+    Static delta_x As Single
+    Static prestep_x As Single
+    Static tex_w_step As Single, tex_u_step As Single, tex_v_step As Single
+    Static tex_r_step As Single, tex_g_step As Single, tex_b_step As Single
+    Static tex_a_step As Single
+
+    ' X Accumulators
+    Static tex_w As Single, tex_u As Single, tex_v As Single
+    Static tex_r As Single, tex_g As Single, tex_b As Single
+    Static tex_a As Single
+
+    ' Work Screen Memory Pointers
+    Static work_mem_info As _MEM
+    Static work_next_row_step As _Offset
+    Static work_row_base As _Offset ' Calculated every row
+    Static work_address As _Offset ' Calculated at every starting column
+    work_mem_info = _MemImage(WORK_IMAGE)
+    work_next_row_step = 4 * Size_Render_X
+
+    ' caching of 4 texels in bilinear mode
+    Static T1_last_cache As _Unsigned Long
+    T1_last_cache = &HFFFFFFFF ' invalidate
+
+    ' Row Loop from top to bottom
+    row = draw_min_y
+    work_row_base = work_mem_info.OFFSET + row * work_next_row_step
+    While row <= draw_max_y
+
+        If row = draw_middle_y Then
+            ' Reached Leg 1 knee at B, recalculate Leg 1.
+            ' This overwrites Leg 1 to be from B to C. Leg 2 just keeps continuing from A to C.
+            delta1.x = C.x - B.x
+            delta1.y = C.y - B.y
+            delta1.w = C.w - B.w
+            delta1.u = C.u - B.u
+            delta1.v = C.v - B.v
+            delta1.r = C.r - B.r
+            delta1.g = C.g - B.g
+            delta1.b = C.b - B.b
+            delta1.a = C.a - B.a
+
+            If delta1.y = 0.0 Then Exit Sub
+
+            ' Full steps in the y direction from B to C
+            legx1_step = delta1.x / delta1.y
+            legw1_step = delta1.w / delta1.y
+            legu1_step = delta1.u / delta1.y
+            legv1_step = delta1.v / delta1.y
+            legr1_step = delta1.r / delta1.y ' vertex color
+            legg1_step = delta1.g / delta1.y
+            legb1_step = delta1.b / delta1.y
+            lega1_step = delta1.a / delta1.y
+
+            ' 11-4-2022 Prestep Y
+            ' Most cases has B lower downscreen than A.
+            ' B > A usually. Only one case where B = A.
+            prestep_y1 = draw_middle_y - B.y
+
+            ' Re-Initialize DDA start values
+            leg_x1 = B.x + prestep_y1 * legx1_step
+            leg_w1 = B.w + prestep_y1 * legw1_step
+            leg_u1 = B.u + prestep_y1 * legu1_step
+            leg_v1 = B.v + prestep_y1 * legv1_step
+            leg_r1 = B.r + prestep_y1 * legr1_step
+            leg_g1 = B.g + prestep_y1 * legg1_step
+            leg_b1 = B.b + prestep_y1 * legb1_step
+            leg_a1 = B.a + prestep_y1 * lega1_step
+        End If
+
+        ' Horizontal Scanline
+        delta_x = Abs(leg_x2 - leg_x1)
+        ' Avoid div/0, this gets tiring.
+        If delta_x >= (1 / 2048) Then
+            ' Calculate step, start, and end values.
+            ' Drawing left to right, as in incrementing from a lower to higher memory address, is usually fastest.
+            If leg_x1 < leg_x2 Then
+                ' leg 1 is on the left
+                tex_w_step = (leg_w2 - leg_w1) / delta_x
+                tex_u_step = (leg_u2 - leg_u1) / delta_x
+                tex_v_step = (leg_v2 - leg_v1) / delta_x
+                tex_r_step = (leg_r2 - leg_r1) / delta_x
+                tex_g_step = (leg_g2 - leg_g1) / delta_x
+                tex_b_step = (leg_b2 - leg_b1) / delta_x
+                tex_a_step = (leg_a2 - leg_a1) / delta_x
+
+                ' Set the horizontal starting point to (1)
+                col = _Ceil(leg_x1)
+                If col < clip_min_x Then col = clip_min_x
+
+                ' Prestep to find pixel starting point
+                prestep_x = col - leg_x1
+                tex_w = leg_w1 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
+                tex_u = leg_u1 + prestep_x * tex_u_step
+                tex_v = leg_v1 + prestep_x * tex_v_step
+                tex_r = leg_r1 + prestep_x * tex_r_step
+                tex_g = leg_g1 + prestep_x * tex_g_step
+                tex_b = leg_b1 + prestep_x * tex_b_step
+                tex_a = leg_a1 + prestep_x * tex_a_step
+
+                ' ending point is (2)
+                draw_max_x = _Ceil(leg_x2)
+                If draw_max_x > clip_max_x Then draw_max_x = clip_max_x
+
+            Else
+                ' Things are flipped. leg 1 is on the right.
+                tex_w_step = (leg_w1 - leg_w2) / delta_x
+                tex_u_step = (leg_u1 - leg_u2) / delta_x
+                tex_v_step = (leg_v1 - leg_v2) / delta_x
+                tex_r_step = (leg_r1 - leg_r2) / delta_x
+                tex_g_step = (leg_g1 - leg_g2) / delta_x
+                tex_b_step = (leg_b1 - leg_b2) / delta_x
+                tex_a_step = (leg_a1 - leg_a2) / delta_x
+
+                ' Set the horizontal starting point to (2)
+                col = _Ceil(leg_x2)
+                If col < clip_min_x Then col = clip_min_x
+
+                ' Prestep to find pixel starting point
+                prestep_x = col - leg_x2
+                tex_w = leg_w2 + prestep_x * tex_w_step
+                tex_z = 1 / tex_w ' this can be absorbed
+                tex_u = leg_u2 + prestep_x * tex_u_step
+                tex_v = leg_v2 + prestep_x * tex_v_step
+                tex_r = leg_r2 + prestep_x * tex_r_step
+                tex_g = leg_g2 + prestep_x * tex_g_step
+                tex_b = leg_b2 + prestep_x * tex_b_step
+                tex_a = leg_a2 + prestep_x * tex_a_step
+
+                ' ending point is (1)
+                draw_max_x = _Ceil(leg_x1)
+                If draw_max_x > clip_max_x Then draw_max_x = clip_max_x
+
+            End If
+
+            ' metrics
+            If col < draw_max_x Then Pixels_Drawn_This_Frame = Pixels_Drawn_This_Frame + (draw_max_x - col)
+
+            ' Draw the Horizontal Scanline
+            ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
+            ' Relies on some shared T1 variables over by Texture1
+            work_address = work_row_base + 4 * col
+            zbuf_index = row * Size_Render_X + col
+            While col < draw_max_x
+
+                ' Check Z-Buffer early to see if we even need texture lookup and color combine
+                ' Note: Only solid (non-transparent) pixels update the Z-buffer
+                If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
+                    If (Texture_options And T1_option_no_Z_write) = 0 Then
+                        Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
+                    End If
+
+                    ' Read Texel
+                    ' Relies on shared T1_ variables
+                    Static cc As Long
+                    Static ccp As Long
+                    Static rr As Long
+                    Static rrp As Long
+
+                    Static cm5 As Single
+                    Static rm5 As Single
+
+                    ' Recover U and V
+                    ' Offset so the transition appears in the center of an enlarged texel instead of a corner.
+                    cm5 = (tex_u * tex_z) - 0.5
+                    rm5 = (tex_v * tex_z) - 0.5
+
+                    If Texture_options And T1_option_clamp_width Then
+                        ' clamp
+                        If cm5 < 0.0 Then cm5 = 0.0
+                        If cm5 >= T1_width_MASK Then
+                            ' 15.0 and up
+                            cc = T1_width_MASK
+                            ccp = T1_width_MASK
+                        Else
+                            ' 0 1 2 .. 13 14.999
+                            cc = Int(cm5)
+                            ccp = cc + 1
+                        End If
+                    Else
+                        ' tile the texture
+                        cc = Int(cm5) Mod T1_width
+                        If cc < 0 Then cc = cc + T1_width
+                        ccp = cc + 1
+                        If ccp > T1_width_MASK Then ccp = 0
+                    End If
+
+                    If Texture_options And T1_option_clamp_height Then
+                        ' clamp
+                        If rm5 < 0.0 Then rm5 = 0.0
+                        If rm5 >= T1_height_MASK Then
+                            ' 15.0 and up
+                            rr = T1_height_MASK
+                            rrp = T1_height_MASK
+                        Else
+                            rr = Int(rm5)
+                            rrp = rr + 1
+                        End If
+                    Else
+                        ' tile
+                        rr = Int(rm5) Mod T1_height
+                        If rr < 0 Then rr = rr + T1_height
+                        rrp = rr + 1
+                        If rrp > T1_height_MASK Then rrp = 0
+                    End If
+
+                    ' 4 point bilinear temp vars
+                    Static Frac_cc1_FIX7 As Integer
+                    Static Frac_rr1_FIX7 As Integer
+                    ' 0 1
+                    ' . .
+                    Static bi_r0 As Integer
+                    Static bi_g0 As Integer
+                    Static bi_b0 As Integer
+                    Static bi_a0 As Integer
+                    ' . .
+                    ' 2 3
+                    Static bi_r1 As Integer
+                    Static bi_g1 As Integer
+                    Static bi_b1 As Integer
+                    Static bi_a1 As Integer
+
+                    ' color blending
+                    Static a0 As Integer
+
+                    Frac_cc1_FIX7 = (cm5 - Int(cm5)) * 128
+                    Frac_rr1_FIX7 = (rm5 - Int(rm5)) * 128
+
+                    ' Caching of 4 texels
+                    Static T1_this_cache As _Unsigned Long
+                    Static T1_uv_0_0 As Long
+                    Static T1_uv_1_0 As Long
+                    Static T1_uv_0_1 As Long
+                    Static T1_uv_1_1 As Long
+
+                    T1_this_cache = _ShL(rr, 12) Or cc
+                    If T1_this_cache <> T1_last_cache Then
+
+                        _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rr * T1_width) * 4, T1_uv_0_0
+                        _MemGet T1_mblock, T1_mblock.OFFSET + (ccp + rr * T1_width) * 4, T1_uv_1_0
+                        _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rrp * T1_width) * 4, T1_uv_0_1
+                        _MemGet T1_mblock, T1_mblock.OFFSET + (ccp + rrp * T1_width) * 4, T1_uv_1_1
+
+                        T1_last_cache = T1_this_cache
+                    End If
+
+                    ' determine Alpha channel
+                    bi_a0 = _Alpha32(T1_uv_0_0)
+                    bi_a0 = _ShR((_Alpha32(T1_uv_1_0) - bi_a0) * Frac_cc1_FIX7, 7) + bi_a0
+
+                    bi_a1 = _Alpha32(T1_uv_0_1)
+                    bi_a1 = _ShR((_Alpha32(T1_uv_1_1) - bi_a1) * Frac_cc1_FIX7, 7) + bi_a1
+
+                    a0 = _ShR((bi_a1 - bi_a0) * Frac_rr1_FIX7, 7) + bi_a0
+                    If a0 > 0 Then
+
+                        ' determine T1 RGB colors
+                        bi_r0 = _Red32(T1_uv_0_0)
+                        bi_r0 = _ShR((_Red32(T1_uv_1_0) - bi_r0) * Frac_cc1_FIX7, 7) + bi_r0
+
+                        bi_g0 = _Green32(T1_uv_0_0)
+                        bi_g0 = _ShR((_Green32(T1_uv_1_0) - bi_g0) * Frac_cc1_FIX7, 7) + bi_g0
+
+                        bi_b0 = _Blue32(T1_uv_0_0)
+                        bi_b0 = _ShR((_Blue32(T1_uv_1_0) - bi_b0) * Frac_cc1_FIX7, 7) + bi_b0
+
+                        bi_r1 = _Red32(T1_uv_0_1)
+                        bi_r1 = _ShR((_Red32(T1_uv_1_1) - bi_r1) * Frac_cc1_FIX7, 7) + bi_r1
+
+                        bi_g1 = _Green32(T1_uv_0_1)
+                        bi_g1 = _ShR((_Green32(T1_uv_1_1) - bi_g1) * Frac_cc1_FIX7, 7) + bi_g1
+
+                        bi_b1 = _Blue32(T1_uv_0_1)
+                        bi_b1 = _ShR((_Blue32(T1_uv_1_1) - bi_b1) * Frac_cc1_FIX7, 7) + bi_b1
+
+                        pixel_value = _RGB32(_ShR((bi_r1 - bi_r0) * Frac_rr1_FIX7, 7) + bi_r0, _ShR((bi_g1 - bi_g0) * Frac_rr1_FIX7, 7) + bi_g0, _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0)
+
+                        pixel_value = _RGB32(_Red32(pixel_value) * tex_r, _Green32(pixel_value) * tex_g, _Blue32(pixel_value) * tex_b)
+
+                        If a0 < 255 Then
+                            ' Alpha blend
+                            Static pixel_existing As _Unsigned Long
+                            Static pixel_alpha As Single
+                            pixel_alpha = a0 * oneOver255
+                            pixel_existing = _MemGet(work_mem_info, work_address, _Unsigned Long)
+
+                        pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
+                                             (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
+                                             ( _Blue32(pixel_value) - _Blue32(pixel_existing))  * pixel_alpha +  _blue32(pixel_existing))
+                        End If
+
+                        _MemPut work_mem_info, work_address, pixel_value
+
+                    End If ' a0
                 End If ' tex_z
                 zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
@@ -3474,7 +3689,7 @@ End Sub
 
 Sub TexturedNonlitTriangle (A As vertex9, B As vertex9, C As vertex9)
     ' this is a reduced copy for skybox drawing
-    ' Texture_options is ignored
+    ' Texture_options is ignored, Z depth is ignored.
     Static delta2 As vertex5
     Static delta1 As vertex5
     Static draw_min_y As Long, draw_max_y As Long
@@ -3979,8 +4194,9 @@ Sub ReflectionMapTriangle (A As vertex9, B As vertex9, C As vertex9)
     work_mem_info = _MemImage(WORK_IMAGE)
     work_next_row_step = 4 * Size_Render_X
 
-    ' Invalidate texel cache
-    T1_last_cache = &HFFFFFFFF
+    ' caching of 4 texels in bilinear mode
+    Static T1_last_cache As _Unsigned Long
+    T1_last_cache = &HFFFFFFFF ' invalidate
 
     ' Row Loop from top to bottom
     row = draw_min_y
@@ -4104,7 +4320,7 @@ Sub ReflectionMapTriangle (A As vertex9, B As vertex9, C As vertex9)
             While col < draw_max_x
 
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
-                    If (T1_options And T1_option_no_Z_write) = 0 Then
+                    If (Texture_options And T1_option_no_Z_write) = 0 Then
                         Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
                     End If
 
