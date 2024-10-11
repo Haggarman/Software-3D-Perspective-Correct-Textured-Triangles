@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Alias Object File 46"
+_Title "Alias Object File 47"
 ' 2024 Haggarman
 '  V44 Load Kd texture maps
 '  V43 Pre-rotate the vertexes to gain about 10 ms on large objects.
@@ -886,11 +886,11 @@ Do
                     T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
                     vertexA.u = mesh(tri).u0 * pointProj0.w * T1_width
-                    vertexA.v = mesh(tri).v0 * pointProj0.w * T1_height
+                    vertexA.v = mesh(tri).v0 * pointProj0.w * -T1_height
                     vertexB.u = mesh(tri).u1 * pointProj1.w * T1_width
-                    vertexB.v = mesh(tri).v1 * pointProj1.w * T1_height
+                    vertexB.v = mesh(tri).v1 * pointProj1.w * -T1_height
                     vertexC.u = mesh(tri).u2 * pointProj2.w * T1_width
-                    vertexC.v = mesh(tri).v2 * pointProj2.w * T1_height
+                    vertexC.v = mesh(tri).v2 * pointProj2.w * -T1_height
                 End If
 
                 Select Case thisMaterial.illum
