@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 47"
+_Title "Alias Object File 50"
 ' 2024 Haggarman
+'  V49 fix bad last vt on a 4 vertex face, example: f 1/1 2/2 3/3 4/4
 '  V44 Load Kd texture maps
 '  V43 Pre-rotate the vertexes to gain about 10 ms on large objects.
 '  V41 obj illumination model
@@ -20,8 +21,6 @@ _Title "Alias Object File 47"
 Declare Library ""
     ' grab a C99 function from math.h
     Function powf! (ByVal ba!, Byval ex!)
-    Function fmodf! (ByVal x!, Byval byy!)
-    Function floorf! (ByVal x!)
 End Declare
 
 Dim Shared DISP_IMAGE As Long
@@ -256,7 +255,7 @@ T1_mod_R = 1.0
 T1_mod_G = 1.0
 T1_mod_B = 1.0
 
-Dim Shared TextureCatalog(20) As texture_catalog_type
+Dim Shared TextureCatalog(60) As texture_catalog_type
 Dim Shared TextureCatalog_nextIndex
 TextureCatalog_nextIndex = 0
 
@@ -891,28 +890,47 @@ Do
                     vertexB.v = mesh(tri).v1 * pointProj1.w * -T1_height
                     vertexC.u = mesh(tri).u2 * pointProj2.w * T1_width
                     vertexC.v = mesh(tri).v2 * pointProj2.w * -T1_height
+
                 End If
 
                 Select Case thisMaterial.illum
                     Case illum_model_constant_color
                         ' Kd only
-                        face_light_r = 255.0 * thisMaterial.Kd_r
-                        face_light_g = 255.0 * thisMaterial.Kd_g
-                        face_light_b = 255.0 * thisMaterial.Kd_b
 
-                        vertexA.r = face_light_r
-                        vertexA.g = face_light_g
-                        vertexA.b = face_light_b
+                        If Texture_options And T1_option_no_T1 Then
+                            ' define as 8 bit values
+                            face_light_r = 255.0 * thisMaterial.Kd_r
+                            face_light_g = 255.0 * thisMaterial.Kd_g
+                            face_light_b = 255.0 * thisMaterial.Kd_b
 
-                        vertexB.r = face_light_r
-                        vertexB.g = face_light_g
-                        vertexB.b = face_light_b
+                            vertexA.r = face_light_r
+                            vertexA.g = face_light_g
+                            vertexA.b = face_light_b
 
-                        vertexC.r = face_light_r
-                        vertexC.g = face_light_g
-                        vertexC.b = face_light_b
+                            vertexB.r = face_light_r
+                            vertexB.g = face_light_g
+                            vertexB.b = face_light_b
 
-                        VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                            vertexC.r = face_light_r
+                            vertexC.g = face_light_g
+                            vertexC.b = face_light_b
+
+                            VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                        Else
+                            vertexA.r = 1.0
+                            vertexA.g = 1.0
+                            vertexA.b = 1.0
+
+                            vertexB.r = 1.0
+                            vertexB.g = 1.0
+                            vertexB.b = 1.0
+
+                            vertexC.r = 1.0
+                            vertexC.g = 1.0
+                            vertexC.b = 1.0
+
+                            TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                        End If
 
                     Case illum_model_lambertian
                         ' ambient constant term plus a diffuse shading term for the angle of each light source
@@ -1236,6 +1254,7 @@ Do
             End If
             While frametimestamp_delta_ms > frametime_fullframethreshold_ms
                 frame_advance = frame_advance + 1
+                If frame_advance > frame_tracking_size Then frame_advance = frame_tracking_size
                 frame_ts(frame_advance) = frametimestamp_delta_ms
 
                 frametimestamp_prior_ms = frametimestamp_prior_ms + frametime_fullframe_ms
@@ -1868,7 +1887,7 @@ Sub LoadMesh (thefile As String, tris() As mesh_triangle, indexTri As Long, v() 
             parameterIndex = 0
             paramSubindex = 0
 
-            While lineCursor < lineLength
+            While lineCursor <= lineLength
                 paramStringLength = 0
 
                 ' eat spaces
@@ -1952,13 +1971,12 @@ Sub LoadMesh (thefile As String, tris() As mesh_triangle, indexTri As Long, v() 
 
             If parameterIndex = 4 Then
                 i3 = FindVertexNumAbsOrRel(ParameterStorage(4, 0), mostRecentVertex)
-                tex3 = FindVertexNumAbsOrRel(ParameterStorage(4, 1), mostRecentVertexTexel)
 
                 indexTri = indexTri + 1
                 tris(indexTri).i0 = i0
                 tris(indexTri).i1 = i2
                 tris(indexTri).i2 = i3
-                tris(indexTri).options = 0
+                tris(indexTri).options = tris(indexTri - 1).options
                 tris(indexTri).material = useMaterialNumber
 
                 If paramSubindex >= 1 Then
@@ -1969,6 +1987,7 @@ Sub LoadMesh (thefile As String, tris() As mesh_triangle, indexTri As Long, v() 
                         tris(indexTri).u1 = TexelCoord(tex2).x
                         tris(indexTri).v1 = TexelCoord(tex2).y
 
+                        tex3 = FindVertexNumAbsOrRel(ParameterStorage(4, 1), mostRecentVertexTexel)
                         tris(indexTri).u2 = TexelCoord(tex3).x
                         tris(indexTri).v2 = TexelCoord(tex3).y
                     End If
@@ -3211,6 +3230,7 @@ Sub VertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
 End Sub
 
 Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
+    ' is able to handle non power of 2 texture sizes
     Static delta2 As vertex9
     Static delta1 As vertex9
     Static draw_min_y As Long, draw_max_y As Long
@@ -3532,9 +3552,11 @@ Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                             ccp = cc + 1
                         End If
                     Else
-                        ' tile the texture
+                        ' tile
+                        ' positive modulus
                         cc = Int(cm5) Mod T1_width
                         If cc < 0 Then cc = cc + T1_width
+
                         ccp = cc + 1
                         If ccp > T1_width_MASK Then ccp = 0
                     End If
@@ -3552,9 +3574,11 @@ Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                         End If
                     Else
                         ' tile
+                        ' positive modulus
                         rr = Int(rm5) Mod T1_height
                         If rr < 0 Then rr = rr + T1_height
-                        rrp = rr + 1
+
+                        rrp = (rr + 1)
                         If rrp > T1_height_MASK Then rrp = 0
                     End If
 
