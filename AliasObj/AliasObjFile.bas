@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 50"
+_Title "Alias Object File 52"
 ' 2024 Haggarman
+'  V52 fix mesh being mirrored due to -Z and CCW winding order differences.
 '  V49 fix bad last vt on a 4 vertex face, example: f 1/1 2/2 3/3 4/4
 '  V44 Load Kd texture maps
 '  V43 Pre-rotate the vertexes to gain about 10 ms on large objects.
@@ -233,6 +234,7 @@ Dim Shared T1_ImageHandle As Long
 Dim Shared T1_width As Integer, T1_height As Integer
 Dim Shared T1_width_MASK As Integer, T1_height_MASK As Integer
 Dim Shared T1_mblock As _MEM
+Dim Shared T1_Alpha_Threshold As Integer
 
 ' Texture sampling
 Dim Shared Texture_options As _Unsigned Long
@@ -242,18 +244,22 @@ Const T1_option_no_Z_write = 4
 Const T1_option_no_T1 = 65536
 Const oneOver255 = 1.0 / 255.0
 
+' Give sensible defaults to avoid crashes or invisible textures.
 ' Later optimization in ReadTexel requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
 T1_width = 16: T1_width_MASK = T1_width - 1
 T1_height = 16: T1_height_MASK = T1_height - 1
+T1_Alpha_Threshold = 250 ' below this alpha channel value, do not update z buffer (0..255)
 
 ' Texture1 math
 Dim Shared T1_mod_R As Single ' simulate a generic color register
 Dim Shared T1_mod_G As Single
 Dim Shared T1_mod_B As Single
+Dim Shared T1_mod_A As Single
 T1_mod_R = 1.0
 T1_mod_G = 1.0
 T1_mod_B = 1.0
+T1_mod_A = 1.0
 
 Dim Shared TextureCatalog(60) As texture_catalog_type
 Dim Shared TextureCatalog_nextIndex
@@ -821,9 +827,9 @@ Do
             CalcSurfaceNormal_3Point pointWorld0, pointWorld1, pointWorld2, tri_normal
 
             Vector3_Delta vCameraPsn, pointWorld0, cameraRay0 ' be careful, this is not normalized.
-            dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay0) ' only interested here in the sign (positive)
-
-            If dotProductCam > 0.0 Then
+            dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay0) ' only interested here in the sign
+            If dotProductCam < 0.0 Then
+                ' Front facing is negative dot product because obj vertex is specified with counter-clockwise (CCW) winding.
                 ' Convert World Space --> View Space
                 Multiply_Vector3_Matrix4 pointWorld0, matView(), pointView0
                 Multiply_Vector3_Matrix4 pointWorld1, matView(), pointView1
@@ -883,6 +889,7 @@ Do
                     T1_mblock = _MemImage(T1_ImageHandle)
                     T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
                     T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
+                    T1_mod_A = transparencyFactor
 
                     vertexA.u = mesh(tri).u0 * pointProj0.w * T1_width
                     vertexA.v = mesh(tri).v0 * pointProj0.w * -T1_height
@@ -890,7 +897,6 @@ Do
                     vertexB.v = mesh(tri).v1 * pointProj1.w * -T1_height
                     vertexC.u = mesh(tri).u2 * pointProj2.w * T1_width
                     vertexC.v = mesh(tri).v2 * pointProj2.w * -T1_height
-
                 End If
 
                 Select Case thisMaterial.illum
@@ -937,8 +943,8 @@ Do
 
                         Select Case Gouraud_Shading_Selection
                             Case 0:
-                                ' Flat face shading
-                                Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
+                                ' Flat face shading with runtime normal calculation
+                                Light_Directional = -Vector3_DotProduct!(tri_normal, vLightDir) ' CCW winding
                                 If Light_Directional < 0.0 Then Light_Directional = 0.0
 
                                 If Texture_options And T1_option_no_T1 Then
@@ -982,7 +988,7 @@ Do
                                 End If
 
                             Case 1:
-                                ' Smooth shading
+                                ' Smooth shading with precalculated normals
 
                                 ' 6-15-2024 pre-rotated normals
                                 vertex_normal_A = object_vtx_normals(mesh(tri).vni0)
@@ -1036,10 +1042,10 @@ Do
                         ' ambient constant term, plus a diffuse and specular shading term for each light source
                         Select Case Gouraud_Shading_Selection
                             Case 0:
-                                ' Flat face shading
+                                ' Flat face shading with runtime normal calculation
 
                                 ' Directional light 1-17-2023
-                                Light_Directional = Vector3_DotProduct!(tri_normal, vLightDir)
+                                Light_Directional = -Vector3_DotProduct!(tri_normal, vLightDir) ' CCW winding
                                 If Light_Directional < 0.0 Then Light_Directional = 0.0
 
                                 ' Specular light
@@ -1100,7 +1106,7 @@ Do
                                 End If
 
                             Case 1:
-                                ' Smooth shading
+                                ' Smooth shading with precalculated normals
 
                                 ' 6-15-2024 pre-rotated normals
                                 vertex_normal_A = object_vtx_normals(mesh(tri).vni0)
@@ -1735,7 +1741,7 @@ Sub LoadMesh (thefile As String, tris() As mesh_triangle, indexTri As Long, v() 
             If parameterIndex >= 3 Then
                 v(totalVertex).x = ParameterStorage(1, 0)
                 v(totalVertex).y = ParameterStorage(2, 0)
-                v(totalVertex).z = ParameterStorage(3, 0)
+                v(totalVertex).z = -ParameterStorage(3, 0) ' in obj files, Z+ points toward viewer
                 'Print "v "; ParameterStorage(1); ParameterStorage(2); ParameterStorage(3)
             End If
 
@@ -1777,7 +1783,7 @@ Sub LoadMesh (thefile As String, tris() As mesh_triangle, indexTri As Long, v() 
             If parameterIndex >= 3 Then
                 vn(totalVertexNormals).x = ParameterStorage(1, 0)
                 vn(totalVertexNormals).y = ParameterStorage(2, 0)
-                vn(totalVertexNormals).z = ParameterStorage(3, 0)
+                vn(totalVertexNormals).z = -ParameterStorage(3, 0) ' in obj files, Z+ points toward viewer
                 Vector3_Normalize vn(totalVertexNormals)
                 'Print "vn "; ParameterStorage(1); ParameterStorage(2); ParameterStorage(3)
             End If
@@ -3520,9 +3526,6 @@ Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                 ' Check Z-Buffer early to see if we even need texture lookup and color combine
                 ' Note: Only solid (non-transparent) pixels update the Z-buffer
                 If Screen_Z_Buffer(zbuf_index) = 0.0 Or tex_z < Screen_Z_Buffer(zbuf_index) Then
-                    If (Texture_options And T1_option_no_Z_write) = 0 Then
-                        Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
-                    End If
 
                     ' Read Texel
                     ' Relies on shared T1_ variables
@@ -3622,7 +3625,7 @@ Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                         T1_last_cache = T1_this_cache
                     End If
 
-                    ' determine Alpha channel
+                    ' determine Alpha channel from texture
                     bi_a0 = _Alpha32(T1_uv_0_0)
                     bi_a0 = _ShR((_Alpha32(T1_uv_1_0) - bi_a0) * Frac_cc1_FIX7, 7) + bi_a0
 
@@ -3630,6 +3633,10 @@ Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                     bi_a1 = _ShR((_Alpha32(T1_uv_1_1) - bi_a1) * Frac_cc1_FIX7, 7) + bi_a1
 
                     a0 = _ShR((bi_a1 - bi_a0) * Frac_rr1_FIX7, 7) + bi_a0
+
+                    ' Color Combiner math for Alpha
+                    a0 = a0 * T1_mod_A
+
                     If a0 > 0 Then
 
                         ' determine T1 RGB colors
@@ -3653,6 +3660,7 @@ Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
 
                         pixel_value = _RGB32(_ShR((bi_r1 - bi_r0) * Frac_rr1_FIX7, 7) + bi_r0, _ShR((bi_g1 - bi_g0) * Frac_rr1_FIX7, 7) + bi_g0, _ShR((bi_b1 - bi_b0) * Frac_rr1_FIX7, 7) + bi_b0)
 
+                        ' Color Combiner math for RGB
                         pixel_value = _RGB32(_Red32(pixel_value) * tex_r, _Green32(pixel_value) * tex_g, _Blue32(pixel_value) * tex_b)
 
                         If a0 < 255 Then
@@ -3662,12 +3670,20 @@ Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                             pixel_alpha = a0 * oneOver255
                             pixel_existing = _MemGet(work_mem_info, work_address, _Unsigned Long)
 
-                        pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
-                                             (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
-                                             ( _Blue32(pixel_value) - _Blue32(pixel_existing))  * pixel_alpha +  _blue32(pixel_existing))
-                        End If
+                            pixel_value = _RGB32((  _red32(pixel_value) -  _Red32(pixel_existing))  * pixel_alpha +   _red32(pixel_existing), _
+                                                 (_green32(pixel_value) - _Green32(pixel_existing)) * pixel_alpha + _green32(pixel_existing), _
+                                                 ( _Blue32(pixel_value) - _Blue32(pixel_existing))  * pixel_alpha +  _blue32(pixel_existing))
 
-                        _MemPut work_mem_info, work_address, pixel_value
+                            _MemPut work_mem_info, work_address, pixel_value
+
+                            If (Texture_options And T1_option_no_Z_write) = 0 Then
+                                If a0 >= T1_Alpha_Threshold Then Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
+                            End If
+                        Else
+                            ' Solid
+                            _MemPut work_mem_info, work_address, pixel_value
+                            Screen_Z_Buffer(zbuf_index) = tex_z + Z_Fight_Bias
+                        End If
 
                     End If ' a0
                 End If ' tex_z
