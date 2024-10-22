@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 52"
+_Title "Alias Object File 53"
 ' 2024 Haggarman
+'  V53 camera movement speed adjustment using + or - keys.
 '  V52 fix mesh being mirrored due to -Z and CCW winding order differences.
 '  V49 fix bad last vt on a 4 vertex face, example: f 1/1 2/2 3/3 4/4
 '  V44 Load Kd texture maps
@@ -491,6 +492,21 @@ Dim vCameraPsnNext As vec3d
 Dim cameraRay0 As vec3d
 Dim dotProductCam As Single
 
+' Adjustable camera movement speed
+Const CameraSpeedLevel_max = 12
+Dim Shared CameraSpeedLookup(CameraSpeedLevel_max) As Single
+Dim Shared CameraSpeedLevel As Integer
+CameraSpeedLevel = 5
+For i = 0 To CameraSpeedLevel_max
+    If i And 1 Then
+        ' odd fives
+        CameraSpeedLookup(i) = 0.5 * powf(10.0, i \ 2 - 2)
+    Else
+        ' even tens
+        CameraSpeedLookup(i) = powf(10.0, i \ 2 - 3)
+    End If
+Next i
+
 ' View Space 2-10-2023
 Dim fPitch As Single ' FPS Camera rotation in YZ plane (X)
 Dim fYaw As Single ' FPS Camera rotation in XZ plane (Y)
@@ -599,7 +615,7 @@ Dim Shared Pixels_Drawn_This_Frame As Long
 main:
 $Checking:Off
 ExitCode = 0
-Animate_Spin = -1
+Animate_Spin = 0
 Dither_Selection = 0
 Gouraud_Shading_Selection = 1
 actor = 1
@@ -1283,7 +1299,7 @@ Do
     Color _RGB32(249, 244, 17)
     Print "ESC to exit. ";
     Color _RGB32(233)
-    Print "Arrow Keys Move."
+    Print "Arrow Keys Move. -Speed+:"; CameraSpeedLookup(CameraSpeedLevel)
 
     If Animate_Spin Then
         Print "Press S to Stop Spin"
@@ -1340,10 +1356,17 @@ Do
     Wend ' frametime
 
     KeyNow = UCase$(InKey$)
-    If KeyNow <> "" Then
+    i = 1 ' avoid deadlock
+    While (KeyNow <> "") And (i < 100)
 
         If KeyNow = "S" Then
             Animate_Spin = Not Animate_Spin
+        ElseIf KeyNow = "=" Or KeyNow = "+" Then
+            CameraSpeedLevel = CameraSpeedLevel + 1
+            If CameraSpeedLevel > CameraSpeedLevel_max Then CameraSpeedLevel = CameraSpeedLevel_max
+        ElseIf KeyNow = "-" Or KeyNow = "_" Then
+            CameraSpeedLevel = CameraSpeedLevel - 1
+            If CameraSpeedLevel < 0 Then CameraSpeedLevel = 0
         ElseIf KeyNow = "R" Then
             vCameraPsn.x = 0.0
             vCameraPsn.y = 0.0
@@ -1356,7 +1379,9 @@ Do
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
-    End If
+        KeyNow = UCase$(InKey$)
+        i = i + 1
+    Wend
 
     ' overrides
     If Vtx_Normals_Count = 0 Then Gouraud_Shading_Selection = 0
@@ -1479,12 +1504,12 @@ Sub CameraPoll (camloc As vec3d, yaw As Single, pitch As Single)
 
     If _KeyDown(32) Then
         ' Spacebar
-        camloc.y = camloc.y + 0.2
+        camloc.y = camloc.y + CameraSpeedLookup(CameraSpeedLevel) / 2
     End If
 
     If _KeyDown(118) Or _KeyDown(86) Then
         'V
-        camloc.y = camloc.y - 0.2
+        camloc.y = camloc.y - CameraSpeedLookup(CameraSpeedLevel) / 2
     End If
 
     If _KeyDown(19712) Then
@@ -1500,7 +1525,7 @@ Sub CameraPoll (camloc As vec3d, yaw As Single, pitch As Single)
     ' forward camera movement vector
     Matrix4_MakeRotation_Y yaw, matCameraRot()
     Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), cammove
-    Vector3_Mul cammove, 0.2, cammove
+    Vector3_Mul cammove, CameraSpeedLookup(CameraSpeedLevel), cammove
 
     If _KeyDown(18432) Then
         ' Up arrow
@@ -2797,95 +2822,6 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
     End If
 End Sub
 
-Sub QuickSort_ViewZ (start As Long, finish As Long, J() As objectlist_type)
-    Dim Lo As Long
-    Dim Hi As Long
-    Dim middleVal As Single
-
-    Lo = start
-    Hi = finish
-    middleVal = J((Lo + Hi) / 2).viewz
-    Do
-        Do While J(Lo).viewz < middleVal: Lo = Lo + 1: Loop
-        Do While J(Hi).viewz > middleVal: Hi = Hi - 1: Loop
-        If Lo <= Hi Then
-            Swap J(Lo), J(Hi)
-            Lo = Lo + 1: Hi = Hi - 1
-        End If
-    Loop Until Lo > Hi
-    If Hi > start Then Call QuickSort_ViewZ(start, Hi, J())
-    If Lo < finish Then Call QuickSort_ViewZ(Lo, finish, J())
-End Sub
-
-
-
-Function RGB_Fog& (zz As Single, RGB_color As _Unsigned Long) Static
-    Static r0 As Long
-    Static g0 As Long
-    Static b0 As Long
-    Static fog_scale As Single
-
-    If zz <= Fog_near Then
-        RGB_Fog& = RGB_color
-    ElseIf zz >= Fog_far Then
-        RGB_Fog& = Fog_color
-    Else
-        fog_scale = (zz - Fog_near) * Fog_rate
-        r0 = _Red32(RGB_color)
-        g0 = _Green32(RGB_color)
-        b0 = _Blue32(RGB_color)
-
-        RGB_Fog& = _RGB32((Fog_R - r0) * fog_scale + r0, (Fog_G - g0) * fog_scale + g0, (Fog_B - b0) * fog_scale + b0)
-    End If
-End Function
-
-
-Function RGB_Lit& (RGB_color As _Unsigned Long) Static
-    Static scale As Single
-    scale = Light_Directional + Light_AmbientVal ' oversaturate the bright colors
-
-    RGB_Lit& = _RGB32(scale * _Red32(RGB_color), scale * _Green32(RGB_color), scale * _Blue32(RGB_color)) 'values over 255 are just clamped to 255
-End Function
-
-
-Function RGB_Sum& (RGB_1 As _Unsigned Long, RGB_2 As _Unsigned Long) Static
-    ' Lighten function
-    Static r1 As Long
-    Static g1 As Long
-    Static b1 As Long
-    Static r2 As Long
-    Static g2 As Long
-    Static b2 As Long
-
-    r1 = _Red32(RGB_1)
-    g1 = _Green32(RGB_1)
-    b1 = _Blue32(RGB_1)
-    r2 = _Red32(RGB_2)
-    g2 = _Green32(RGB_2)
-    b2 = _Blue32(RGB_2)
-
-    RGB_Sum& = _RGB32(r1 + r2, g1 + g2, b1 + b2) ' values over 255 are just clamped to 255
-End Function
-
-
-Function RGB_Modulate& (RGB_1 As _Unsigned Long, RGB_Mod As _Unsigned Long) Static
-    ' Darken function
-    Static r1 As Integer
-    Static g1 As Integer
-    Static b1 As Integer
-    Static r2 As Integer
-    Static g2 As Integer
-    Static b2 As Integer
-
-    r1 = _Red32(RGB_1)
-    g1 = _Green32(RGB_1)
-    b1 = _Blue32(RGB_1)
-    r2 = _Red32(RGB_Mod) + 1 'make it so that 255 is 1.0
-    g2 = _Green32(RGB_Mod) + 1 'but do it in a way that is not a division
-    b2 = _Blue32(RGB_Mod) + 1
-
-    RGB_Modulate& = _RGB32(_ShR(r1 * r2, 8), _ShR(g1 * g2, 8), _ShR(b1 * b2, 8))
-End Function
 
 Sub VertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
     Static delta2 As vertex9
@@ -3614,7 +3550,7 @@ Sub TextureWithAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                     Static T1_uv_0_1 As Long
                     Static T1_uv_1_1 As Long
 
-                    T1_this_cache = _ShL(rr, 12) Or cc
+                    T1_this_cache = _ShL(rr, 16) Or cc
                     If T1_this_cache <> T1_last_cache Then
 
                         _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rr * T1_width) * 4, T1_uv_0_0
@@ -4011,7 +3947,7 @@ Sub TexturedNonlitTriangle (A As vertex9, B As vertex9, C As vertex9)
                 Static T1_uv_0_1 As Long
                 Static T1_uv_1_1 As Long
 
-                T1_this_cache = _ShL(rr, 12) Or cc
+                T1_this_cache = _ShL(rr, 16) Or cc
                 If T1_this_cache <> T1_last_cache Then
 
                     _MemGet T1_mblock, T1_mblock.OFFSET + (cc + rr * T1_width) * 4, T1_uv_0_0
