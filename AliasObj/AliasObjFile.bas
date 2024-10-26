@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Alias Object File 53"
+_Title "Alias Object File 54"
 ' 2024 Haggarman
 '  V53 camera movement speed adjustment using + or - keys.
 '  V52 fix mesh being mirrored due to -Z and CCW winding order differences.
@@ -965,9 +965,9 @@ Do
 
                                 If Texture_options And T1_option_no_T1 Then
                                     ' define as 8 bit values
-                                    face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Kd_r * Light_AmbientVal)
-                                    face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Kd_g * Light_AmbientVal)
-                                    face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Kd_b * Light_AmbientVal)
+                                    face_light_r = 255.0 * thisMaterial.Kd_r * (Light_Directional + Light_AmbientVal)
+                                    face_light_g = 255.0 * thisMaterial.Kd_g * (Light_Directional + Light_AmbientVal)
+                                    face_light_b = 255.0 * thisMaterial.Kd_b * (Light_Directional + Light_AmbientVal)
 
                                     vertexA.r = face_light_r
                                     vertexA.g = face_light_g
@@ -984,9 +984,9 @@ Do
                                     VertexColorAlphaTriangle vertexA, vertexB, vertexC
                                 Else
                                     ' range from 0 to 1
-                                    face_light_r = (thisMaterial.Kd_r * Light_Directional + thisMaterial.Kd_r * Light_AmbientVal)
-                                    face_light_g = (thisMaterial.Kd_g * Light_Directional + thisMaterial.Kd_g * Light_AmbientVal)
-                                    face_light_b = (thisMaterial.Kd_b * Light_Directional + thisMaterial.Kd_b * Light_AmbientVal)
+                                    face_light_r = thisMaterial.Kd_r * (Light_Directional + Light_AmbientVal)
+                                    face_light_g = thisMaterial.Kd_g * (Light_Directional + Light_AmbientVal)
+                                    face_light_b = thisMaterial.Kd_b * (Light_Directional + Light_AmbientVal)
 
                                     vertexA.r = face_light_r
                                     vertexA.g = face_light_g
@@ -1022,32 +1022,32 @@ Do
 
                                 If Texture_options And T1_option_no_T1 Then
                                     ' define as 8 bit values
-                                    vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexA.r = 255.0 * thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal)
+                                    vertexA.g = 255.0 * thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal)
+                                    vertexA.b = 255.0 * thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal)
 
-                                    vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexB.r = 255.0 * thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal)
+                                    vertexB.g = 255.0 * thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal)
+                                    vertexB.b = 255.0 * thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal)
 
-                                    vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexC.r = 255.0 * thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal)
+                                    vertexC.g = 255.0 * thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal)
+                                    vertexC.b = 255.0 * thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal)
 
                                     VertexColorAlphaTriangle vertexA, vertexB, vertexC
                                 Else
                                     ' range from 0 to 1
-                                    vertexA.r = (thisMaterial.Kd_r * light_directional_A + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexA.g = (thisMaterial.Kd_g * light_directional_A + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexA.b = (thisMaterial.Kd_b * light_directional_A + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexA.r = thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal)
+                                    vertexA.g = thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal)
+                                    vertexA.b = thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal)
 
-                                    vertexB.r = (thisMaterial.Kd_r * light_directional_B + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexB.g = (thisMaterial.Kd_g * light_directional_B + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexB.b = (thisMaterial.Kd_b * light_directional_B + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexB.r = thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal)
+                                    vertexB.g = thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal)
+                                    vertexB.b = thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal)
 
-                                    vertexC.r = (thisMaterial.Kd_r * light_directional_C + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexC.g = (thisMaterial.Kd_g * light_directional_C + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexC.b = (thisMaterial.Kd_b * light_directional_C + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexC.r = thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal)
+                                    vertexC.g = thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal)
+                                    vertexC.b = thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal)
 
                                     TextureWithAlphaTriangle vertexA, vertexB, vertexC
                                 End If
@@ -1083,9 +1083,9 @@ Do
 
                                 If Texture_options And T1_option_no_T1 Then
                                     ' define as 8 bit values
-                                    face_light_r = 255.0 * (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + thisMaterial.Kd_r * Light_AmbientVal)
-                                    face_light_g = 255.0 * (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + thisMaterial.Kd_g * Light_AmbientVal)
-                                    face_light_b = 255.0 * (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + thisMaterial.Kd_b * Light_AmbientVal)
+                                    face_light_r = 255.0 * (thisMaterial.Kd_r * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A)
+                                    face_light_g = 255.0 * (thisMaterial.Kd_g * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A)
+                                    face_light_b = 255.0 * (thisMaterial.Kd_b * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A)
 
                                     vertexA.r = face_light_r
                                     vertexA.g = face_light_g
@@ -1102,9 +1102,9 @@ Do
                                     VertexColorAlphaTriangle vertexA, vertexB, vertexC
                                 Else
                                     ' range from 0 to 1
-                                    face_light_r = (thisMaterial.Kd_r * Light_Directional + thisMaterial.Ks_r * light_specular_A + thisMaterial.Kd_r * Light_AmbientVal)
-                                    face_light_g = (thisMaterial.Kd_g * Light_Directional + thisMaterial.Ks_g * light_specular_A + thisMaterial.Kd_g * Light_AmbientVal)
-                                    face_light_b = (thisMaterial.Kd_b * Light_Directional + thisMaterial.Ks_b * light_specular_A + thisMaterial.Kd_b * Light_AmbientVal)
+                                    face_light_r = thisMaterial.Kd_r * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A
+                                    face_light_g = thisMaterial.Kd_g * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A
+                                    face_light_b = thisMaterial.Kd_b * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A
 
                                     vertexA.r = face_light_r
                                     vertexA.g = face_light_g
@@ -1181,32 +1181,33 @@ Do
 
                                 If Texture_options And T1_option_no_T1 Then
                                     ' define as 8 bit values
-                                    vertexA.r = 255.0 * (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexA.g = 255.0 * (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexA.b = 255.0 * (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexA.r = 255.0 * (thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A)
+                                    vertexA.g = 255.0 * (thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A)
+                                    vertexA.b = 255.0 * (thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A)
 
-                                    vertexB.r = 255.0 * (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexB.g = 255.0 * (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexB.b = 255.0 * (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexB.r = 255.0 * (thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_B)
+                                    vertexB.g = 255.0 * (thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_B)
+                                    vertexB.b = 255.0 * (thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_B)
 
-                                    vertexC.r = 255.0 * (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexC.g = 255.0 * (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexC.b = 255.0 * (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexC.r = 255.0 * (thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_C)
+                                    vertexC.g = 255.0 * (thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_C)
+                                    vertexC.b = 255.0 * (thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_C)
+
 
                                     VertexColorAlphaTriangle vertexA, vertexB, vertexC
                                 Else
                                     ' range from 0 to 1
-                                    vertexA.r = (thisMaterial.Kd_r * light_directional_A + thisMaterial.Ks_r * light_specular_A + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexA.g = (thisMaterial.Kd_g * light_directional_A + thisMaterial.Ks_g * light_specular_A + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexA.b = (thisMaterial.Kd_b * light_directional_A + thisMaterial.Ks_b * light_specular_A + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexA.r = thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A
+                                    vertexA.g = thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A
+                                    vertexA.b = thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A
 
-                                    vertexB.r = (thisMaterial.Kd_r * light_directional_B + thisMaterial.Ks_r * light_specular_B + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexB.g = (thisMaterial.Kd_g * light_directional_B + thisMaterial.Ks_g * light_specular_B + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexB.b = (thisMaterial.Kd_b * light_directional_B + thisMaterial.Ks_b * light_specular_B + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexB.r = thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_B
+                                    vertexB.g = thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_B
+                                    vertexB.b = thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_B
 
-                                    vertexC.r = (thisMaterial.Kd_r * light_directional_C + thisMaterial.Ks_r * light_specular_C + thisMaterial.Kd_r * Light_AmbientVal)
-                                    vertexC.g = (thisMaterial.Kd_g * light_directional_C + thisMaterial.Ks_g * light_specular_C + thisMaterial.Kd_g * Light_AmbientVal)
-                                    vertexC.b = (thisMaterial.Kd_b * light_directional_C + thisMaterial.Ks_b * light_specular_C + thisMaterial.Kd_b * Light_AmbientVal)
+                                    vertexC.r = thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_C
+                                    vertexC.g = thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_C
+                                    vertexC.b = thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_C
 
                                     TextureWithAlphaTriangle vertexA, vertexB, vertexC
                                 End If
@@ -2724,7 +2725,7 @@ Sub Matrix4_MakeIdentity (m( 3 , 3) As Single)
     m(0, 0) = 1.0: m(0, 1) = 0.0: m(0, 2) = 0.0: m(0, 3) = 0.0
     m(1, 1) = 0.0: m(1, 1) = 1.0: m(1, 2) = 0.0: m(1, 3) = 0.0
     m(2, 2) = 0.0: m(2, 1) = 0.0: m(2, 2) = 1.0: m(2, 3) = 0.0
-    m(3, 3) = 0.0: m(3, 1) = 0.0: m(3, 2) = 0.0: m(3, 3) = 1.0
+    m(3, 0) = 0.0: m(3, 1) = 0.0: m(3, 2) = 0.0: m(3, 3) = 1.0
 End Sub
 
 Sub Matrix4_MakeRotation_Z (deg As Single, m( 3 , 3) As Single)
@@ -2737,8 +2738,8 @@ Sub Matrix4_MakeRotation_Z (deg As Single, m( 3 , 3) As Single)
     m(1, 1) = Cos(_D2R(deg))
     m(1, 2) = 0.0
     m(1, 3) = 0.0
-    m(2, 2) = 0.0: m(2, 1) = 0.0: m(2, 2) = 1.0: m(2, 3) = 0.0
-    m(3, 3) = 0.0: m(3, 1) = 0.0: m(3, 2) = 0.0: m(3, 3) = 1.0
+    m(2, 0) = 0.0: m(2, 1) = 0.0: m(2, 2) = 1.0: m(2, 3) = 0.0
+    m(3, 0) = 0.0: m(3, 1) = 0.0: m(3, 2) = 0.0: m(3, 3) = 1.0
 End Sub
 
 Sub Matrix4_MakeRotation_Y (deg As Single, m( 3 , 3) As Single)
@@ -2746,12 +2747,12 @@ Sub Matrix4_MakeRotation_Y (deg As Single, m( 3 , 3) As Single)
     m(0, 1) = 0.0
     m(0, 2) = Sin(_D2R(deg))
     m(0, 3) = 0.0
-    m(1, 1) = 0.0: m(1, 1) = 1.0: m(1, 2) = 0.0: m(1, 3) = 0.0
+    m(1, 0) = 0.0: m(1, 1) = 1.0: m(1, 2) = 0.0: m(1, 3) = 0.0
     m(2, 0) = -Sin(_D2R(deg))
     m(2, 1) = 0.0
     m(2, 2) = Cos(_D2R(deg))
     m(2, 3) = 0.0
-    m(3, 3) = 0.0: m(3, 1) = 0.0: m(3, 2) = 0.0: m(3, 3) = 1.0
+    m(3, 0) = 0.0: m(3, 1) = 0.0: m(3, 2) = 0.0: m(3, 3) = 1.0
 End Sub
 
 Sub Matrix4_MakeRotation_X (deg As Single, m( 3 , 3) As Single)
@@ -2764,7 +2765,7 @@ Sub Matrix4_MakeRotation_X (deg As Single, m( 3 , 3) As Single)
     m(2, 1) = Sin(_D2R(deg)) 'flip
     m(2, 2) = Cos(_D2R(deg))
     m(2, 3) = 0.0
-    m(3, 3) = 0.0: m(3, 1) = 0.0: m(3, 2) = 0.0: m(3, 3) = 1.0
+    m(3, 0) = 0.0: m(3, 1) = 0.0: m(3, 2) = 0.0: m(3, 3) = 1.0
 End Sub
 
 Sub Matrix4_PointAt (psn As vec3d, target As vec3d, up As vec3d, m( 3 , 3) As Single)
