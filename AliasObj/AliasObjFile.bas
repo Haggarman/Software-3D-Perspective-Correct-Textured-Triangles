@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 54"
+_Title "Alias Object File 56"
 ' 2024 Haggarman
+'  V56 Near frustum plane clipping. Mainly for room interior models.
 '  V53 camera movement speed adjustment using + or - keys.
 '  V52 fix mesh being mirrored due to -Z and CCW winding order differences.
 '  V49 fix bad last vt on a 4 vertex face, example: f 1/1 2/2 3/3 4/4
@@ -242,6 +243,7 @@ Dim Shared Texture_options As _Unsigned Long
 Const T1_option_clamp_width = 1
 Const T1_option_clamp_height = 2
 Const T1_option_no_Z_write = 4
+Const T1_option_metallic = 32768
 Const T1_option_no_T1 = 65536
 Const oneOver255 = 1.0 / 255.0
 
@@ -832,7 +834,7 @@ Do
     For renderPass = 0 To 1
         For tri = Objects(actor).first To Objects(actor).last
             transparencyFactor = Materials(mesh(tri).material).diaphaneity ' all illumination models use d
-            If ((renderPass = 0) And (transparencyFactor < 1.0)) Or ((renderPass = 1) And (transparencyFactor = 1.0)) Then GoTo Lbl_Skip_tri
+            If ((renderPass = 0) And (transparencyFactor < 1.0)) Or ((renderPass = 1) And (transparencyFactor = 1.0)) Then GoTo Lbl_SkipTriAll
 
             ' the object vertexes have been rotated already, so we just need to reference them
             pointWorld0 = object_vertexes(mesh(tri).i0)
@@ -851,54 +853,15 @@ Do
                 Multiply_Vector3_Matrix4 pointWorld1, matView(), pointView1
                 Multiply_Vector3_Matrix4 pointWorld2, matView(), pointView2
 
-                ' Skip if any Z is too close
-                If (pointView0.z < Frustum_Near) Or (pointView1.z < Frustum_Near) Or (pointView2.z < Frustum_Near) Then
-                    GoTo Lbl_Skip_tri
-                End If
+                ' Skip if all Z is too close
+                If (pointView0.z < Frustum_Near) _Andalso (pointView1.z < Frustum_Near) _Andalso (pointView2.z < Frustum_Near) Then GoTo Lbl_SkipTriAll
 
-                ' Project triangles from 3D -----------------> 2D
-                ProjectMatrixVector4 pointView0, matProj(), pointProj0
-                ProjectMatrixVector4 pointView1, matProj(), pointProj1
-                ProjectMatrixVector4 pointView2, matProj(), pointProj2
-
-                ' Early scissor reject
-                If pointProj0.x > 1.0 And pointProj1.x > 1.0 And pointProj2.x > 1.0 Then GoTo Lbl_Skip_tri
-                If pointProj0.x < -1.0 And pointProj1.x < -1.0 And pointProj2.x < -1.0 Then GoTo Lbl_Skip_tri
-                If pointProj0.y > 1.0 And pointProj1.y > 1.0 And pointProj2.y > 1.0 Then GoTo Lbl_Skip_tri
-                If pointProj0.y < -1.0 And pointProj1.y < -1.0 And pointProj2.y < -1.0 Then GoTo Lbl_Skip_tri
-
-                ' Slide to center, then Scale into viewport
-                SX0 = (pointProj0.x + 1) * halfWidth
-                SY0 = (pointProj0.y + 1) * halfHeight
-
-                SX1 = (pointProj1.x + 1) * halfWidth
-                SY1 = (pointProj1.y + 1) * halfHeight
-
-                SX2 = (pointProj2.x + 1) * halfWidth
-                SY2 = (pointProj2.y + 1) * halfHeight
-
-                ' Load Vertex List for Textured triangle
-                vertexA.x = SX0
-                vertexA.y = SY0
-                vertexA.w = pointProj0.w ' depth
-                vertexA.a = transparencyFactor * pointProj0.w
-
-                vertexB.x = SX1
-                vertexB.y = SY1
-                vertexB.w = pointProj1.w ' depth
-                vertexB.a = transparencyFactor * pointProj1.w
-
-                vertexC.x = SX2
-                vertexC.y = SY2
-                vertexC.w = pointProj2.w ' depth
-                vertexC.a = transparencyFactor * pointProj2.w
-
-                Texture_options = mesh(tri).options 'Or T1_option_clamp_width Or T1_option_clamp_height
+                Texture_options = mesh(tri).options
                 thisMaterial = Materials(mesh(tri).material)
-
                 If thisMaterial.map_Kd >= -1 Then
                     ' just use diffuse color
                     Texture_options = Texture_options Or T1_option_no_T1
+                    T1_mod_A = transparencyFactor
                 Else
                     ' Fill in Texture 1 data
                     T1_ImageHandle = thisMaterial.map_Kd
@@ -907,12 +870,12 @@ Do
                     T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
                     T1_mod_A = transparencyFactor
 
-                    vertexA.u = mesh(tri).u0 * pointProj0.w * T1_width
-                    vertexA.v = mesh(tri).v0 * pointProj0.w * -T1_height
-                    vertexB.u = mesh(tri).u1 * pointProj1.w * T1_width
-                    vertexB.v = mesh(tri).v1 * pointProj1.w * -T1_height
-                    vertexC.u = mesh(tri).u2 * pointProj2.w * T1_width
-                    vertexC.v = mesh(tri).v2 * pointProj2.w * -T1_height
+                    vatr0.u = mesh(tri).u0 * T1_width
+                    vatr0.v = mesh(tri).v0 * -T1_height
+                    vatr1.u = mesh(tri).u1 * T1_width
+                    vatr1.v = mesh(tri).v1 * -T1_height
+                    vatr2.u = mesh(tri).u2 * T1_width
+                    vatr2.v = mesh(tri).v2 * -T1_height
                 End If
 
                 Select Case thisMaterial.illum
@@ -925,34 +888,32 @@ Do
                             face_light_g = 255.0 * thisMaterial.Kd_g
                             face_light_b = 255.0 * thisMaterial.Kd_b
 
-                            vertexA.r = face_light_r
-                            vertexA.g = face_light_g
-                            vertexA.b = face_light_b
+                            vatr0.r = face_light_r
+                            vatr0.g = face_light_g
+                            vatr0.b = face_light_b
 
-                            vertexB.r = face_light_r
-                            vertexB.g = face_light_g
-                            vertexB.b = face_light_b
+                            vatr1.r = face_light_r
+                            vatr1.g = face_light_g
+                            vatr1.b = face_light_b
 
-                            vertexC.r = face_light_r
-                            vertexC.g = face_light_g
-                            vertexC.b = face_light_b
-
-                            VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                            vatr2.r = face_light_r
+                            vatr2.g = face_light_g
+                            vatr2.b = face_light_b
                         Else
-                            vertexA.r = 1.0
-                            vertexA.g = 1.0
-                            vertexA.b = 1.0
+                            ' draw diffuse texture as-is
+                            vatr2.r = 1.0
+                            vatr2.g = 1.0
+                            vatr2.b = 1.0
 
-                            vertexB.r = 1.0
-                            vertexB.g = 1.0
-                            vertexB.b = 1.0
+                            vatr2.r = 1.0
+                            vatr2.g = 1.0
+                            vatr2.b = 1.0
 
-                            vertexC.r = 1.0
-                            vertexC.g = 1.0
-                            vertexC.b = 1.0
-
-                            TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                            vatr2.r = 1.0
+                            vatr2.g = 1.0
+                            vatr2.b = 1.0
                         End If
+
 
                     Case illum_model_lambertian
                         ' ambient constant term plus a diffuse shading term for the angle of each light source
@@ -968,40 +929,24 @@ Do
                                     face_light_r = 255.0 * thisMaterial.Kd_r * (Light_Directional + Light_AmbientVal)
                                     face_light_g = 255.0 * thisMaterial.Kd_g * (Light_Directional + Light_AmbientVal)
                                     face_light_b = 255.0 * thisMaterial.Kd_b * (Light_Directional + Light_AmbientVal)
-
-                                    vertexA.r = face_light_r
-                                    vertexA.g = face_light_g
-                                    vertexA.b = face_light_b
-
-                                    vertexB.r = face_light_r
-                                    vertexB.g = face_light_g
-                                    vertexB.b = face_light_b
-
-                                    vertexC.r = face_light_r
-                                    vertexC.g = face_light_g
-                                    vertexC.b = face_light_b
-
-                                    VertexColorAlphaTriangle vertexA, vertexB, vertexC
                                 Else
                                     ' range from 0 to 1
                                     face_light_r = thisMaterial.Kd_r * (Light_Directional + Light_AmbientVal)
                                     face_light_g = thisMaterial.Kd_g * (Light_Directional + Light_AmbientVal)
                                     face_light_b = thisMaterial.Kd_b * (Light_Directional + Light_AmbientVal)
-
-                                    vertexA.r = face_light_r
-                                    vertexA.g = face_light_g
-                                    vertexA.b = face_light_b
-
-                                    vertexB.r = face_light_r
-                                    vertexB.g = face_light_g
-                                    vertexB.b = face_light_b
-
-                                    vertexC.r = face_light_r
-                                    vertexC.g = face_light_g
-                                    vertexC.b = face_light_b
-
-                                    TextureWithAlphaTriangle vertexA, vertexB, vertexC
                                 End If
+
+                                vatr0.r = face_light_r
+                                vatr0.g = face_light_g
+                                vatr0.b = face_light_b
+
+                                vatr1.r = face_light_r
+                                vatr1.g = face_light_g
+                                vatr1.b = face_light_b
+
+                                vatr2.r = face_light_r
+                                vatr2.g = face_light_g
+                                vatr2.b = face_light_b
 
                             Case 1:
                                 ' Smooth shading with precalculated normals
@@ -1022,34 +967,30 @@ Do
 
                                 If Texture_options And T1_option_no_T1 Then
                                     ' define as 8 bit values
-                                    vertexA.r = 255.0 * thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal)
-                                    vertexA.g = 255.0 * thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal)
-                                    vertexA.b = 255.0 * thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal)
+                                    vatr0.r = 255.0 * thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal)
+                                    vatr0.g = 255.0 * thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal)
+                                    vatr0.b = 255.0 * thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal)
 
-                                    vertexB.r = 255.0 * thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal)
-                                    vertexB.g = 255.0 * thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal)
-                                    vertexB.b = 255.0 * thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal)
+                                    vatr1.r = 255.0 * thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal)
+                                    vatr1.g = 255.0 * thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal)
+                                    vatr1.b = 255.0 * thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal)
 
-                                    vertexC.r = 255.0 * thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal)
-                                    vertexC.g = 255.0 * thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal)
-                                    vertexC.b = 255.0 * thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal)
-
-                                    VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                    vatr2.r = 255.0 * thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal)
+                                    vatr2.g = 255.0 * thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal)
+                                    vatr2.b = 255.0 * thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal)
                                 Else
                                     ' range from 0 to 1
-                                    vertexA.r = thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal)
-                                    vertexA.g = thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal)
-                                    vertexA.b = thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal)
+                                    vatr0.r = thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal)
+                                    vatr0.g = thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal)
+                                    vatr0.b = thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal)
 
-                                    vertexB.r = thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal)
-                                    vertexB.g = thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal)
-                                    vertexB.b = thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal)
+                                    vatr1.r = thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal)
+                                    vatr1.g = thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal)
+                                    vatr1.b = thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal)
 
-                                    vertexC.r = thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal)
-                                    vertexC.g = thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal)
-                                    vertexC.b = thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal)
-
-                                    TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                                    vatr2.r = thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal)
+                                    vatr2.g = thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal)
+                                    vatr2.b = thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal)
                                 End If
                         End Select
 
@@ -1086,40 +1027,23 @@ Do
                                     face_light_r = 255.0 * (thisMaterial.Kd_r * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A)
                                     face_light_g = 255.0 * (thisMaterial.Kd_g * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A)
                                     face_light_b = 255.0 * (thisMaterial.Kd_b * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A)
-
-                                    vertexA.r = face_light_r
-                                    vertexA.g = face_light_g
-                                    vertexA.b = face_light_b
-
-                                    vertexB.r = face_light_r
-                                    vertexB.g = face_light_g
-                                    vertexB.b = face_light_b
-
-                                    vertexC.r = face_light_r
-                                    vertexC.g = face_light_g
-                                    vertexC.b = face_light_b
-
-                                    VertexColorAlphaTriangle vertexA, vertexB, vertexC
                                 Else
-                                    ' range from 0 to 1
                                     face_light_r = thisMaterial.Kd_r * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A
                                     face_light_g = thisMaterial.Kd_g * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A
                                     face_light_b = thisMaterial.Kd_b * (Light_Directional + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A
-
-                                    vertexA.r = face_light_r
-                                    vertexA.g = face_light_g
-                                    vertexA.b = face_light_b
-
-                                    vertexB.r = face_light_r
-                                    vertexB.g = face_light_g
-                                    vertexB.b = face_light_b
-
-                                    vertexC.r = face_light_r
-                                    vertexC.g = face_light_g
-                                    vertexC.b = face_light_b
-
-                                    TextureWithAlphaTriangle vertexA, vertexB, vertexC
                                 End If
+
+                                vatr0.r = face_light_r
+                                vatr0.g = face_light_g
+                                vatr0.b = face_light_b
+
+                                vatr1.r = face_light_r
+                                vatr1.g = face_light_g
+                                vatr1.b = face_light_b
+
+                                vatr2.r = face_light_r
+                                vatr2.g = face_light_g
+                                vatr2.b = face_light_b
 
                             Case 1:
                                 ' Smooth shading with precalculated normals
@@ -1178,38 +1102,32 @@ Do
                                     light_specular_C = 0.0
                                 End If
 
-
                                 If Texture_options And T1_option_no_T1 Then
                                     ' define as 8 bit values
-                                    vertexA.r = 255.0 * (thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A)
-                                    vertexA.g = 255.0 * (thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A)
-                                    vertexA.b = 255.0 * (thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A)
+                                    vatr0.r = 255.0 * (thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A)
+                                    vatr0.g = 255.0 * (thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A)
+                                    vatr0.b = 255.0 * (thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A)
 
-                                    vertexB.r = 255.0 * (thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_B)
-                                    vertexB.g = 255.0 * (thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_B)
-                                    vertexB.b = 255.0 * (thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_B)
+                                    vatr1.r = 255.0 * (thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_B)
+                                    vatr1.g = 255.0 * (thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_B)
+                                    vatr1.b = 255.0 * (thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_B)
 
-                                    vertexC.r = 255.0 * (thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_C)
-                                    vertexC.g = 255.0 * (thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_C)
-                                    vertexC.b = 255.0 * (thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_C)
-
-
-                                    VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                                    vatr2.r = 255.0 * (thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_C)
+                                    vatr2.g = 255.0 * (thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_C)
+                                    vatr2.b = 255.0 * (thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_C)
                                 Else
                                     ' range from 0 to 1
-                                    vertexA.r = thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A
-                                    vertexA.g = thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A
-                                    vertexA.b = thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A
+                                    vatr0.r = thisMaterial.Kd_r * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_A
+                                    vatr0.g = thisMaterial.Kd_g * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_A
+                                    vatr0.b = thisMaterial.Kd_b * (light_directional_A + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_A
 
-                                    vertexB.r = thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_B
-                                    vertexB.g = thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_B
-                                    vertexB.b = thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_B
+                                    vatr1.r = thisMaterial.Kd_r * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_B
+                                    vatr1.g = thisMaterial.Kd_g * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_B
+                                    vatr1.b = thisMaterial.Kd_b * (light_directional_B + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_B
 
-                                    vertexC.r = thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_C
-                                    vertexC.g = thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_C
-                                    vertexC.b = thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_C
-
-                                    TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                                    vatr2.r = thisMaterial.Kd_r * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_r * light_specular_C
+                                    vatr2.g = thisMaterial.Kd_g * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_g * light_specular_C
+                                    vatr2.b = thisMaterial.Kd_b * (light_directional_C + Light_AmbientVal) + thisMaterial.Ks_b * light_specular_C
                                 End If
                         End Select
 
@@ -1243,27 +1161,171 @@ Do
                         Vector3_Delta pointWorld2, vCameraPsn, cameraRay2
                         Vector3_Reflect cameraRay2, vertex_normal_C, envMapReflectionRayC
 
-                        vertexA.r = envMapReflectionRayA.x * pointProj0.w ' RGB holds (X,Y,Z) instead
-                        vertexA.g = envMapReflectionRayA.y * pointProj0.w
-                        vertexA.b = envMapReflectionRayA.z * pointProj0.w
+                        vatr0.r = envMapReflectionRayA.x ' RGB holds (X,Y,Z) instead
+                        vatr0.g = envMapReflectionRayA.y
+                        vatr0.b = envMapReflectionRayA.z
 
-                        vertexB.r = envMapReflectionRayB.x * pointProj1.w
-                        vertexB.g = envMapReflectionRayB.y * pointProj1.w
-                        vertexB.b = envMapReflectionRayB.z * pointProj1.w
+                        vatr1.r = envMapReflectionRayB.x
+                        vatr1.g = envMapReflectionRayB.y
+                        vatr1.b = envMapReflectionRayB.z
 
-                        vertexC.r = envMapReflectionRayC.x * pointProj2.w
-                        vertexC.g = envMapReflectionRayC.y * pointProj2.w
-                        vertexC.b = envMapReflectionRayC.z * pointProj2.w
+                        vatr2.r = envMapReflectionRayC.x
+                        vatr2.g = envMapReflectionRayC.y
+                        vatr2.b = envMapReflectionRayC.z
 
-                        ReflectionMapTriangle vertexA, vertexB, vertexC
-
+                        Texture_options = Texture_options Or T1_option_metallic
                     Case Else:
                 End Select
-            End If
+
+                ' Clip if any Z is too close. Assumption is that near clip is uncommon.
+                ' If there is a lot of near clipping going on, please remove this precheck and just always call NearClip.
+                If (pointView0.z < Frustum_Near) _Orelse (pointView1.z < Frustum_Near) _Orelse (pointView2.z < Frustum_Near) Then
+                    NearClip pointView0, pointView1, pointView2, pointView3, vatr0, vatr1, vatr2, vatr3, triCount
+                    If triCount = 0 Then GoTo Lbl_SkipTriAll
+                Else
+                    triCount = 1
+                End If
+
+                ' Project triangles from 3D -----------------> 2D
+                ProjectMatrixVector4 pointView0, matProj(), pointProj0
+                ProjectMatrixVector4 pointView1, matProj(), pointProj1
+                ProjectMatrixVector4 pointView2, matProj(), pointProj2
+
+                ' Slide to center, then Scale into viewport
+                SX0 = (pointProj0.x + 1) * halfWidth
+                SY0 = (pointProj0.y + 1) * halfHeight
+                SX2 = (pointProj2.x + 1) * halfWidth
+                SY2 = (pointProj2.y + 1) * halfHeight
+
+                ' Early scissor reject
+                If pointProj0.x > 1.0 And pointProj1.x > 1.0 And pointProj2.x > 1.0 Then GoTo Lbl_Skip012
+                If pointProj0.x < -1.0 And pointProj1.x < -1.0 And pointProj2.x < -1.0 Then GoTo Lbl_Skip012
+                If pointProj0.y > 1.0 And pointProj1.y > 1.0 And pointProj2.y > 1.0 Then GoTo Lbl_Skip012
+                If pointProj0.y < -1.0 And pointProj1.y < -1.0 And pointProj2.y < -1.0 Then GoTo Lbl_Skip012
+
+                ' This is unique to triangle 012
+                SX1 = (pointProj1.x + 1) * halfWidth
+                SY1 = (pointProj1.y + 1) * halfHeight
+
+                ' Load Vertex Lists
+                vertexA.x = SX0
+                vertexA.y = SY0
+                vertexA.w = pointProj0.w ' depth
+
+                vertexB.x = SX1
+                vertexB.y = SY1
+                vertexB.w = pointProj1.w ' depth
+
+                vertexC.x = SX2
+                vertexC.y = SY2
+                vertexC.w = pointProj2.w ' depth
+
+                If Texture_options And T1_option_metallic Then
+                    vertexA.r = vatr0.r * pointProj0.w
+                    vertexA.g = vatr0.g * pointProj0.w
+                    vertexA.b = vatr0.b * pointProj0.w
+
+                    vertexB.r = vatr1.r * pointProj1.w
+                    vertexB.g = vatr1.g * pointProj1.w
+                    vertexB.b = vatr1.b * pointProj1.w
+
+                    vertexC.r = vatr2.r * pointProj2.w
+                    vertexC.g = vatr2.g * pointProj2.w
+                    vertexC.b = vatr2.b * pointProj2.w
+                    ReflectionMapTriangle vertexA, vertexB, vertexC
+                Else
+                    vertexA.r = vatr0.r
+                    vertexA.g = vatr0.g
+                    vertexA.b = vatr0.b
+                    vertexB.r = vatr1.r
+                    vertexB.g = vatr1.g
+                    vertexB.b = vatr1.b
+                    vertexC.r = vatr2.r
+                    vertexC.g = vatr2.g
+                    vertexC.b = vatr2.b
+                    If Texture_options And T1_option_no_T1 Then
+                        VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                    Else
+                        vertexA.u = vatr0.u * pointProj0.w
+                        vertexA.v = vatr0.v * pointProj0.w
+                        vertexB.u = vatr1.u * pointProj1.w
+                        vertexB.v = vatr1.v * pointProj1.w
+                        vertexC.u = vatr2.u * pointProj2.w
+                        vertexC.v = vatr2.v * pointProj2.w
+                        TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                    End If
+                End If ' metallic
+
+
+                Lbl_Skip012:
+                If triCount = 2 Then
+                    ProjectMatrixVector4 pointView3, matProj(), pointProj3
+
+                    ' Late scissor reject
+                    If (pointProj0.x > 1.0) And (pointProj2.x > 1.0) And (pointProj3.x > 1.0) Then GoTo Lbl_SkipTriAll
+                    If (pointProj0.x < -1.0) And (pointProj2.x < -1.0) And (pointProj3.x < -1.0) Then GoTo Lbl_SkipTriAll
+                    If (pointProj0.y > 1.0) And (pointProj2.y > 1.0) And (pointProj3.y > 1.0) Then GoTo Lbl_SkipTriAll
+                    If (pointProj0.y < -1.0) And (pointProj2.y < -1.0) And (pointProj3.y < -1.0) Then GoTo Lbl_SkipTriAll
+
+                    ' This is unique to triangle 023
+                    SX3 = (pointProj3.x + 1) * halfWidth
+                    SY3 = (pointProj3.y + 1) * halfHeight
+
+                    ' Reload Vertex Lists
+                    vertexA.x = SX0
+                    vertexA.y = SY0
+                    vertexA.w = pointProj0.w ' depth
+
+                    vertexB.x = SX2
+                    vertexB.y = SY2
+                    vertexB.w = pointProj2.w ' depth
+
+                    vertexC.x = SX3
+                    vertexC.y = SY3
+                    vertexC.w = pointProj3.w ' depth
+
+                    If Texture_options And T1_option_metallic Then
+                        vertexA.r = vatr0.r * pointProj0.w
+                        vertexA.g = vatr0.g * pointProj0.w
+                        vertexA.b = vatr0.b * pointProj0.w
+
+                        vertexB.r = vatr2.r * pointProj2.w
+                        vertexB.g = vatr2.g * pointProj2.w
+                        vertexB.b = vatr2.b * pointProj2.w
+
+                        vertexC.r = vatr3.r * pointProj3.w
+                        vertexC.g = vatr3.g * pointProj3.w
+                        vertexC.b = vatr3.b * pointProj3.w
+                        ReflectionMapTriangle vertexA, vertexB, vertexC
+                    Else
+                        vertexA.r = vatr0.r
+                        vertexA.g = vatr0.g
+                        vertexA.b = vatr0.b
+                        vertexB.r = vatr2.r
+                        vertexB.g = vatr2.g
+                        vertexB.b = vatr2.b
+                        vertexC.r = vatr3.r
+                        vertexC.g = vatr3.g
+                        vertexC.b = vatr3.b
+                        If Texture_options And T1_option_no_T1 Then
+                            VertexColorAlphaTriangle vertexA, vertexB, vertexC
+                        Else
+                            vertexA.u = vatr0.u * pointProj0.w
+                            vertexA.v = vatr0.v * pointProj0.w
+                            vertexB.u = vatr2.u * pointProj2.w
+                            vertexB.v = vatr2.v * pointProj2.w
+                            vertexC.u = vatr3.u * pointProj3.w
+                            vertexC.v = vatr3.v * pointProj3.w
+                            TextureWithAlphaTriangle vertexA, vertexB, vertexC
+                        End If
+                    End If ' metallic
+                End If ' tricount=2
+
+            End If ' visible according to dotProductCam
 
             ' Improve camera control feeling by polling the keyboard every so often during this main triangle draw loop.
             triloop_input_poll = triloop_input_poll + 1
-            If triloop_input_poll < 30000 GoTo Lbl_Skip_tri
+            If triloop_input_poll < 30000 GoTo Lbl_SkipTriAll
             triloop_input_poll = triloop_input_poll - 6000 ' in case too early
             frame_early_polls(frame_advance) = frame_early_polls(frame_advance) + 1
 
@@ -1287,7 +1349,7 @@ Do
                 triloop_input_poll = 0 ' did the poll so go back
             Wend ' frametime
 
-            Lbl_Skip_tri:
+            Lbl_SkipTriAll:
         Next tri
     Next renderPass
     render_ms = Timer(.001)
@@ -1319,8 +1381,8 @@ Do
     End Select
 
     render_period_ms = render_ms - trimesh_ms
-    If render_period_ms < 0.001 Then render_period_ms = 0.001
-    Print Using "mesh time #.###"; render_period_ms
+    'If render_period_ms < 0.001 Then render_period_ms = 0.001
+    'Print Using "draw time #.###"; render_period_ms
     'Print "Pixels Drawn"; Pixels_Drawn_This_Frame
     'Print "Pixels/Second"; Int(Pixels_Drawn_This_Frame / render_period_ms)
 
@@ -2620,7 +2682,6 @@ Sub CalcSurfaceNormal_3Point (p0 As vec3d, p1 As vec3d, p2 As vec3d, o As vec3d)
     o.x = o.x / lengthNormal
     o.y = o.y / lengthNormal
     o.z = o.z / lengthNormal
-
 End Sub
 
 Function Vector3_DotProduct! (p0 As vec3d, p1 As vec3d) Static
@@ -3119,7 +3180,7 @@ Sub VertexColorAlphaTriangle (A As vertex9, B As vertex9, C As vertex9)
                     pixel_combine = _RGB32(tex_r, tex_g, tex_b)
 
                     Static pixel_existing As _Unsigned Long
-                    pixel_alpha = tex_a * tex_z
+                    pixel_alpha = T1_mod_A
                     If pixel_alpha < 0.998 Then
                         pixel_existing = _MemGet(work_mem_info, work_address, _Unsigned Long)
                         pixel_combine = _RGB32((  _red32(pixel_combine) - _Red32(pixel_existing))   * pixel_alpha + _red32(pixel_existing), _
@@ -4410,7 +4471,7 @@ Sub ReflectionMapTriangle (A As vertex9, B As vertex9, C As vertex9)
                     pixel_combine = _RGB32(r0 * T1_mod_R, g0 * T1_mod_G, b0 * T1_mod_B)
 
                     Static pixel_existing As _Unsigned Long
-                    pixel_alpha = tex_a * tex_z
+                    pixel_alpha = T1_mod_A
                     If pixel_alpha < 0.998 Then
                         pixel_existing = _MemGet(work_mem_info, work_address, _Unsigned Long)
                         pixel_combine = _RGB32((  _red32(pixel_combine) - _Red32(pixel_existing))   * pixel_alpha + _red32(pixel_existing), _
