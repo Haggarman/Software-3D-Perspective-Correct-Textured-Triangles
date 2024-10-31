@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "Alias Object File 56"
+_Title "Alias Object File 57"
 ' 2024 Haggarman
 '  V56 Near frustum plane clipping. Mainly for room interior models.
 '  V53 camera movement speed adjustment using + or - keys.
@@ -342,6 +342,7 @@ Dim Shared Obj_FileNameOnly As String
 Dim Shared Material_File_Name As String
 Dim Shared Material_File_Path As String
 Dim Shared Materials_Count As Long
+Dim Shared Hidden_Materials_Count As Long
 
 ' Isolate the object's directory from its full file path.
 ' This is because an object file refers to other files that need to be loaded.
@@ -393,8 +394,21 @@ Materials(0).Kd_r = 0.5: Materials(0).Kd_g = 0.5: Materials(0).Kd_b = 0.5
 Materials(0).Ks_r = 0.25: Materials(0).Ks_g = 0.25: Materials(0).Ks_b = 0.25
 Materials(0).Ns = 18
 
+Dim L As Long
 If Material_File_Count >= 1 Then
-    LoadMaterialFile Material_File_Path, Materials(), Materials_Count
+    LoadMaterialFile Material_File_Path, Materials(), Materials_Count, Hidden_Materials_Count
+
+    If Hidden_Materials_Count > 0 Then
+        Dim ratio As Long
+        If Hidden_Materials_Count > Materials_Count \ 2 Then ratio = 1 Else ratio = 0
+        Dim askhidden$
+        askhidden$ = Str$(Hidden_Materials_Count) + " of " + Str$(Materials_Count) + " materials are hidden. Make them visible?"
+        If _MessageBox("Material File", askhidden$, "yesno", "question", ratio) = 1 Then
+            For L = 1 To Materials_Count
+                If Materials(L).diaphaneity = 0.0 Then Materials(L).diaphaneity = 1.0
+            Next L
+        End If
+    End If
 Else
     Print "No Material File specified"
 End If
@@ -2189,7 +2203,7 @@ Sub PrescanMaterialFile (thefile As String, totalMaterials As Long)
 
 End Sub
 
-Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials As Long)
+Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials As Long, hiddenMaterials As Long)
     Dim ParameterStorage(10) As Double
 
     Dim lineCount As Long
@@ -2205,6 +2219,7 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
     Dim textureFilename As String
 
     totalMaterials = 0
+    hiddenMaterials = 0
     lineCount = 0
 
     If _FileExists(theFile) = 0 Then
@@ -2246,10 +2261,17 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
         ElseIf Left$(trimString, 7) = "map_Kd " Then
             textureFilename = _Trim$(Mid$(trimString, 8))
             InsertCatalogTexture textureFilename, mats(totalMaterials).map_Kd
+            ' check for modelers giving bad Kd values when using a texture
+            If (mats(totalMaterials).Kd_r < oneOver255) And (mats(totalMaterials).Kd_g < oneOver255) And (mats(totalMaterials).Kd_b < oneOver255) Then
+                Print "Warning: Kd RGB values are zero. Texture would be all black. Changing to 1.0"
+                mats(totalMaterials).Kd_r = 1.0
+                mats(totalMaterials).Kd_g = 1.0
+                mats(totalMaterials).Kd_b = 1.0
+            End If
 
         ElseIf Left$(trimString, 3) = "Kd " Then
             ' Diffuse color is the most dominant color
-            lineCursor = 3
+            lineCursor = 4
             parameterIndex = 0
 
             While lineCursor < lineLength
@@ -2288,7 +2310,7 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
 
         ElseIf Left$(trimString, 3) = "Ks " Then
             ' Specular color
-            lineCursor = 3
+            lineCursor = 4
             parameterIndex = 0
 
             While lineCursor < lineLength
@@ -2328,6 +2350,9 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
         ElseIf Left$(trimString, 2) = "d " Then
             ' diaphaneity
             mats(totalMaterials).diaphaneity = Val(Mid$(trimString, 3))
+            If mats(totalMaterials).diaphaneity = 0.0 Then
+                hiddenMaterials = hiddenMaterials + 1
+            End If
 
         ElseIf Left$(trimString, 3) = "Ns " Then
             ' specular power exponent
@@ -2337,6 +2362,13 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
             ' illumination model
             mats(totalMaterials).illum = Int(Val(Mid$(trimString, 7)))
 
+            ' correct overly ambitious raytracing illumination models to what we can render
+            If mats(totalMaterials).illum = illum_model_reflection_map_raytrace Then mats(totalMaterials).illum = illum_model_blinn_phong
+            If mats(totalMaterials).illum = illum_model_glass_map_raytrace Then mats(totalMaterials).illum = illum_model_blinn_phong
+            If mats(totalMaterials).illum = illum_model_fresnel Then mats(totalMaterials).illum = illum_model_blinn_phong
+            If mats(totalMaterials).illum = illum_model_refraction Then mats(totalMaterials).illum = illum_model_blinn_phong
+            If mats(totalMaterials).illum = illum_model_fresnel_refraction Then mats(totalMaterials).illum = illum_model_blinn_phong
+            If mats(totalMaterials).illum = illum_model_glass_map Then mats(totalMaterials).illum = illum_model_reflection_map
 
         End If
         BAIL_INDENT_MATERIAL:
@@ -2344,10 +2376,12 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
     Close #2
 
     Print totalMaterials, "Total Materials"
+    Print "#", "Name", "Kd_r", "Kd_g", "Kd_b", "d", "Ns", "illum"
     Dim i As Long
     For i = 1 To totalMaterials
-        Print i, mats(i).textName; mats(i).Kd_r; mats(i).Kd_g; mats(i).Kd_b; mats(i).diaphaneity; mats(i).Ns; mats(i).illum
+        Print i, mats(i).textName, mats(i).Kd_r, mats(i).Kd_g, mats(i).Kd_b, mats(i).diaphaneity, mats(i).Ns, mats(i).illum
     Next i
+
     'Dim temp$
     'Input "waiting..."; temp$
 
