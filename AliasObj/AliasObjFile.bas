@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 57"
+_Title "Alias Object File 58"
 ' 2024 Haggarman
+'  V58 Environment Map and Backface toggle.
 '  V56 Near frustum plane clipping. Mainly for room interior models.
 '  V53 camera movement speed adjustment using + or - keys.
 '  V52 fix mesh being mirrored due to -Z and CCW winding order differences.
@@ -16,7 +17,9 @@ _Title "Alias Object File 57"
 '  V19 Re-introduce texture mapping, although you only get red brick for now.
 '  V17 is where the directional lighting using vertex normals is functioning.
 '
-'  Press G to toggle lighting method, if vertex normals are available.
+'  Press G to toggle face lighting method, if vertex normals are available.
+'  Press E to toggle skybox environment map.
+'  Press B to toggle backface rendering.
 '
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
@@ -228,7 +231,7 @@ Fog_B = _Blue(Fog_color)
 ' Z Fight has to do with overdrawing on top of the same coplanar surface.
 ' If it is positive, a newer pixel at the same exact Z will always overdraw the older one.
 Dim Shared Z_Fight_Bias
-Z_Fight_Bias = 0 ' -0.001953125 / 32.0
+Z_Fight_Bias = -0.000061
 
 
 ' These T1 Texture characteristics are read later on during drawing.
@@ -622,7 +625,8 @@ Dim KeyNow As String
 Dim ExitCode As Integer
 Dim triCount As Integer
 Dim Animate_Spin As Integer
-Dim Shared Dither_Selection As Integer
+Dim Draw_Environment_Map As Integer
+Dim Draw_Backface As Integer
 Dim Gouraud_Shading_Selection As Integer
 Dim thisMaterial As newmtl_type
 Dim triloop_input_poll As Long
@@ -632,7 +636,8 @@ main:
 $Checking:Off
 ExitCode = 0
 Animate_Spin = 0
-Dither_Selection = 0
+Draw_Environment_Map = -1
+Draw_Backface = 0
 Gouraud_Shading_Selection = 1
 actor = 1
 
@@ -693,130 +698,146 @@ Do
 
     start_ms = Timer(.001)
 
-    ' Due to Skybox being drawn always, do not need to Clear Screen
     _Dest WORK_IMAGE
-    'Cls , Fog_color
     _Source WORK_IMAGE
 
     ' Clear Z-Buffer
     ' This is a qbasic only optimization. it sets the array to zero. it saves 10 ms.
     ReDim Screen_Z_Buffer(Screen_Z_Buffer_MaxElement)
 
-    ' Draw Skybox 2-28-2023
-    For tri = 0 To Sky_Last_Element
-        point0.x = sky(tri).x0
-        point0.y = sky(tri).y0
-        point0.z = sky(tri).z0
+    If Draw_Environment_Map = 0 Then
+        Cls , Fog_color
+    Else
+        ' Draw Skybox 2-28-2023
+        For tri = 0 To Sky_Last_Element
+            point0.x = sky(tri).x0
+            point0.y = sky(tri).y0
+            point0.z = sky(tri).z0
 
-        point1.x = sky(tri).x1
-        point1.y = sky(tri).y1
-        point1.z = sky(tri).z1
+            point1.x = sky(tri).x1
+            point1.y = sky(tri).y1
+            point1.z = sky(tri).z1
 
-        point2.x = sky(tri).x2
-        point2.y = sky(tri).y2
-        point2.z = sky(tri).z2
+            point2.x = sky(tri).x2
+            point2.y = sky(tri).y2
+            point2.z = sky(tri).z2
 
-        ' Follow the camera coordinate position (slide)
-        ' Skybox is like putting your head inside a floating box that travels with you, but never rotates.
-        ' You rotate your head inside the skybox as you look around.
-        Vector3_Add point0, vCameraPsn, pointWorld0
-        Vector3_Add point1, vCameraPsn, pointWorld1
-        Vector3_Add point2, vCameraPsn, pointWorld2
+            ' Follow the camera coordinate position (slide)
+            ' Skybox is like putting your head inside a floating box that travels with you, but never rotates.
+            ' You rotate your head inside the skybox as you look around.
+            Vector3_Add point0, vCameraPsn, pointWorld0
+            Vector3_Add point1, vCameraPsn, pointWorld1
+            Vector3_Add point2, vCameraPsn, pointWorld2
 
-        ' Part 2 (Triangle Surface Normal Calculation)
-        CalcSurfaceNormal_3Point pointWorld0, pointWorld1, pointWorld2, tri_normal
+            ' Part 2 (Triangle Surface Normal Calculation)
+            CalcSurfaceNormal_3Point pointWorld0, pointWorld1, pointWorld2, tri_normal
 
-        ' The dot product to this skybox surface is just the way you are facing.
-        ' The surface completely behind you is going to get later removed with NearClip.
-        'Vector3_Delta vCameraPsn, pointWorld0, cameraRay
-        'dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay)
-        'If dotProductCam > 0.0 Then
+            ' The dot product to this skybox surface is just the way you are facing.
+            ' The surface completely behind you is going to get later removed with NearClip.
+            'Vector3_Delta vCameraPsn, pointWorld0, cameraRay
+            'dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay)
+            'If dotProductCam > 0.0 Then
 
-        ' Convert World Space --> View Space
-        Multiply_Vector3_Matrix4 pointWorld0, matView(), pointView0
-        Multiply_Vector3_Matrix4 pointWorld1, matView(), pointView1
-        Multiply_Vector3_Matrix4 pointWorld2, matView(), pointView2
+            ' Convert World Space --> View Space
+            Multiply_Vector3_Matrix4 pointWorld0, matView(), pointView0
+            Multiply_Vector3_Matrix4 pointWorld1, matView(), pointView1
+            Multiply_Vector3_Matrix4 pointWorld2, matView(), pointView2
 
-        ' Load up attribute lists here because NearClip will interpolate those too.
-        vatr0.u = sky(tri).u0: vatr0.v = sky(tri).v0
-        vatr1.u = sky(tri).u1: vatr1.v = sky(tri).v1
-        vatr2.u = sky(tri).u2: vatr2.v = sky(tri).v2
+            ' Load up attribute lists here because NearClip will interpolate those too.
+            vatr0.u = sky(tri).u0: vatr0.v = sky(tri).v0
+            vatr1.u = sky(tri).u1: vatr1.v = sky(tri).v1
+            vatr2.u = sky(tri).u2: vatr2.v = sky(tri).v2
 
-        ' Clip more often than not in this example
-        NearClip pointView0, pointView1, pointView2, pointView3, vatr0, vatr1, vatr2, vatr3, triCount
-        If triCount > 0 Then
-            ' Project triangles from 3D -----------------> 2D
-            ProjectMatrixVector4 pointView0, matProj(), pointProj0
-            ProjectMatrixVector4 pointView1, matProj(), pointProj1
-            ProjectMatrixVector4 pointView2, matProj(), pointProj2
+            ' Clip more often than not in this example
+            NearClip pointView0, pointView1, pointView2, pointView3, vatr0, vatr1, vatr2, vatr3, triCount
+            If triCount > 0 Then
+                ' Fill in Texture 1 data
+                T1_ImageHandle = SkyBoxRef(sky(tri).texture)
+                T1_mblock = _MemImage(T1_ImageHandle)
+                T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
+                T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
-            ' Slide to center, then Scale into viewport
-            SX0 = (pointProj0.x + 1) * halfWidth
-            SY0 = (pointProj0.y + 1) * halfHeight
+                ' Project triangles from 3D -----------------> 2D
+                ProjectMatrixVector4 pointView0, matProj(), pointProj0
+                ProjectMatrixVector4 pointView1, matProj(), pointProj1
+                ProjectMatrixVector4 pointView2, matProj(), pointProj2
 
-            SX1 = (pointProj1.x + 1) * halfWidth
-            SY1 = (pointProj1.y + 1) * halfHeight
+                ' Slide to center, then Scale into viewport
+                SX0 = (pointProj0.x + 1) * halfWidth
+                SY0 = (pointProj0.y + 1) * halfHeight
 
-            SX2 = (pointProj2.x + 1) * halfWidth
-            SY2 = (pointProj2.y + 1) * halfHeight
+                SX2 = (pointProj2.x + 1) * halfWidth
+                SY2 = (pointProj2.y + 1) * halfHeight
 
-            ' Load Vertex List for Single Textured triangle
-            vertexA.x = SX0
-            vertexA.y = SY0
-            vertexA.w = pointProj0.w ' depth
-            vertexA.u = vatr0.u * pointProj0.w
-            vertexA.v = vatr0.v * pointProj0.w
+                ' Early scissor reject
+                If pointProj0.x > 1.0 And pointProj1.x > 1.0 And pointProj2.x > 1.0 Then GoTo Lbl_SkipEnv012
+                If pointProj0.x < -1.0 And pointProj1.x < -1.0 And pointProj2.x < -1.0 Then GoTo Lbl_SkipEnv012
+                If pointProj0.y > 1.0 And pointProj1.y > 1.0 And pointProj2.y > 1.0 Then GoTo Lbl_SkipEnv012
+                If pointProj0.y < -1.0 And pointProj1.y < -1.0 And pointProj2.y < -1.0 Then GoTo Lbl_SkipEnv012
 
-            vertexB.x = SX1
-            vertexB.y = SY1
-            vertexB.w = pointProj1.w ' depth
-            vertexB.u = vatr1.u * pointProj1.w
-            vertexB.v = vatr1.v * pointProj1.w
+                SX1 = (pointProj1.x + 1) * halfWidth
+                SY1 = (pointProj1.y + 1) * halfHeight
 
-            vertexC.x = SX2
-            vertexC.y = SY2
-            vertexC.w = pointProj2.w ' depth
-            vertexC.u = vatr2.u * pointProj2.w
-            vertexC.v = vatr2.v * pointProj2.w
+                ' Load Vertex List for Single Textured triangle
+                vertexA.x = SX0
+                vertexA.y = SY0
+                vertexA.w = pointProj0.w ' depth
+                vertexA.u = vatr0.u * pointProj0.w
+                vertexA.v = vatr0.v * pointProj0.w
 
-            ' No Directional light
+                vertexB.x = SX1
+                vertexB.y = SY1
+                vertexB.w = pointProj1.w ' depth
+                vertexB.u = vatr1.u * pointProj1.w
+                vertexB.v = vatr1.v * pointProj1.w
 
-            ' Fill in Texture 1 data
-            T1_ImageHandle = SkyBoxRef(sky(tri).texture)
-            T1_mblock = _MemImage(T1_ImageHandle)
-            T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
-            T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
+                vertexC.x = SX2
+                vertexC.y = SY2
+                vertexC.w = pointProj2.w ' depth
+                vertexC.u = vatr2.u * pointProj2.w
+                vertexC.v = vatr2.v * pointProj2.w
 
-            TexturedNonlitTriangle vertexA, vertexB, vertexC
-        End If
-        If triCount = 2 Then
+                TexturedNonlitTriangle vertexA, vertexB, vertexC
+            End If
 
-            ProjectMatrixVector4 pointView3, matProj(), pointProj3
-            SX3 = (pointProj3.x + 1) * halfWidth
-            SY3 = (pointProj3.y + 1) * halfHeight
+            Lbl_SkipEnv012:
+            If triCount = 2 Then
 
-            ' Reload Vertex List for Textured triangle
-            vertexA.x = SX0
-            vertexA.y = SY0
-            vertexA.w = pointProj0.w ' depth
-            vertexA.u = vatr0.u * pointProj0.w
-            vertexA.v = vatr0.v * pointProj0.w
+                ProjectMatrixVector4 pointView3, matProj(), pointProj3
 
-            vertexB.x = SX2
-            vertexB.y = SY2
-            vertexB.w = pointProj2.w ' depth
-            vertexB.u = vatr2.u * pointProj2.w
-            vertexB.v = vatr2.v * pointProj2.w
+                ' Late scissor reject
+                If (pointProj0.x > 1.0) And (pointProj2.x > 1.0) And (pointProj3.x > 1.0) Then GoTo Lbl_SkipEnv023
+                If (pointProj0.x < -1.0) And (pointProj2.x < -1.0) And (pointProj3.x < -1.0) Then GoTo Lbl_SkipEnv023
+                If (pointProj0.y > 1.0) And (pointProj2.y > 1.0) And (pointProj3.y > 1.0) Then GoTo Lbl_SkipEnv023
+                If (pointProj0.y < -1.0) And (pointProj2.y < -1.0) And (pointProj3.y < -1.0) Then GoTo Lbl_SkipEnv023
 
-            vertexC.x = SX3
-            vertexC.y = SY3
-            vertexC.w = pointProj3.w ' depth
-            vertexC.u = vatr3.u * pointProj3.w
-            vertexC.v = vatr3.v * pointProj3.w
+                SX3 = (pointProj3.x + 1) * halfWidth
+                SY3 = (pointProj3.y + 1) * halfHeight
 
-            TexturedNonlitTriangle vertexA, vertexB, vertexC
-        End If
-    Next tri
+                ' Reload Vertex List for Textured triangle
+                vertexA.x = SX0
+                vertexA.y = SY0
+                vertexA.w = pointProj0.w ' depth
+                vertexA.u = vatr0.u * pointProj0.w
+                vertexA.v = vatr0.v * pointProj0.w
+
+                vertexB.x = SX2
+                vertexB.y = SY2
+                vertexB.w = pointProj2.w ' depth
+                vertexB.u = vatr2.u * pointProj2.w
+                vertexB.v = vatr2.v * pointProj2.w
+
+                vertexC.x = SX3
+                vertexC.y = SY3
+                vertexC.w = pointProj3.w ' depth
+                vertexC.u = vatr3.u * pointProj3.w
+                vertexC.v = vatr3.v * pointProj3.w
+
+                TexturedNonlitTriangle vertexA, vertexB, vertexC
+            End If
+            Lbl_SkipEnv023:
+        Next tri
+    End If ' skybox
 
     ' pre-rotate the vertexes
     ' object_vertexes() = vertexList()
@@ -860,7 +881,7 @@ Do
 
             Vector3_Delta vCameraPsn, pointWorld0, cameraRay0 ' be careful, this is not normalized.
             dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay0) ' only interested here in the sign
-            If dotProductCam < 0.0 Then
+            If Draw_Backface Or (dotProductCam < 0.0) Then
                 ' Front facing is negative dot product because obj vertex is specified with counter-clockwise (CCW) winding.
                 ' Convert World Space --> View Space
                 Multiply_Vector3_Matrix4 pointWorld0, matView(), pointView0
@@ -1379,9 +1400,21 @@ Do
     Print "Arrow Keys Move. -Speed+:"; CameraSpeedLookup(CameraSpeedLevel)
 
     If Animate_Spin Then
-        Print "Press S to Stop Spin"
+        Print "(S)top Spin"
     Else
-        Print "Press S to Start Spin"
+        Print "(S)tart Spin"
+    End If
+
+    If Draw_Environment_Map Then
+        Print "(E)nvironment Map on ";
+    Else
+        Print "(E)nvironment Map off";
+    End If
+
+    If Draw_Backface Then
+        Print " (B)ackface on"
+    Else
+        Print " (B)ackface off"
     End If
 
     Print "Press G for Lighting: ";
@@ -1438,6 +1471,8 @@ Do
 
         If KeyNow = "S" Then
             Animate_Spin = Not Animate_Spin
+        ElseIf KeyNow = "E" Then
+            Draw_Environment_Map = Not Draw_Environment_Map
         ElseIf KeyNow = "=" Or KeyNow = "+" Then
             CameraSpeedLevel = CameraSpeedLevel + 1
             If CameraSpeedLevel > CameraSpeedLevel_max Then CameraSpeedLevel = CameraSpeedLevel_max
@@ -1453,6 +1488,8 @@ Do
         ElseIf KeyNow = "G" Then
             Gouraud_Shading_Selection = Gouraud_Shading_Selection + 1
             If Gouraud_Shading_Selection > 1 Then Gouraud_Shading_Selection = 0
+        ElseIf KeyNow = "B" Then
+            Draw_Backface = Not Draw_Backface
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
