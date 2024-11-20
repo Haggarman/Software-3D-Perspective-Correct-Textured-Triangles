@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 58"
+_Title "Alias Object File 59"
 ' 2024 Haggarman
+'  V59 optional -clamp texture coordinates but be aware Win10 3D Viewer does not like it.
 '  V58 Environment Map and Backface toggle.
 '  V56 Near frustum plane clipping. Mainly for room interior models.
 '  V53 camera movement speed adjustment using + or - keys.
@@ -157,7 +158,8 @@ End Type
 
 Type newmtl_type
     illum As Long '  illumination model
-    map_Kd As Long ' image handle to diffuse texture map if -2 or lower
+    options As _Unsigned Long
+    map_Kd As Long ' image handle to diffuse texture map when -2 or lower
     Kd_r As Single ' diffuse color (main color)
     Kd_g As Single
     Kd_b As Single
@@ -165,7 +167,7 @@ Type newmtl_type
     Ks_g As Single
     Ks_b As Single
     Ns As Single ' specular power exponent (0 to 1000)
-    diaphaneity As Single ' translucency factor, for some strange reason Alias documentation calls this dissolve.
+    diaphaneity As Single ' translucency where 1.0 means fully opaque. Strangely, Alias Wavefront documentation calls this dissolve.
     textName As String
 End Type
 
@@ -223,7 +225,8 @@ Fog_near = 9.0
 Fog_far = 19.0
 Fog_rate = 1.0 / (Fog_far - Fog_near)
 
-Fog_color = _RGB32(111, 177, 233)
+'Fog_color = _RGB32(111, 177, 233)
+Fog_color = _RGB32(2, 2, 2)
 Fog_R = _Red(Fog_color)
 Fog_G = _Green(Fog_color)
 Fog_B = _Blue(Fog_color)
@@ -392,6 +395,8 @@ End If
 Dim Shared Materials(Materials_Count) As newmtl_type
 ' sensible defaults to at least show something.
 Materials(0).illum = 2
+Materials(0).options = T1_option_no_T1
+Materials(0).map_Kd = 0 ' invalid handle intentionally
 Materials(0).diaphaneity = 1.0
 Materials(0).Kd_r = 0.5: Materials(0).Kd_g = 0.5: Materials(0).Kd_b = 0.5
 Materials(0).Ks_r = 0.25: Materials(0).Ks_g = 0.25: Materials(0).Ks_b = 0.25
@@ -891,26 +896,31 @@ Do
                 ' Skip if all Z is too close
                 If (pointView0.z < Frustum_Near) _Andalso (pointView1.z < Frustum_Near) _Andalso (pointView2.z < Frustum_Near) Then GoTo Lbl_SkipTriAll
 
-                Texture_options = mesh(tri).options
+                ' material
+                T1_mod_A = transparencyFactor
                 thisMaterial = Materials(mesh(tri).material)
-                If thisMaterial.map_Kd >= -1 Then
-                    ' just use diffuse color
-                    Texture_options = Texture_options Or T1_option_no_T1
-                    T1_mod_A = transparencyFactor
-                Else
-                    ' Fill in Texture 1 data
-                    T1_ImageHandle = thisMaterial.map_Kd
-                    T1_mblock = _MemImage(T1_ImageHandle)
-                    T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
-                    T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
-                    T1_mod_A = transparencyFactor
+                Texture_options = thisMaterial.options Or mesh(tri).options ' a given tri face could omit texture coordinates
 
-                    vatr0.u = mesh(tri).u0 * T1_width
-                    vatr0.v = mesh(tri).v0 * -T1_height
-                    vatr1.u = mesh(tri).u1 * T1_width
-                    vatr1.v = mesh(tri).v1 * -T1_height
-                    vatr2.u = mesh(tri).u2 * T1_width
-                    vatr2.v = mesh(tri).v2 * -T1_height
+                If (Texture_options And T1_option_no_T1) = 0 Then
+                    ' still need to check if texture loaded
+                    If thisMaterial.map_Kd >= -1 Then
+                        ' bad texture handle, just use diffuse color
+                        Texture_options = Texture_options Or T1_option_no_T1
+                    Else
+                        ' Fill in Texture 1 data
+                        T1_ImageHandle = thisMaterial.map_Kd
+                        T1_mblock = _MemImage(T1_ImageHandle)
+                        T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
+                        T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
+
+                        ' obj vt (0, 0) is bottom left of a texture, but our texture origin is top left.
+                        vatr0.u = mesh(tri).u0 * T1_width
+                        vatr0.v = T1_height - mesh(tri).v0 * T1_height
+                        vatr1.u = mesh(tri).u1 * T1_width
+                        vatr1.v = T1_height - mesh(tri).v1 * T1_height
+                        vatr2.u = mesh(tri).u2 * T1_width
+                        vatr2.v = T1_height - mesh(tri).v2 * T1_height
+                    End If
                 End If
 
                 Select Case thisMaterial.illum
@@ -936,13 +946,13 @@ Do
                             vatr2.b = face_light_b
                         Else
                             ' draw diffuse texture as-is
-                            vatr2.r = 1.0
-                            vatr2.g = 1.0
-                            vatr2.b = 1.0
+                            vatr0.r = 1.0
+                            vatr0.g = 1.0
+                            vatr0.b = 1.0
 
-                            vatr2.r = 1.0
-                            vatr2.g = 1.0
-                            vatr2.b = 1.0
+                            vatr1.r = 1.0
+                            vatr1.g = 1.0
+                            vatr1.b = 1.0
 
                             vatr2.r = 1.0
                             vatr2.g = 1.0
@@ -2241,12 +2251,14 @@ Sub PrescanMaterialFile (thefile As String, totalMaterials As Long)
 End Sub
 
 Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials As Long, hiddenMaterials As Long)
-    Dim ParameterStorage(10) As Double
+    Dim ParameterStorageNumeric(40) As Double
+    Dim ParameterStorageText(40) As String
 
     Dim lineCount As Long
     Dim lineLength As Integer
     Dim lineCursor As Integer
     Dim parameterIndex As Integer
+    Dim subindex As Integer
     Dim substringStart As Integer
     Dim substringLength As Integer
 
@@ -2294,16 +2306,69 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
             mats(totalMaterials).diaphaneity = 1.0
             mats(totalMaterials).illum = 2
             mats(totalMaterials).Ns = 10.0
+            mats(totalMaterials).options = 0
 
         ElseIf Left$(trimString, 7) = "map_Kd " Then
-            textureFilename = _Trim$(Mid$(trimString, 8))
-            InsertCatalogTexture textureFilename, mats(totalMaterials).map_Kd
-            ' check for modelers giving bad Kd values when using a texture
-            If (mats(totalMaterials).Kd_r < oneOver255) And (mats(totalMaterials).Kd_g < oneOver255) And (mats(totalMaterials).Kd_b < oneOver255) Then
-                Print "Warning: Kd RGB values are zero. Texture would be all black. Changing to 1.0"
-                mats(totalMaterials).Kd_r = 1.0
-                mats(totalMaterials).Kd_g = 1.0
-                mats(totalMaterials).Kd_b = 1.0
+            ' this is the most common texture map from an image file
+            lineCursor = 8
+            parameterIndex = 0
+
+            While lineCursor < lineLength
+                substringLength = 0
+
+                ' eat spaces
+                While Asc(trimString, lineCursor) <= 32
+                    lineCursor = lineCursor + 1
+                    If lineCursor > lineLength Then GoTo BAIL_MAP_KD
+                Wend
+
+                ' count chars up to next space char, stopping if end of string reached
+                substringStart = lineCursor
+                While Asc(trimString, lineCursor) > 32
+                    'Print Mid$(trimString, lineCursor, 1);
+                    substringLength = substringLength + 1
+                    lineCursor = lineCursor + 1
+                    If lineCursor > lineLength Then Exit While
+                Wend
+
+                If substringLength > 0 Then
+                    parameterIndex = parameterIndex + 1
+                    parameter$ = Mid$(trimString, substringStart, substringLength)
+                    ParameterStorageText(parameterIndex) = _Trim$(parameter$)
+                    'Print parameterIndex, substringStart, substringLength, "["; parameter$; "]"
+                End If
+            Wend
+
+            BAIL_MAP_KD:
+            If parameterIndex > 0 Then
+                ' -options string comparison
+                subindex = 1
+                While subindex < (parameterIndex - 1)
+                    If ParameterStorageText(subindex) = "-clamp" Then
+                        If ParameterStorageText(subindex + 1) = "on" Then
+                            mats(totalMaterials).options = mats(totalMaterials).options Or T1_option_clamp_height Or T1_option_clamp_width
+                            subindex = subindex + 1
+                        ElseIf ParameterStorageText(subindex + 1) = "u" Then
+                            mats(totalMaterials).options = mats(totalMaterials).options Or T1_option_clamp_width
+                            subindex = subindex + 1
+                        ElseIf ParameterStorageText(subindex + 1) = "v" Then
+                            mats(totalMaterials).options = mats(totalMaterials).options Or T1_option_clamp_height
+                            subindex = subindex + 1
+                        End If
+                        subindex = subindex + 1
+                    End If
+                Wend
+
+                ' the filename is always last in the list
+                textureFilename = ParameterStorageText(parameterIndex)
+                InsertCatalogTexture textureFilename, mats(totalMaterials).map_Kd
+                ' check for modelers giving bad Kd values when using a texture
+                If (mats(totalMaterials).Kd_r < oneOver255) And (mats(totalMaterials).Kd_g < oneOver255) And (mats(totalMaterials).Kd_b < oneOver255) Then
+                    Print "Warning: Kd RGB values are zero. Texture would be all black. Changing to 1.0"
+                    mats(totalMaterials).Kd_r = 1.0
+                    mats(totalMaterials).Kd_g = 1.0
+                    mats(totalMaterials).Kd_b = 1.0
+                End If
             End If
 
         ElseIf Left$(trimString, 3) = "Kd " Then
@@ -2332,16 +2397,16 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
                 If substringLength > 0 Then
                     parameterIndex = parameterIndex + 1
                     parameter$ = Mid$(trimString, substringStart, substringLength)
-                    ParameterStorage(parameterIndex) = Val(parameter$)
+                    ParameterStorageNumeric(parameterIndex) = Val(parameter$)
                     'Print parameterIndex, substringStart, substringLength, "["; parameter$; "]"
                 End If
             Wend
 
             BAIL_KD:
             If parameterIndex = 3 Then
-                mats(totalMaterials).Kd_r = ParameterStorage(1)
-                mats(totalMaterials).Kd_g = ParameterStorage(2)
-                mats(totalMaterials).Kd_b = ParameterStorage(3)
+                mats(totalMaterials).Kd_r = ParameterStorageNumeric(1)
+                mats(totalMaterials).Kd_g = ParameterStorageNumeric(2)
+                mats(totalMaterials).Kd_b = ParameterStorageNumeric(3)
             End If
             Print totalMaterials, "["; Mid$(trimString, 4); "]"
 
@@ -2371,16 +2436,16 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
                 If substringLength > 0 Then
                     parameterIndex = parameterIndex + 1
                     parameter$ = Mid$(trimString, substringStart, substringLength)
-                    ParameterStorage(parameterIndex) = Val(parameter$)
+                    ParameterStorageNumeric(parameterIndex) = Val(parameter$)
                     'Print parameterIndex, substringStart, substringLength, "["; parameter$; "]"
                 End If
             Wend
 
             BAIL_KS:
             If parameterIndex = 3 Then
-                mats(totalMaterials).Ks_r = ParameterStorage(1)
-                mats(totalMaterials).Ks_g = ParameterStorage(2)
-                mats(totalMaterials).Ks_b = ParameterStorage(3)
+                mats(totalMaterials).Ks_r = ParameterStorageNumeric(1)
+                mats(totalMaterials).Ks_g = ParameterStorageNumeric(2)
+                mats(totalMaterials).Ks_b = ParameterStorageNumeric(3)
             End If
             'Print totalMaterials, "["; Mid$(trimString, 4); "]"
 
