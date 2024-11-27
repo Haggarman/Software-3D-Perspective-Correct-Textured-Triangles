@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 59"
+_Title "Alias Object File 61"
 ' 2024 Haggarman
+'  V61 Turntable and other selectable spin rotations.
 '  V59 optional -clamp texture coordinates but be aware Win10 3D Viewer does not like it.
 '  V58 Environment Map and Backface toggle.
 '  V56 Near frustum plane clipping. Mainly for room interior models.
@@ -21,6 +22,7 @@ _Title "Alias Object File 59"
 '  Press G to toggle face lighting method, if vertex normals are available.
 '  Press E to toggle skybox environment map.
 '  Press B to toggle backface rendering.
+'  Press S to toggle spin (move the model). J to select motion type. O resets angles.
 '
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
@@ -225,8 +227,8 @@ Fog_near = 9.0
 Fog_far = 19.0
 Fog_rate = 1.0 / (Fog_far - Fog_near)
 
-'Fog_color = _RGB32(111, 177, 233)
-Fog_color = _RGB32(2, 2, 2)
+Fog_color = _RGB32(111, 177, 233)
+'Fog_color = _RGB32(2, 2, 2)
 Fog_R = _Red(Fog_color)
 Fog_G = _Green(Fog_color)
 Fog_B = _Blue(Fog_color)
@@ -270,7 +272,7 @@ T1_mod_G = 1.0
 T1_mod_B = 1.0
 T1_mod_A = 1.0
 
-Dim Shared TextureCatalog(60) As texture_catalog_type
+Dim Shared TextureCatalog(90) As texture_catalog_type
 Dim Shared TextureCatalog_nextIndex
 TextureCatalog_nextIndex = 0
 
@@ -465,9 +467,11 @@ If distance < Camera_Start_Z Then Camera_Start_Z = distance
 Dim object_vertexes(Vertex_Count) As vec3d
 
 ' Rotation
-Dim matRotZ(3, 3) As Single
-Dim matRotX(3, 3) As Single
-Dim pointRotZ0 As vec3d
+Dim matRotObjX(3, 3) As Single
+Dim matRotObjY(3, 3) As Single
+Dim matRotObjZ(3, 3) As Single
+Dim pointRotObj1 As vec3d
+Dim pointRotObj2 As vec3d
 
 Dim point0 As vec3d
 Dim point1 As vec3d
@@ -600,10 +604,12 @@ Dim Shared envMapReflectionRayB As vec3d
 Dim Shared envMapReflectionRayC As vec3d
 
 ' This is so that the cube object animates by rotating
-Dim spinAngleDegZ As Single
 Dim spinAngleDegX As Single
-spinAngleDegZ = 0.0
+Dim spinAngleDegY As Single
+Dim spinAngleDegZ As Single
 spinAngleDegX = 0.0
+spinAngleDegY = 0.0
+spinAngleDegZ = 0.0
 
 ' code execution time
 Dim start_ms As Double
@@ -633,6 +639,7 @@ Dim Animate_Spin As Integer
 Dim Draw_Environment_Map As Integer
 Dim Draw_Backface As Integer
 Dim Gouraud_Shading_Selection As Integer
+Dim Jog_Motion_Selection As Integer
 Dim thisMaterial As newmtl_type
 Dim triloop_input_poll As Long
 Dim Shared Pixels_Drawn_This_Frame As Long
@@ -644,6 +651,7 @@ Animate_Spin = 0
 Draw_Environment_Map = -1
 Draw_Backface = 0
 Gouraud_Shading_Selection = 1
+Jog_Motion_Selection = 1
 actor = 1
 
 fPitch = 0.0
@@ -658,33 +666,34 @@ frame_advance = 0
 
 Do
     If Animate_Spin Then
-        spinAngleDegZ = spinAngleDegZ + frame_advance * 0.355
-        spinAngleDegX = spinAngleDegX - frame_advance * 0.23
+        Select Case Jog_Motion_Selection
+            Case 0
+                'Print "Zero Orientation"
+                spinAngleDegX = 0
+                spinAngleDegY = 0
+                spinAngleDegZ = 0
+                Animate_Spin = 0
+            Case 1
+                'Print "Turntable Y-Axis"
+                spinAngleDegY = spinAngleDegY + frame_advance * 0.2
+            Case 2
+                'Print "Roll X-Axis"
+                spinAngleDegX = spinAngleDegX - frame_advance * 0.25
+            Case 3
+                'Print "Tumble X and Z"
+                spinAngleDegZ = spinAngleDegZ + frame_advance * 0.355
+                spinAngleDegX = spinAngleDegX - frame_advance * 0.23
+        End Select
     End If
     frame_advance = 0
 
     ' Set up rotation matrices
     ' _D2R is just a built-in degrees to radians conversion
-
-    ' Rotation Z
-    matRotZ(0, 0) = Cos(_D2R(spinAngleDegZ))
-    matRotZ(0, 1) = Sin(_D2R(spinAngleDegZ))
-    matRotZ(1, 0) = -Sin(_D2R(spinAngleDegZ))
-    matRotZ(1, 1) = Cos(_D2R(spinAngleDegZ))
-    matRotZ(2, 2) = 1
-    matRotZ(3, 3) = 1
-
-    ' Rotation X
-    matRotX(0, 0) = 1
-    matRotX(1, 1) = Cos(_D2R(spinAngleDegX))
-    matRotX(1, 2) = -Sin(_D2R(spinAngleDegX)) ' flip
-    matRotX(2, 1) = Sin(_D2R(spinAngleDegX)) ' flip
-    matRotX(2, 2) = Cos(_D2R(spinAngleDegX))
-    matRotX(3, 3) = 1
-
+    Matrix4_MakeRotation_X spinAngleDegX, matRotObjX()
+    Matrix4_MakeRotation_Y spinAngleDegY, matRotObjY()
+    Matrix4_MakeRotation_Z spinAngleDegZ, matRotObjZ()
 
     ' Create "Point At" Matrix for camera
-
     ' the neck tilts up and down first
     Matrix4_MakeRotation_X fPitch, matCameraRot()
     Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), vLookPitch
@@ -845,22 +854,26 @@ Do
     End If ' skybox
 
     ' pre-rotate the vertexes
-    ' object_vertexes() = vertexList()
+    ' object_vertexes() = T.F. vertexList()
     For tri = 1 To Vertex_Count
         ' Rotate in Z-Axis
-        Multiply_Vector3_Matrix4 VertexList(tri), matRotZ(), pointRotZ0
+        Multiply_Vector3_Matrix4 VertexList(tri), matRotObjZ(), pointRotObj1
         ' Rotate in X-Axis
-        Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), object_vertexes(tri)
+        Multiply_Vector3_Matrix4 pointRotObj1, matRotObjX(), pointRotObj2
+        ' Rotate in Y-Axis
+        Multiply_Vector3_Matrix4 pointRotObj2, matRotObjY(), object_vertexes(tri)
     Next tri
 
     If Vtx_Normals_Count > 0 Then
         ' Vertex normals can be rotated around their origin and still retain their effectiveness.
-        'object_vtx_normals() = vtxnorms()
+        ' object_vtx_normals() = T.F. VtxNorms()
         For tri = 1 To Vtx_Normals_Count
             ' Rotate in Z-Axis
-            Multiply_Vector3_Matrix4 VtxNorms(tri), matRotZ(), pointRotZ0
+            Multiply_Vector3_Matrix4 VtxNorms(tri), matRotObjZ(), pointRotObj1
             ' Rotate in X-Axis
-            Multiply_Vector3_Matrix4 pointRotZ0, matRotX(), object_vtx_normals(tri)
+            Multiply_Vector3_Matrix4 pointRotObj1, matRotObjX(), pointRotObj2
+            ' Rotate in Y-Axis
+            Multiply_Vector3_Matrix4 pointRotObj2, matRotObjY(), object_vtx_normals(tri)
         Next tri
     End If
 
@@ -1409,11 +1422,27 @@ Do
     Color _RGB32(233)
     Print "Arrow Keys Move. -Speed+:"; CameraSpeedLookup(CameraSpeedLevel)
 
-    If Animate_Spin Then
-        Print "(S)top Spin"
-    Else
-        Print "(S)tart Spin"
+    If Jog_Motion_Selection <> 0 Then
+        If Animate_Spin Then
+            Print "(S)top Spin  ";
+        Else
+            Print "(S)tart Spin ";
+        End If
     End If
+
+    Print "(J)og Type: ";
+    Select Case Jog_Motion_Selection
+        Case 0
+            Print "Zero Orientation"
+        Case 1
+            Print "Turntable Y-Axis"
+        Case 2
+            Print "Roll X-Axis"
+        Case 3
+            Print "Tumble X and Z"
+        Case Else
+            Print Jog_Motion_Selection
+    End Select
 
     If Draw_Environment_Map Then
         Print "(E)nvironment Map on ";
@@ -1500,6 +1529,12 @@ Do
             If Gouraud_Shading_Selection > 1 Then Gouraud_Shading_Selection = 0
         ElseIf KeyNow = "B" Then
             Draw_Backface = Not Draw_Backface
+        ElseIf KeyNow = "J" Then
+            Jog_Motion_Selection = Jog_Motion_Selection + 1
+            If Jog_Motion_Selection > 3 Then Jog_Motion_Selection = 1
+        ElseIf KeyNow = "O" Then
+            Jog_Motion_Selection = 0
+            Animate_Spin = -1
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
@@ -2486,7 +2521,6 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
 
     'Dim temp$
     'Input "waiting..."; temp$
-
 End Sub
 
 Function Find_Material_id_from_name (mats() As newmtl_type, in_name As String)
