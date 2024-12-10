@@ -20,15 +20,15 @@
 - S3 ViRGE series
 - SGI Ultra 64 RDP
 ## Screenshots
- ![trimaxion_obj](https://github.com/user-attachments/assets/b85fc515-f41e-4645-8b1c-48d4fc339d3d)
- ![BunnyObj](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/f6e3e8e6-e13b-46d6-8eab-6df68b563cd6)
- ![Tri-Linear Mipmap Road](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/ee802200-7212-4442-bb50-ee5cc7a9e2e0)
- ![Skybox Treess](https://user-images.githubusercontent.com/96515734/234192793-af9a3844-cfc6-4cdb-a988-e38d5a0ae531.PNG)
- ![Skybox Long Tube 800](https://user-images.githubusercontent.com/96515734/224502776-09c13ed1-60a6-4074-a7d4-dd2b05e30085.png)
- ![Texture Z Fight Donut](https://user-images.githubusercontent.com/96515734/224503149-33eb6e8a-73cc-473b-a61c-5c3262b0c93f.PNG)
- ![Vertex Alpha](https://user-images.githubusercontent.com/96515734/225165954-80881ea9-3c7f-4ebb-9fe2-b48b3d54a161.PNG)
- ![Dither Color Cube](https://user-images.githubusercontent.com/96515734/219270641-b560848f-5ef0-429c-9c9c-6191e8ac88a9.png)
- ![Textured Cube Plains 640](https://user-images.githubusercontent.com/96515734/224503609-ac961d99-c086-400e-b1f9-a1a8c639f918.PNG)
+ ![Trimaxion](/docs/Trimaxion.png)
+ ![Bunny.obj](/docs/Bunny.png)
+ ![Tri-Linear Mipmap Road](/docs/TriLinearMipmapRoad.png)
+ ![Skybox Trees](/docs/SkyboxTrees.png)
+ ![Skybox Long Tube](/docs/SkyboxLongTube.png)
+ ![Texture Z Fight Donut](/docs/ZFightDonut.png)
+ ![Vertex Alpha](/docs/VertexAlpha.png)
+ ![Dither Color Cube](/docs/DitherColorCube.png)
+ ![Textured Cube Plains](/docs/TexturedCubePlains.png)
 
 ## Capabilities
  Let's list what has currently been implemented or explored, Final Reality Advanced benchmark style.
@@ -109,7 +109,7 @@ Yes | Z-Fight Bias
 ## Triangles
 ### Vertex
  The triangles are specified by vertexes A, B, and C. They are sorted by the triangle drawing subroutine so that A is always on top and C is always on the bottom. That still leaves two categories where the knee at B faces left or right. The triangle drawing subroutine also adjusts for this so that pixels are drawn from left to right.
- ![TrianglesABC](https://user-images.githubusercontent.com/96515734/220204499-62aaed3c-f1fe-4c07-9c64-1c61564219e7.PNG)
+ ![TrianglesABC](/docs/TrianglesABC.png)
 ### DDA
  DDA (Digital Difference Analyzer) is a complicated name for a simple concept. Count from a start value to an end value by steps of 1. And then set up additional counter(s) that change in value along with those steps.
 
@@ -223,9 +223,9 @@ Next Y
 
 ### Demonstration
  The program called *ColorCubeAffine.bas* allows you to easily flip between Affine and Perspective Correct rendering. Please review the code comments in the two locations where the small difference is made depending on the value of **Affine_Only**. The first location is where the vertex attributes are loaded in the main triangle drawing loop. The second location is where the pixel color value is determined in subroutine **TexturedVertexColorAlphaTriangle()**.
-Affine | Perspective
+Affine      | Perspective
 --- | ---
-![CubeAffine](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/dc10ea07-c2ce-4216-a523-127e0d4d4dc0) | ![CubePerspective](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/9b935e31-754d-4c63-a14d-94af88520547)
+![CubeAffine](/docs/CubeAffine.png) | ![CubePerspective](/docs/CubePerspective.png)
 
 ### Bottom Line
  Being willing to dedicate huge amounts of silicon real estate to perform this 1 / 1 / Z algorithm is what separated true perspective projection graphics acceleration hardware from the more primitive affine transformation hardware.
@@ -262,7 +262,7 @@ Triangle 1: A to B, B to C, **C to A**
 
 Triangle 2: **A to C**, C to D, D to A
 
-![Triangle Near Clip](https://user-images.githubusercontent.com/96515734/224221060-d9673899-82c3-4f87-b502-88fde7c958ec.png)
+![Triangle Near Clip](/docs/NearClip.png)
 
 #### Number of Triangles
 
@@ -293,14 +293,14 @@ If the triangle were to be viewed perfectly edge-on to have a dot product value 
 ID | Name | Description
 -- | ---- | ----
 0 | Nearest | Blocky sampling of a single texture point.
-1 | 3-Point N64 | A distinct look using Barycentric (area) math.
+1 | 3-Point N64 | A distinct hexagonal look using Barycentric (area) math.
 2 | Bilinear Fix | Blurry 4-point sampling, with some speed-up tricks.
 3 | Bilinear Float | The standard blurry 4-point sampling written without tricks.
  
 ### 3 Point?
  I have always wondered about the "rupee" 3-Point interpolation of the N64. Its creator calls it triangle (triangular?) texture sampling. An optimized version can be seen in the function ReadTexel3Point().
  
- ![3 point interpolation](https://user-images.githubusercontent.com/96515734/219922319-bf7cebb7-323c-40a0-bf2a-a236b81cd49f.png)
+ ![3 point interpolation](/docs/3PointInterpolation.png)
  
  I hope to be able to describe the math behind it clearly.
  
@@ -371,7 +371,7 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 
  Photo: Each of the four EDO-RAM chips have a 16-bit bus, creating a 64 bit wide bus. The texturing performance issues are more to do with the memory controller and lack of texture cache on the 86C325, because 50 nanoseconds is quite fast for the time.
 
-![S3_ViRGE_4RAM](https://github.com/Haggarman/Software-3D-Perspective-Correct-Textured-Triangles/assets/96515734/2a551613-d01a-4e8b-bce7-0690327ff3cc)
+![S3_ViRGE_4RAM](/docs/S3_ViRGE_4RAM.jpg)
 
 ### Texture boundaries
  Nothing is really preventing the U or V texel coordinates from going outside of the range of the sampled texture. The question becomes what to do. And the answer is that it depends on what the artist wants. So it makes sense to give them the option.
