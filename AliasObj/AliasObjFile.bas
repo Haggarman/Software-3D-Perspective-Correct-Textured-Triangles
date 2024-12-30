@@ -1,8 +1,9 @@
 Option _Explicit
-_Title "Alias Object File 61"
+_Title "Alias Object File 62"
 ' 2024 Haggarman
+'  V62 Simplify 3D point perspective projection function. map_d forces on backface.
 '  V61 Turntable and other selectable spin rotations.
-'  V59 optional -clamp texture coordinates but be aware Win10 3D Viewer does not like it.
+'  V59 optional -clamp texture coordinates but be aware Windows 10 3D Viewer does not like it.
 '  V58 Environment Map and Backface toggle.
 '  V56 Near frustum plane clipping. Mainly for room interior models.
 '  V53 camera movement speed adjustment using + or - keys.
@@ -201,15 +202,15 @@ Frustum_Near = 0.1
 Frustum_Far = 1000.0
 Frustum_FOV_deg = 60.0
 Frustum_Aspect_Ratio = _Height / _Width
-Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
+Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5)) ' 90 degrees gives 1.0
 
 Dim matProj(3, 3) As Single
-matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-matProj(1, 1) = Frustum_FOV_ratio
-matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-matProj(2, 3) = 1.0
-matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
-matProj(3, 3) = 0.0
+matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is wider than it is tall.
+matProj(1, 1) = -Frustum_FOV_ratio ' output Y = input Y * factors. Negate so that +Y is up
+matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, scale factor applied to input Z.
+matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, constant offset.
+matProj(2, 3) = 1.0 ' divide outputs X and Y by input Z.
+' All other matrix elements assumed 0.0
 
 ' Viewing area clipping
 Dim Shared clip_min_y As Long, clip_max_y As Long
@@ -251,6 +252,7 @@ Dim Shared Texture_options As _Unsigned Long
 Const T1_option_clamp_width = 1
 Const T1_option_clamp_height = 2
 Const T1_option_no_Z_write = 4
+Const T1_option_no_backface_cull = 16
 Const T1_option_metallic = 32768
 Const T1_option_no_T1 = 65536
 Const oneOver255 = 1.0 / 255.0
@@ -772,9 +774,9 @@ Do
                 T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
 
                 ' Project triangles from 3D -----------------> 2D
-                ProjectMatrixVector4 pointView0, matProj(), pointProj0
-                ProjectMatrixVector4 pointView1, matProj(), pointProj1
-                ProjectMatrixVector4 pointView2, matProj(), pointProj2
+                ProjectPerspectiveVector4 pointView0, matProj(), pointProj0
+                ProjectPerspectiveVector4 pointView1, matProj(), pointProj1
+                ProjectPerspectiveVector4 pointView2, matProj(), pointProj2
 
                 ' Slide to center, then Scale into viewport
                 SX0 = (pointProj0.x + 1) * halfWidth
@@ -817,7 +819,7 @@ Do
             Lbl_SkipEnv012:
             If triCount = 2 Then
 
-                ProjectMatrixVector4 pointView3, matProj(), pointProj3
+                ProjectPerspectiveVector4 pointView3, matProj(), pointProj3
 
                 ' Late scissor reject
                 If (pointProj0.x > 1.0) And (pointProj2.x > 1.0) And (pointProj3.x > 1.0) Then GoTo Lbl_SkipEnv023
@@ -889,6 +891,12 @@ Do
             transparencyFactor = Materials(mesh(tri).material).diaphaneity ' all illumination models use d
             If ((renderPass = 0) And (transparencyFactor < 1.0)) Or ((renderPass = 1) And (transparencyFactor = 1.0)) Then GoTo Lbl_SkipTriAll
 
+            ' material
+            thisMaterial = Materials(mesh(tri).material)
+            ' Combine the material options with this specific triangle's options.
+            ' Reason is that a given tri face could possibly omit texture coordinates or backface could be forced on.
+            Texture_options = thisMaterial.options Or mesh(tri).options
+
             ' the object vertexes have been rotated already, so we just need to reference them
             pointWorld0 = object_vertexes(mesh(tri).i0)
             pointWorld1 = object_vertexes(mesh(tri).i1)
@@ -896,10 +904,10 @@ Do
 
             ' Part 2 (Triangle Surface Normal Calculation)
             CalcSurfaceNormal_3Point pointWorld0, pointWorld1, pointWorld2, tri_normal
-
             Vector3_Delta vCameraPsn, pointWorld0, cameraRay0 ' be careful, this is not normalized.
             dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay0) ' only interested here in the sign
-            If Draw_Backface Or (dotProductCam < 0.0) Then
+
+            If Draw_Backface _Orelse (dotProductCam < 0.0) _Orelse (Texture_options And T1_option_no_backface_cull) Then
                 ' Front facing is negative dot product because obj vertex is specified with counter-clockwise (CCW) winding.
                 ' Convert World Space --> View Space
                 Multiply_Vector3_Matrix4 pointWorld0, matView(), pointView0
@@ -909,10 +917,8 @@ Do
                 ' Skip if all Z is too close
                 If (pointView0.z < Frustum_Near) _Andalso (pointView1.z < Frustum_Near) _Andalso (pointView2.z < Frustum_Near) Then GoTo Lbl_SkipTriAll
 
-                ' material
+                ' Texture 1
                 T1_mod_A = transparencyFactor
-                thisMaterial = Materials(mesh(tri).material)
-                Texture_options = thisMaterial.options Or mesh(tri).options ' a given tri face could omit texture coordinates
 
                 If (Texture_options And T1_option_no_T1) = 0 Then
                     ' still need to check if texture loaded
@@ -936,6 +942,7 @@ Do
                     End If
                 End If
 
+                ' Lighting
                 Select Case thisMaterial.illum
                     Case illum_model_constant_color
                         ' Kd only
@@ -1245,9 +1252,9 @@ Do
                 End If
 
                 ' Project triangles from 3D -----------------> 2D
-                ProjectMatrixVector4 pointView0, matProj(), pointProj0
-                ProjectMatrixVector4 pointView1, matProj(), pointProj1
-                ProjectMatrixVector4 pointView2, matProj(), pointProj2
+                ProjectPerspectiveVector4 pointView0, matProj(), pointProj0
+                ProjectPerspectiveVector4 pointView1, matProj(), pointProj1
+                ProjectPerspectiveVector4 pointView2, matProj(), pointProj2
 
                 ' Slide to center, then Scale into viewport
                 SX0 = (pointProj0.x + 1) * halfWidth
@@ -1317,7 +1324,7 @@ Do
 
                 Lbl_Skip012:
                 If triCount = 2 Then
-                    ProjectMatrixVector4 pointView3, matProj(), pointProj3
+                    ProjectPerspectiveVector4 pointView3, matProj(), pointProj3
 
                     ' Late scissor reject
                     If (pointProj0.x > 1.0) And (pointProj2.x > 1.0) And (pointProj3.x > 1.0) Then GoTo Lbl_SkipTriAll
@@ -2343,6 +2350,10 @@ Sub LoadMaterialFile (theFile As String, mats() As newmtl_type, totalMaterials A
             mats(totalMaterials).Ns = 10.0
             mats(totalMaterials).options = 0
 
+        ElseIf Left$(trimString, 6) = "map_d " Then
+            ' assume that this texture has see through parts, like a fence or ironwork.
+            mats(totalMaterials).options = mats(totalMaterials).options Or T1_option_no_backface_cull
+
         ElseIf Left$(trimString, 7) = "map_Kd " Then
             ' this is the most common texture map from an image file
             lineCursor = 8
@@ -3034,23 +3045,41 @@ Sub Matrix4_QuickInverse (m( 3 , 3) As Single, q( 3 , 3) As Single)
     q(3, 3) = 1.0
 End Sub
 
-' Projection is another optimized matrix multiplcation.
-' w is assumed 1 on the input side, but this time it is necessary to output.
-' X and Y needs to be normalized.
-' Z is unused.
+' This is the generic 3D point projection formula with a 4 by 4 matrix.
+'  input w is assumed always 1, so you can send a vec3d.
+' Practical reasons for this existing are to:
+'  Simulate lens field of view angles.
+'  Normalize depth to maximum numeric range between the near and far plane.
+'  Have the ability to swap coordinates. For example swap input Y and Z.
+'  Give a 4th channel with which to perform perspective division (or not).
+'  Perform non-perspective projections like isometric.
+'  Warp projections to depict momentary disorientation from a large blast.
 Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
     Dim www As Single
     o.x = i.x * m(0, 0) + i.y * m(1, 0) + i.z * m(2, 0) + m(3, 0)
     o.y = i.x * m(0, 1) + i.y * m(1, 1) + i.z * m(2, 1) + m(3, 1)
-    'o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
+    o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
     www = i.x * m(0, 3) + i.y * m(1, 3) + i.z * m(2, 3) + m(3, 3)
 
     ' Normalizing
     If www <> 0.0 Then
-        o.w = 1 / www 'optimization
+        o.w = 1 / www ' optimization
         o.x = o.x * o.w
-        o.y = -o.y * o.w 'because I feel +Y is up
-        'o.z = o.z * o.w
+        o.y = o.y * o.w
+    End If
+End Sub
+
+' Simplified Perspective Projection Only
+' The concept of perspective projection being division by z gets lost in the matrix.
+' Here is the equation from above, rewritten without the always zero and unused Z matrix element values.
+' o.z is unused.
+Sub ProjectPerspectiveVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
+    If i.z <> 0.0 Then
+        o.w = 1.0 / i.z ' we need 1/z for later, plus we can multiply it with x and y instead of divide.
+        o.x = i.x * m(0, 0) * o.w ' same as i.x * m(0,0) / i.z
+        o.y = i.y * m(1, 1) * o.w
+    Else
+        o.w = 0.0
     End If
 End Sub
 
