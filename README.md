@@ -415,6 +415,7 @@ Color = (A - B) * C + D
 
 Soft Edge | Hard Edge | 1-Bit Mask
 --- | --- | ---
+ ![Soft Edge](/docs/AlphaSoftEdge.png) | ![Hard Edge](/docs/AlphaHardEdge.png) | ![1-Bit Mask](/docs/AlphaOneBitMaskEdge.png)
 
  Optimizaton: If it can be known from the mask that only the existing background color is intended to be seen, processing time can be saved. The read-modify-write of the pixel color and depth can be skipped early.
 
