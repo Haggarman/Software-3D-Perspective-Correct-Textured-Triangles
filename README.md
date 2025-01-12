@@ -5,6 +5,12 @@
 
  The point here was to understand what the digital logic on a low-end PC level 3D Graphics Accelerator was doing in that time period based on the Silicon Graphics hardware rendering pipeline model.
 
+### Era Applicable Cards
+- 3Dfx Voodoo 1 & 2
+- NVIDIA RIVA TNT
+- S3 ViRGE series
+- SGI Ultra 64 RDP
+
 ## Inspiration
  I tried this project once before in the mid 1990s. Back on my first PC with Windows 95 and a ViRGE Graphics Accelerator, I noticed that the DirectX D3D Software Reference Rasterizer on a Pentium 200 was performing on par or often better than the S3 hardware (to put it lightly). The software textured triangles were good looking and more specifically were perspective correct. So, I had direct evidence it was possible.
 
@@ -14,11 +20,6 @@
 
  Instead, it had to be decades later when a random Youtube video suggestion led me to javidx9 "Code-It-Yourself! 3D Graphics Engine" series. To him I am eternally grateful for cutting through the rubbish and explaining things in a straightforward manner. I was once again able to soar, getting to write performant realtime tri-linear mip-mapping, which was the darling technology of the time.
 
-### Era Applicable Cards
-- 3Dfx Voodoo 1 & 2
-- NVIDIA RIVA TNT
-- S3 ViRGE series
-- SGI Ultra 64 RDP
 ## Screenshots
  ![Trimaxion](/docs/Trimaxion.png)
  ![Bunny.obj](/docs/Bunny.png)
@@ -387,12 +388,65 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 ```
 Color = (A - B) * C + D
 ```
- Variables A thru D could be configured from a numbered list of various signal sources, much like how patch cables can be moved around on an audio modular synthesizer.
+ Variables A thru D could be configured from a numbered list of various signal sources, much like how patch cables can be moved around on an audio modular synthesizer. Note that letters A to D here are indexes representing the patch channel. The red, green, and blue components are calculated in parallel. In other words, this takes 6 full adders and 3 multipliers. 
 
- Since multi-texturing or alpha blending from a reference texture requires at least two passes of this equation, the SGI Ultra 64 RDP had what they termed "2 cycle mode" to allow the output from the first pass of color blending to be combined with a second pass (at the cost of speed). The 3dfx Voodoo series has provisions for up to 3 physical TMU chips, allowing the output of of the first TMU to patch into the next TMU.
+ Because "A - B" would be too restrictive, some of the indexes for "B" would be "one minus B", so that it was effectively A + B instead. Logically this is an XOR (2's complement NOT inversion) so it's not as if it took many transistors to implement.
 
-## Fog (Depth Cueing)
- Pixel Fog (Table Fog) is calculated at the end of the pixel blending process. Fog is usually intended to have objects blend into a background color with increasing distance from the viewer. Fog is just a general term, and could also represent smoke or liquid water, but I think you get the picture.
+ Since multi-texturing or alpha blending from a reference texture requires at least two passes of this equation, the SGI Ultra 64 RDP had what they termed "2 cycle mode" to allow the output from the first pass of color blending to be combined with a second pass (at the cost of speed).
+
+ The 3dfx Voodoo series has provisions for up to 3 physical TMU chips, allowing the output of of the first TMU to patch into the next TMU.
+
+ Boards with only one 3dfx TMU, or for that matter the S3 ViRGE, would need multiple passes over the same triangle implemented in the low-level system driver or library.
+
+## Alpha Channel
+ The alpha channel is a 4th channel that runs parallel to (but separate from) the red, green, and blue color channels. Alpha has its own configurable texture sampling, interpolation, and blending settings.
+
+ Alpha is used to mix the newly calculated foreground pixel color with the existing background color.
+
+ Alpha functionality is often overloaded in the sense that there are at least four major concepts: transparency, masking, coverage, and fog.
+
+### Transparency
+ This represents how much the foreground color shows through the background, by way of linear interpolation. A value of 0 represents the background entirely with no foreground. A value of 1.0 or 255/255 represents the foreground only. When represented as an 8-bit value, there are subtle issues. Using fixed-point multiplication, 255 * 255 = 254. In certain hardware implementations, this means that pixels cannot be completely opaque when using alpha as transparency. In motion this could be undesirable like seeing through the walls.
+
+### Masking
+ In the case of a fence texture that has both opaque areas and areas intended to be seen through, masking is used. Masking determines the sharpness of the transition at the edges between opaque and transparent texels on a bilinear filtered texture.
+
+ Instead of trying to explain in words, lets take 3 examples:
+
+Soft Edge | Hard Edge | 1-Bit Mask
+--- | --- | ---
+
+ Optimizaton: If it can be known from the mask that only the existing background color is intended to be seen, processing time can be saved. The read-modify-write of the pixel color and depth can be skipped early.
+
+### Coverage
+ Anti-aliasing is a technique intended to smooth the otherwise stair-step edges caused by digital sampling. Aliasing (AA) isn't really the right term, but it is what stuck. Subpixel Partial Coverage would be a better term.
+
+ Coverage is a representation of how filled in a sampled pixel is. Let's just give an example of what might be seen at one pixel at the curved edge of a circle. The "#" represents the foreground, and the "." represents the background. This has a coverage value of 6 out of a possible value of 16, in what is termed 4 x 4 sub-sampling.
+
+. | 1/4 X | 2/4 X | 3/4 X | X
+--- | --- | --- | --- | ---
+1/4 Y | . | . | . | .
+2/4 Y | . | . | . | #
+3/4 Y | . | . | # | #
+Y | . | # | # | #
+
+ Coverage = 6 / 16 = 0.375, and this would be the alpha value calculated at this pixel.
+
+ When stored in a texture, coverage can go into the alpha channel. It does not necessarily mean the object is partially transparent, just that the pixel wasn't completely filled in where sampled.
+
+ So now when drawing the texture onto the screen, curves can be less jagged.
+
+### Alpha Fog
+ As the look of fog lost its popularity in the marketplace, hardware supported fog disappeared from later models and was pulled back into the alpha channel as an option.
+
+ In this mode, the alpha blend value at each triangle vertex is determined by the Z depth. Z depth is calculated, scaled, and offset by the system CPU and sent along as a vertex attribute.
+
+ During drawing by the 3D accelerator, vertex alpha is perspective corrected across the face of the triangle and blends between the newly calculated foreground color and the background color. The background can either be a fixed register color (to mimic table fog, explained below) or the existing screen pixel background color (gradually fades away with increasing distance).
+
+## Hardware Table Fog
+ The 3D Accelerators started out with a dedicated fog calculation path semi-independent of the alpha channel.
+
+ Pixel Fog (Table Fog) is calculated at the end of the pixel color blending process. Fog is usually intended to have objects blend into a fixed background color with increasing distance from the viewer. Fog is just a general term, and could also represent smoke or liquid water, but I think you get the picture. This depth cueing helps make outdoor scenes look more realistic.
 
  It is implemented here as a gradient, where the input color values blend linearly into the fog color for Z values between the *fog_near* and *fog_far* variables. If the input Z value is closer than the *fog_near* value, the input color values are passed through unchanged. At the *fog_far* Z value and beyond, the input color is replaced with the fog color but yet the Z-Buffer is still updated and the screen pixel is still drawn.
 
