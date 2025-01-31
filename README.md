@@ -114,7 +114,7 @@ Yes | Z-Fight Bias
 ### DDA
  DDA (Digital Difference Analyzer) is a complicated name for a simple concept. Count from a start value to an end value by steps of 1. And then set up additional counter(s) that change in value along with those steps.
 
- Simplified example:
+ Simplified pseudocode example:
 ```
 X1_start = 8.0 'minor edge
 X1_step = -0.5
@@ -125,7 +125,7 @@ X2_step = 0.25
 X1_acc = X1_start
 X2_acc = X2_start
 For Y = 1 to 10
-  plot(Y, X1_acc, X2_acc)
+  drawline(X1_acc, Y, X2_acc, Y)
   X1_acc = X1_acc + X1_step
   X2_acc = X2_acc + X2_step
 Next Y
@@ -210,17 +210,28 @@ Next Y
  Or more seriously, this insight led to dividing the U and V texel coordinates each by Z before starting the drawing loops. Then using linear interpolation of 1/Z across the triangle face. And then finally multiplying U * Z and V * Z at each pixel to recover the true texel coordinate pair to sample.
 
 ```
- ' unoptimized
- OoZ = 1 / depth Z
- UoZ = U texel horizontal attribute / depth Z
- VoZ = V texel vertical attribute / depth Z
-
  ' optimized
- OoZ = 1 / depth Z  ' also known as W
- UoZ = U texel horizontal attribute * OoZ
- VoZ = V texel vertical attribute * OoZ
+ OoZ = 1 / depth Z  ' One over Z, also known as W
+ UoZ = U texel horizontal attribute * OoZ  ' sometimes called S
+ VoZ = V texel vertical attribute * OoZ    ' sometimes called T
 ```
- Dividing the vertex attributes by Z makes it possible to then use DDA to achieve correct perspective projection when stepping from one pixel to the next.
+ Not shown here, but dividing the other vertex attributes (R, G, B, A, etc.) by Z makes it possible to then use DDA to achieve perspective correct color blending when stepping from one pixel to the next.
+ 
+ Converting W back to Z is performed per-pixel and thus requires a very fast approximate inverse calculation:
+```
+For X = 1 to 10
+  tex_z = 1 / tex_w  ' this must be fast!
+  U = tex_u * tex_z  ' U horizontal texture coordinate
+  V = tex_v * tex_z  ' V vertical texture coordinate
+  plot(X, Y, texture(U,V))
+
+  tex_w = tex_w + tex_w_step
+  tex_u = tex_u + tex_u_step
+  tex_v = tex_v + tex_v_step
+Next X
+```
+### Reciprocal Hardware
+ On the graphics accelerator cards, the Newton-Raphson method is used to find the inverse of a positive number. This includes a digital priority encoder to generate an initial guess, barrel shifters, a primary lookup table rom, and a second smaller lookup correction table rom, and some adders.
 
 ### Demonstration
  The program called *ColorCubeAffine.bas* allows you to easily flip between Affine and Perspective Correct rendering. Please review the code comments in the two locations where the small difference is made depending on the value of **Affine_Only**. The first location is where the vertex attributes are loaded in the main triangle drawing loop. The second location is where the pixel color value is determined in subroutine **TexturedVertexColorAlphaTriangle()**.
