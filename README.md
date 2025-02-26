@@ -22,6 +22,7 @@
 
 ## Screenshots
  ![Trimaxion](/docs/Trimaxion.png)
+ ![Aika](/docs/Aika.png)
  ![Bunny.obj](/docs/Bunny.png)
  ![Tri-Linear Mipmap Road](/docs/TriLinearMipmapRoad.png)
  ![Skybox Trees](/docs/SkyboxTrees.png)
@@ -233,6 +234,8 @@ Next X
 ### Reciprocal Hardware
  On the graphics accelerator cards, the Newton-Raphson method is used to find the inverse of a positive number. This includes a digital priority encoder to generate an initial guess, barrel shifters, a primary lookup table rom, and a second smaller lookup correction table rom, and some adders.
 
+ Because this era's hardware used fixed-point math, it was necessary to express the depth as ranging from 0 to 1 equivalent when it reached the graphics chip line rasterizer. For example s1.14 format. This range limitation made clipping to the near and far planes of the view frustum critical. There was a lot of pop-in where distant objects suddenly appeared. Pop-in was not only because of limited computing resources and fill rates. Geometry simply could not exist further out than the far clipping plane as far as the hardware was concerned.
+
 ### Demonstration
  The program called *ColorCubeAffine.bas* allows you to easily flip between Affine and Perspective Correct rendering. Please review the code comments in the two locations where the small difference is made depending on the value of **Affine_Only**. The first location is where the vertex attributes are loaded in the main triangle drawing loop. The second location is where the pixel color value is determined in subroutine **TexturedVertexColorAlphaTriangle()**.
 Affine      | Perspective
@@ -428,7 +431,7 @@ Soft Edge | Hard Edge | 1-Bit Mask
 --- | --- | ---
  ![Soft Edge](/docs/AlphaSoftEdge.png) | ![Hard Edge](/docs/AlphaHardEdge.png) | ![1-Bit Mask](/docs/AlphaOneBitMaskEdge.png)
 
- Optimizaton: If it can be known from the mask that only the existing background color is intended to be seen, processing time can be saved. The read-modify-write of the pixel color and depth can be skipped early.
+ Optimization: If it can be known from the mask that only the existing background color is intended to be seen, processing time can be saved. The read-modify-write of the pixel color and depth can be skipped early.
 
 ### Coverage
  Anti-aliasing is a technique intended to smooth the otherwise stair-step edges caused by digital sampling. Aliasing (AA) isn't really the right term, but it is what stuck. Subpixel Partial Coverage would be a better term.
@@ -462,7 +465,7 @@ Y | . | # | # | #
 
  It is implemented here as a gradient, where the input color values blend linearly into the fog color for Z values between the *fog_near* and *fog_far* variables. If the input Z value is closer than the *fog_near* value, the input color values are passed through unchanged. At the *fog_far* Z value and beyond, the input color is replaced with the fog color but yet the Z-Buffer is still updated and the screen pixel is still drawn.
 
- At the time of writing the code, I could not arrive at a rational reason why fog tables existed, so just the linear gradient is implemented here for simplicity sake. For different batches of triangles with different visual rendering requirements, the depths *fog_near* and *fog_far* could be adjusted accordingly.
+ At first when writing the code, I could not arrive at a rational reason why fog tables existed, so just the linear gradient is implemented here for simplicity sake. For different visual rendering requirements, the depths *fog_near* and *fog_far* can be adjusted accordingly.
 
  I have since learned that if the W value is used instead of the Z value for distance from the viewer, fog calculation becomes a non-linear function. So a lookup table is required to re-linearize. I have also learned that this so-called table fog was a vendor-specific implementation (3dfx). Although a few competitor chips did mostly achieve equivalency for a short while, table fog was dropped from future models in favor of vertex alpha-channel fog. The reason for that is seeing unsatisfactory or inconsistent results depending on the precision and representation (fixed or floating point) of the depth buffer. A fog table must be recalculated based on the precision of the depth buffer. Applications or games that did not, or could not, have this adjustment programmed in experienced wildly different fog results.
 
@@ -560,3 +563,5 @@ In the end, both companies were sold off. But it's how they're remembered and ce
 
  Page 1298 of a bloated Black Book I quote as follows: "Try to imagine any American 17-year-old of your acquaintance inventing backface removal. Try to imagine any teenager you know even using the phrase 'the cross product equations found in any math book'." Well, I was probably 16 at the time I read it, and that stung leaving a permanent scar.
  
+## Research
+ Please refer to the Literature folder for datasheets on the Graphics Accelerators. There are also a few other 3D related documents.
