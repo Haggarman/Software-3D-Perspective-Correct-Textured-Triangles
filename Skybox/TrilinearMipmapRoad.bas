@@ -1,6 +1,6 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Road 128"
-' 2024 Haggarman
+_Title "Tri-Linear Mipmap Road 129"
+' 2025 Haggarman
 ' Well I finally made it here. Trilinear Mip Mapping.
 ' Toggle false colors with (F) and move around with the arrow keys.
 ' (M)ode 0 = no mipmap
@@ -14,6 +14,7 @@ _Title "Tri-Linear Mipmap Road 128"
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
 '
+'  6/06/2025 - Make projection matrix consistent across these programs (+Y is up).
 '  2/23/2024 - Improved alpha blending
 '  1/22/2024 - LOD using no square root and no log2f()
 '  6/07/2023 - Trilinear Mipmap Interpolation
@@ -202,23 +203,16 @@ End Type
 ' Projection Matrix
 Dim Shared Frustum_Near As Single
 Dim Shared Frustum_Far As Single
-Dim Shared Frustum_FOV_deg As Single
 Dim Shared Frustum_Aspect_Ratio As Single
+Dim Shared Frustum_FOV_deg As Single
 Dim Shared Frustum_FOV_ratio As Single
+Dim Shared matProj(3, 3) As Single
 
 Frustum_Near = 0.5
 Frustum_Far = 1000.0
-Frustum_FOV_deg = 80.0
 Frustum_Aspect_Ratio = _Height / _Width
-Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
-
-Dim Shared matProj(3, 3) As Single
-matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-matProj(1, 1) = Frustum_FOV_ratio
-matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-matProj(2, 3) = 1.0
-matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
-matProj(3, 3) = 0.0
+Frustum_FOV_deg = 80.0
+FOVchange
 
 ' Viewing area clipping
 Dim Shared clip_min_y As Long, clip_max_y As Long
@@ -365,7 +359,6 @@ For refIndex = 0 To 5
         End
     End If
     Print refIndex; _Width(SkyBoxRef(refIndex)); _Height(SkyBoxRef(refIndex))
-
 Next refIndex
 
 _PutImage (128, 0), SkyBoxRef(2)
@@ -468,12 +461,14 @@ Dim vCameraTarget As vec3d
 Dim matCamera(3, 3) As Single
 
 
-' Directional light 1-17-2023
+' Sun
 Dim vSunDir As vec3d
 vSunDir.x = -0.5
 vSunDir.y = 0.4375 ' +Y is up
 vSunDir.z = 1.0
 Vector3_Normalize vSunDir
+
+' Directional light 1-17-2023
 Dim Shared Light_Directional As Single
 Dim Shared Light_AmbientVal As Single
 Light_AmbientVal = 0.45
@@ -597,7 +592,7 @@ Do
         Vector3_Add point2, vCameraPsn, pointTrans2
 
         ' Part 2 (Triangle Surface Normal Calculation)
-        CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
+        'CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
 
         ' The dot product to this skybox surface is just the way you are facing.
         ' The surface completely behind you is going to get later removed with NearClip.
@@ -754,7 +749,6 @@ Do
             vatr1.u = mesh(A).u1: vatr1.v = mesh(A).v1
             vatr2.u = mesh(A).u2: vatr2.v = mesh(A).v2
 
-
             If mesh(A).texture2 = 2 Then
                 'road piece
                 LOD_max = 5
@@ -865,7 +859,6 @@ Do
             vertexB.r = vatr1.r
             vertexB.g = vatr1.g
             vertexB.b = vatr1.b
-
 
             vertexC.x = SX2
             vertexC.y = SY2
@@ -1528,14 +1521,16 @@ End Sub
 
 
 Sub FOVchange
+    ' requires Frustum_FOV_deg, Frustum_Aspect_Ratio, Frustum_Far, Frustum_Near
     If Frustum_FOV_deg < 10.0 Then Frustum_FOV_deg = 10.0
     If Frustum_FOV_deg > 120.0 Then Frustum_FOV_deg = 120.0
     Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
-    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-    matProj(1, 1) = Frustum_FOV_ratio
-    matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-    matProj(2, 3) = 1.0
-    matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
+    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is wider than it is tall.
+    matProj(1, 1) = -Frustum_FOV_ratio ' output Y = input Y * factors. Negate so that +Y is up
+    matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, scale factor applied to input Z.
+    matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, constant offset.
+    matProj(2, 3) = 1.0 ' divide outputs X and Y by input Z.
+    ' All other matrix elements assumed 0.0
 End Sub
 
 
@@ -1951,15 +1946,15 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
     Dim www As Single
     o.x = i.x * m(0, 0) + i.y * m(1, 0) + i.z * m(2, 0) + m(3, 0)
     o.y = i.x * m(0, 1) + i.y * m(1, 1) + i.z * m(2, 1) + m(3, 1)
-    o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
+    'o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
     www = i.x * m(0, 3) + i.y * m(1, 3) + i.z * m(2, 3) + m(3, 3)
 
     ' Normalizing
     If www <> 0.0 Then
         o.w = 1 / www 'optimization
         o.x = o.x * o.w
-        o.y = -o.y * o.w 'because I feel +Y is up
-        o.z = o.z * o.w
+        o.y = o.y * o.w
+        'o.z = o.z * o.w
     End If
 End Sub
 
@@ -2826,6 +2821,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                     Static uv_1_1 As _Unsigned Long
                     Static uv_f As _Unsigned Long
 
+                    ' color blending
                     Static r2 As Integer
                     Static g2 As Integer
                     Static b2 As Integer
@@ -3112,7 +3108,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             a1 = ((_Alpha32(uv_f) * Area_2f + _Alpha32(uv_0_0) * Area_00 + _Alpha32(uv_1_1) * Area_11) - a1) * LOD_fraction + a1
                         End If
 
-                    End If
+                    End If ' Texture 3
 
 
                     ' Color Combiner Alpha Channel Source
@@ -3121,8 +3117,8 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
                     ' Color Combiner RGB Channels
                     ' Template CC Equation is: (Source2 - Source1) * Scale + Offset
-                    ' Typical accelerator hardware lets you mux select each of these 4 vars from a small list.
-                    ' for example Source1 could be 0, 1, fixed color, vertex color, texture color, etc.
+                    ' Typical accelerator hardware lets you select each of these 4 vars from a small mux list.
+                    ' for example Source1 could be 0, 1, fixed color, vertex color, or texture color, etc.
                     ' I chose not to do that muxing here but just be aware that is how it was accomplished.
 
                     If a0 > 0 Then
@@ -3135,7 +3131,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
                             ' Stage 1 - Texture
                             '
 
-                            ' alpha2 determines contribution of t2 color versus t1 color
+                            ' Alpha channel of T2 determines contribution of T2 color versus T1 color.
                             Static T2_weight As Single
                             T2_weight = a2 / 255.0
 
@@ -3195,7 +3191,7 @@ Sub TwoTextureTriangle (A As vertex10, B As vertex10, C As vertex10)
 
                         'PSet (col, row), pixel_value
                         _MemPut screen_mem_info, screen_address, pixel_value
-                    End If
+                    End If ' a0
 
                 End If ' tex_z
 
@@ -3465,6 +3461,7 @@ Sub TexturedNonlitTriangle (A As vertex10, B As vertex10, C As vertex10)
 
             ' Draw the Horizontal Scanline
             ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
+            ' Relies on some shared T1 variables over by Texture1
             screen_address = screen_row_base + 4 * col
             While col < draw_max_x
 

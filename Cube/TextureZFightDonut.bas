@@ -1,6 +1,6 @@
 Option _Explicit
 _Title "Texture Z Fight Donut"
-' 2023 Haggarman
+' 2025 Haggarman
 ' Demonstrate Z Fighting bias on textured cubes in 3D.
 ' Cubes intentionally overlap, so that there is texture fighting.
 ' Press the + Plus or - Minus keyboard keys to scale the Z Fight bias.
@@ -9,6 +9,7 @@ _Title "Texture Z Fight Donut"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  6/06/2025 - Make projection matrix consistent across these programs (+Y is up).
 '  3/04/2023 - Bugfix for wide triangles (make col a Long)
 '  2/23/2023 - Texture wrapping options
 '  2/18/2023 - Utilize all reasonable and known methods to speed up the inner pixel X drawing loop.
@@ -124,12 +125,12 @@ Frustum_Aspect_Ratio = _Height / _Width
 Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
 
 Dim matProj(3, 3) As Single
-matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-matProj(1, 1) = Frustum_FOV_ratio
-matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-matProj(2, 3) = 1.0
-matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
-matProj(3, 3) = 0.0
+matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is wider than it is tall.
+matProj(1, 1) = -Frustum_FOV_ratio ' output Y = input Y * factors. Negate so that +Y is up
+matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, scale factor applied to input Z.
+matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, constant offset.
+matProj(2, 3) = 1.0 ' divide outputs X and Y by input Z.
+' All other matrix elements assumed 0.0
 
 ' Viewing area clipping
 Dim Shared clip_min_y As Long, clip_max_y As Long
@@ -950,9 +951,9 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
 
     ' Normalizing
     If www <> 0.0 Then
-        o.w = 1 / www 'optimization
+        o.w = 1 / www ' optimization
         o.x = o.x * o.w
-        o.y = -o.y * o.w 'because I feel +Y is up
+        o.y = o.y * o.w
         o.z = o.z * o.w
     End If
 End Sub

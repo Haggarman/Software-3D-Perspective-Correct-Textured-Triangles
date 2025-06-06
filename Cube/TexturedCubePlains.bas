@@ -1,6 +1,6 @@
 Option _Explicit
 _Title "Textured Cube Plains"
-' 2023 Haggarman
+' 2025 Haggarman
 ' Plane of rectangles to test fill rate and near frustum clipping.
 ' Adjust the field of view with + or - keys.
 ' Move inside the rectangles and/or enlarge the FOV to really see the clipping action.
@@ -13,6 +13,7 @@ _Title "Textured Cube Plains"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  6/06/2025 - Make projection matrix consistent across these programs (+Y is up).
 '  3/04/2023 - Bugfix for wide triangles (make col a Long)
 '  2/28/2023 - Improved near frustum clipping
 '  2/27/2023 - Frustum near clipping
@@ -121,15 +122,15 @@ Frustum_Near = 0.5
 Frustum_Far = 1000.0
 Frustum_FOV_deg = 60.0
 Frustum_Aspect_Ratio = _Height / _Width
-Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
+Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5)) ' 90 degrees gives 1.0
 
 Dim Shared matProj(3, 3) As Single
-matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-matProj(1, 1) = Frustum_FOV_ratio
-matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-matProj(2, 3) = 1.0
-matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
-matProj(3, 3) = 0.0
+matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is wider than it is tall.
+matProj(1, 1) = -Frustum_FOV_ratio ' output Y = input Y * factors. Negate so that +Y is up
+matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, scale factor applied to input Z.
+matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, constant offset.
+matProj(2, 3) = 1.0 ' divide outputs X and Y by input Z.
+' All other matrix elements assumed 0.0
 
 ' Viewing area clipping
 Dim Shared clip_min_y As Long, clip_max_y As Long
@@ -860,14 +861,16 @@ Data 0,48,16,32,16,48
 Data 0,3
 
 Sub FOVchange
+    ' requires Frustum_FOV_deg, Frustum_Aspect_Ratio, Frustum_Far, Frustum_Near
     If Frustum_FOV_deg < 10.0 Then Frustum_FOV_deg = 10.0
     If Frustum_FOV_deg > 140.0 Then Frustum_FOV_deg = 140.0
     Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
-    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-    matProj(1, 1) = Frustum_FOV_ratio
-    matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-    matProj(2, 3) = 1.0
-    matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
+    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is wider than it is tall.
+    matProj(1, 1) = -Frustum_FOV_ratio ' output Y = input Y * factors. Negate so that +Y is up
+    matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, scale factor applied to input Z.
+    matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, constant offset.
+    matProj(2, 3) = 1.0 ' divide outputs X and Y by input Z.
+    ' All other matrix elements assumed 0.0
 End Sub
 
 Sub NearClip (A As vec3d, B As vec3d, C As vec3d, D As vec3d, TA As vertex_attribute5, TB As vertex_attribute5, TC As vertex_attribute5, TD As vertex_attribute5, result As Integer)
@@ -1076,7 +1079,7 @@ End Sub
 
 
 ' Multiply a 3D vector into a 4x4 matrix and output another 3D vector
-'
+' Important!: matrix o must be a different variable from matrix i. if i and o are the same variable it will malfunction.
 ' To understand the optimization here. Mathematically you can only multiply matrices of the same dimension. 4 here.
 ' But I'm only interested in x, y, and z; so don't bother calculating "w" because it is always 1.
 ' Avoiding 7 unnecessary extra multiplications
@@ -1211,6 +1214,9 @@ Sub Matrix4_MakeRotation_X (deg As Single, m( 3 , 3) As Single)
 End Sub
 
 Sub Matrix4_PointAt (psn As vec3d, target As vec3d, up As vec3d, m( 3 , 3) As Single)
+    ' It will create a matrix that keeps target centered onscreen
+    '  from the vantage point of psn. It will pivot on a gimbal.
+
     ' Calculate new forward direction
     Dim newForward As vec3d
     Vector3_Delta target, psn, newForward
@@ -1258,9 +1264,9 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
 
     ' Normalizing
     If www <> 0.0 Then
-        o.w = 1 / www 'optimization
+        o.w = 1 / www ' optimization
         o.x = o.x * o.w
-        o.y = -o.y * o.w 'because I feel +Y is up
+        o.y = o.y * o.w
         o.z = o.z * o.w
     End If
 End Sub

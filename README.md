@@ -77,25 +77,32 @@ Yes | Z-Fight Bias
 
 ## Programs sorted by complexity
  This table lists the rough order in which the programs were written. The programs features get more complicated further down the list.
+
+### Cube programs
 <dl>
  <dt>VertexColorCube.bas</dt>
-  <dd>As basic as it gets.</dd>
+  <dd>As basic as it gets to demonstrate perspective correct texturing.</dd>
  <dt>TexturedCubePlains.bas</dt>
   <dd>Fly over and spin a grass plane and also adjust Field of View.</dd>
+ <dt>TextureZFightDonut.bas</dt>
+  <dd>Z Fight Bias adjustment. Back away to see interesting table fog (pixel fog) effect.</dd>
  <dt>DitherColorCube.bas</dt>
   <dd>Colorful RGB 555 Bayer Dithering example.</dd>
- <dt>TextureZFightDonut.bas</dt>
-  <dd>Z Fight Bias adjustment and interesting table fog (pixel fog) effect.</dd>
- <dt>SkyboxLongTube.bas</dt>
-  <dd>Skybox background, near plane clipping, and major drawing speed increase.</dd>
+ <dt>DitherDeditherColorCube.bas</dt>
+  <dd>Amazingly simple filter to recover RGB 888 from a dithered RGB 555 render.</dd>
  <dt>VertexAlphaDitherColorCube.bas</dt>
   <dd>Back to the Cube for testing Alpha Transparency.</dd>
  <dt>ColorCubeAffine.bas</dt>
-  <dd>Easily toggle Affine versus Perspective Correct triangle rendering.</dd>
+  <dd>For that Playstation 1 look, easily toggle Affine versus Perspective Correct triangle rendering.</dd>
+</dl>
+### Skybox programs
+<dl>
+ <dt>SkyboxLongTube.bas</dt>
+  <dd>Stay inside the cube to get a Skybox background. Near plane clipping and major drawing speed increase.</dd>
  <dt>SkyboxTrees.bas</dt>
-  <dd>Procedural Road and Tree drawing. Allows Camera Pitch.</dd>
+  <dd>No more cube blocks. Procedural Road and Tree drawing. Alpha masking around trees. Allows Camera Pitch.</dd>
  <dt>TwinTextureTriangles.bas</dt>
-  <dd>TwiN Texturing (TNT). Orange lights circling above the road.</dd>
+  <dd>TwiN Texturing (TNT). Animated orange lights circling above the road.</dd>
  <dt>IsotropicMipmapRoad.bas</dt>
   <dd>Integer Level of Detail (LOD) calculation selects which size road texture to draw.</dd>
  <dt>TrilinearMipmapRoad.bas</dt>
@@ -104,8 +111,11 @@ Yes | Z-Fight Bias
   <dd>An alpha-blended, alpha-masked, mipmapped fence to go alongside the road.</dd>
  <dt>TrilinearVariants.bas</dt>
   <dd>Adds a moving sun light source to the road and fence scene, and you can switch between 5 or 8 point TLMMI</dd>
+</dl>
+### AliasObj 3D Object File programs
+<dl>
  <dt>AliasObjFile.bas</dt>
-  <dd>Loads .obj files and draws them with Gouraud shading (ambient, diffuse, and specular vertex lighting).</dd>
+  <dd>Loads .obj with .mtl model files and renders them with environmental shading (ambient, diffuse, and specular vertex lighting).</dd>
 </dl>
 
 ## Triangles
@@ -117,18 +127,22 @@ Yes | Z-Fight Bias
 
  Simplified pseudocode example:
 ```
-X1_start = 8.0 'minor edge
-X1_step = -0.5
+X1_start = 6.0 'minor edge AtoB
+X1_step = -1
 
-X2_start = 6.0 'major edge
-X2_step = 0.25
+X2_start = 6.0 'major edge AtoC
+X2_step = 1.2
+
+Y_middle = 5  'minor edge BtoC
+X3_step = 2.5
 
 X1_acc = X1_start
 X2_acc = X2_start
-For Y = 1 to 10
-  drawline(X1_acc, Y, X2_acc, Y)
-  X1_acc = X1_acc + X1_step
-  X2_acc = X2_acc + X2_step
+For Y = 1 To 10
+    Line (X1_acc, Y)-(X2_acc, Y)
+    If Y = Y_middle Then X1_step = X3_step
+    X1_acc = X1_acc + X1_step
+    X2_acc = X2_acc + X2_step
 Next Y
 ```
 ### DDA as Applied to Triangles

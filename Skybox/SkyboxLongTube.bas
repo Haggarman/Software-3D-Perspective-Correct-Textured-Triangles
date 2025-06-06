@@ -1,11 +1,13 @@
 Option _Explicit
 _Title "Skybox Long Tube"
-' 2023 Haggarman
+' 2025 Haggarman
 ' Since we now have frustum near clipping, we can draw a skybox.
 '
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'
+'  6/06/2025 - Make projection matrix consistent across these programs (+Y is up).
 '  3/04/2023 - Bugfix for wide triangles (make col a Long)
 '  2/28/2023 - Skybox
 '  2/27/2023 - Frustum near clipping
@@ -122,23 +124,16 @@ End Type
 ' Projection Matrix
 Dim Shared Frustum_Near As Single
 Dim Shared Frustum_Far As Single
-Dim Shared Frustum_FOV_deg As Single
 Dim Shared Frustum_Aspect_Ratio As Single
+Dim Shared Frustum_FOV_deg As Single
 Dim Shared Frustum_FOV_ratio As Single
+Dim Shared matProj(3, 3) As Single
 
 Frustum_Near = 0.5
 Frustum_Far = 1000.0
-Frustum_FOV_deg = 100.0
 Frustum_Aspect_Ratio = _Height / _Width
-Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
-
-Dim Shared matProj(3, 3) As Single
-matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-matProj(1, 1) = Frustum_FOV_ratio
-matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-matProj(2, 3) = 1.0
-matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
-matProj(3, 3) = 0.0
+Frustum_FOV_deg = 100.0
+FOVchange
 
 ' Viewing area clipping
 Dim Shared clip_min_y As Long, clip_max_y As Long
@@ -188,15 +183,12 @@ Dim Shared T1_height As Integer, T1_height_MASK As Integer
 Dim Shared T1_Filter_Selection As Integer
 Dim Shared T1_mblock As _MEM
 
+' Texture sampling
 Dim Shared T1_options As _Unsigned Long
-Dim Shared T1_option_clamp_width As _Unsigned Long
-Dim Shared T1_option_clamp_height As _Unsigned Long
-Dim Shared T1_option_alpha_channel As _Unsigned Long
-Dim Shared T1_option_no_backface_cull As _Unsigned Long
-T1_option_clamp_width = 1 'constant
-T1_option_clamp_height = 2 'constant
-T1_option_alpha_channel = 8 'constant
-T1_option_no_backface_cull = 16 'constant
+Const T1_option_clamp_width = 1
+Const T1_option_clamp_height = 2
+Const T1_option_alpha_channel = 8
+Const T1_option_no_backface_cull = 16
 
 ' Later optimization requires these to be powers of 2.
 ' That means: 2,4,8,16,32,64,128,256...
@@ -299,7 +291,6 @@ For refIndex = 0 To 5
         End
     End If
     Print refIndex; _Width(SkyBoxRef(refIndex)); _Height(SkyBoxRef(refIndex))
-
 Next refIndex
 
 _PutImage (128, 0), SkyBoxRef(2)
@@ -411,12 +402,14 @@ Dim vTarget As vec3d
 Dim matCamera(3, 3) As Single
 
 
-' Directional light 1-17-2023
+' Sun
 Dim vLightDir As vec3d
 vLightDir.x = -0.5
-vLightDir.y = 0.6 ' +Y is now up
+vLightDir.y = 0.6 ' +Y is up
 vLightDir.z = 0.4
 Vector3_Normalize vLightDir
+
+' Directional light 1-17-2023
 Dim Shared Light_Directional As Single
 Dim Shared Light_AmbientVal As Single
 Light_AmbientVal = 0.3
@@ -733,7 +726,7 @@ Do
         Vector3_Add point2, vCameraPsn, pointTrans2
 
         ' Part 2 (Triangle Surface Normal Calculation)
-        CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
+        'CalcSurfaceNormal_3Point pointTrans0, pointTrans1, pointTrans2, tri_normal
 
         ' The dot product to this skybox surface is just the way you are facing.
         ' The surface completely behind you is going to get later removed with NearClip.
@@ -1100,14 +1093,16 @@ Data 3,3
 
 
 Sub FOVchange
+    ' requires Frustum_FOV_deg, Frustum_Aspect_Ratio, Frustum_Far, Frustum_Near
     If Frustum_FOV_deg < 10.0 Then Frustum_FOV_deg = 10.0
-    If Frustum_FOV_deg > 140.0 Then Frustum_FOV_deg = 140.0
+    If Frustum_FOV_deg > 120.0 Then Frustum_FOV_deg = 120.0
     Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
-    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-    matProj(1, 1) = Frustum_FOV_ratio
-    matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-    matProj(2, 3) = 1.0
-    matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
+    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is wider than it is tall.
+    matProj(1, 1) = -Frustum_FOV_ratio ' output Y = input Y * factors. Negate so that +Y is up
+    matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, scale factor applied to input Z.
+    matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, constant offset.
+    matProj(2, 3) = 1.0 ' divide outputs X and Y by input Z.
+    ' All other matrix elements assumed 0.0
 End Sub
 
 Sub NearClip (A As vec3d, B As vec3d, C As vec3d, D As vec3d, TA As vertex_attribute5, TB As vertex_attribute5, TC As vertex_attribute5, TD As vertex_attribute5, result As Integer)
@@ -1498,15 +1493,15 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
     Dim www As Single
     o.x = i.x * m(0, 0) + i.y * m(1, 0) + i.z * m(2, 0) + m(3, 0)
     o.y = i.x * m(0, 1) + i.y * m(1, 1) + i.z * m(2, 1) + m(3, 1)
-    o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
+    'o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
     www = i.x * m(0, 3) + i.y * m(1, 3) + i.z * m(2, 3) + m(3, 3)
 
     ' Normalizing
     If www <> 0.0 Then
         o.w = 1 / www 'optimization
         o.x = o.x * o.w
-        o.y = -o.y * o.w 'because I feel +Y is up
-        o.z = o.z * o.w
+        o.y = o.y * o.w
+        'o.z = o.z * o.w
     End If
 End Sub
 

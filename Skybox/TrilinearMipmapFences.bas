@@ -1,6 +1,6 @@
 Option _Explicit
-_Title "Tri-Linear Mipmap Fences 139"
-' 2024 Haggarman
+_Title "Tri-Linear Mipmap Fences 140"
+' 2025 Haggarman
 ' Well I finally made it here. Trilinear Mip Mapping.
 ' Toggle false colors with (F) and move around with the arrow keys.
 ' (M)ode 0 = no mipmap
@@ -14,6 +14,7 @@ _Title "Tri-Linear Mipmap Fences 139"
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
 '
+'  6/06/2025 - Make projection matrix consistent across these programs (+Y is up).
 '  3/02/2024 - LOD aspect ratio
 '  2/23/2024 - Improved alpha blending
 '  1/22/2024 - LOD using no square root and no log2f()
@@ -2071,11 +2072,12 @@ Sub FOVchange
     If Frustum_FOV_deg < 10.0 Then Frustum_FOV_deg = 10.0
     If Frustum_FOV_deg > 120.0 Then Frustum_FOV_deg = 120.0
     Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
-    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-    matProj(1, 1) = Frustum_FOV_ratio
-    matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-    matProj(2, 3) = 1.0
-    matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
+    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is wider than it is tall.
+    matProj(1, 1) = -Frustum_FOV_ratio ' output Y = input Y * factors. Negate so that +Y is up
+    matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, scale factor applied to input Z.
+    matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, constant offset.
+    matProj(2, 3) = 1.0 ' divide outputs X and Y by input Z.
+    ' All other matrix elements assumed 0.0
 End Sub
 
 
@@ -2504,7 +2506,7 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
     If www <> 0.0 Then
         o.w = 1 / www 'optimization
         o.x = o.x * o.w
-        o.y = -o.y * o.w 'because I feel +Y is up
+        o.y = o.y * o.w
         'o.z = o.z * o.w
     End If
 End Sub

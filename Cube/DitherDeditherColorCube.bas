@@ -1,6 +1,6 @@
 Option _Explicit
 _Title "Dither De-Dither Color Cube"
-' 2023 Haggarman
+' 2025 Haggarman
 ' Draw a few transparent cubes in 3D. Press S to stop the cubes in a nice spot. Press D multiple times as you compare the results.
 '
 ' De-dither is such a simple idea to recover lost bits of color info as the video signal is streamed out.
@@ -15,6 +15,7 @@ _Title "Dither De-Dither Color Cube"
 ' Camera and matrix math code translated from the works of Javidx9 OneLoneCoder.
 ' Texel interpolation and triangle drawing code by me.
 ' 3D Triangle code inspired by Youtube: Javidx9, Bisqwit
+'  6/06/2025 - Make projection matrix consistent across these programs (+Y is up).
 '  5/18/2024 - Sort objects by Z so that translucency is drawn back to front.
 ' 10/05/2023 - De-dither filter as described from an SGI interview.
 '  3/04/2023 - Bugfix for wide triangles (make col a Long)
@@ -131,15 +132,15 @@ Frustum_Near = 0.1
 Frustum_Far = 1000.0
 Frustum_FOV_deg = 60.0
 Frustum_Aspect_Ratio = _Height / _Width
-Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
+Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5)) ' 90 degrees gives 1.0
 
 Dim matProj(3, 3) As Single
-matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio
-matProj(1, 1) = Frustum_FOV_ratio
-matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near)
-matProj(2, 3) = 1.0
-matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near)
-matProj(3, 3) = 0.0
+matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is wider than it is tall.
+matProj(1, 1) = -Frustum_FOV_ratio ' output Y = input Y * factors. Negate so that +Y is up
+matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, scale factor applied to input Z.
+matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, constant offset.
+matProj(2, 3) = 1.0 ' divide outputs X and Y by input Z.
+' All other matrix elements assumed 0.0
 
 ' Viewing area clipping
 Dim Shared clip_min_y As Long, clip_max_y As Long
@@ -357,11 +358,12 @@ Dim halfHeight As Single
 halfWidth = Size_Render_X / 2
 halfHeight = Size_Render_Y / 2
 
-' Triangle Vertex List
+' Projected Screen Coordinate List
 Dim SX0 As Single, SY0 As Single
 Dim SX1 As Single, SY1 As Single
 Dim SX2 As Single, SY2 As Single
 
+' Triangle Vertex List
 Dim vertexA As vertex9
 Dim vertexB As vertex9
 Dim vertexC As vertex9
@@ -846,7 +848,7 @@ Data 0,3
 
 
 ' Multiply a 3D vector into a 4x4 matrix and output another 3D vector
-'
+' Important!: matrix o must be a different variable from matrix i. if i and o are the same variable it will malfunction.
 ' To understand the optimization here. Mathematically you can only multiply matrices of the same dimension. 4 here.
 ' But I'm only interested in x, y, and z; so don't bother calculating "w" because it is always 1.
 ' Avoiding 7 unnecessary extra multiplications
@@ -981,6 +983,9 @@ Sub Matrix4_MakeRotation_X (deg As Single, m( 3 , 3) As Single)
 End Sub
 
 Sub Matrix4_PointAt (psn As vec3d, target As vec3d, up As vec3d, m( 3 , 3) As Single)
+    ' It will create a matrix that keeps target centered onscreen
+    '  from the vantage point of psn. It will pivot on a gimbal.
+
     ' Calculate new forward direction
     Dim newForward As vec3d
     Vector3_Delta target, psn, newForward
@@ -1028,9 +1033,9 @@ Sub ProjectMatrixVector4 (i As vec3d, m( 3 , 3) As Single, o As vec4d)
 
     ' Normalizing
     If www <> 0.0 Then
-        o.w = 1 / www 'optimization
+        o.w = 1 / www ' optimization
         o.x = o.x * o.w
-        o.y = -o.y * o.w 'because I feel +Y is up
+        o.y = o.y * o.w
         o.z = o.z * o.w
     End If
 End Sub
