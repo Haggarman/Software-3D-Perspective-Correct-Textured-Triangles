@@ -95,7 +95,9 @@ Yes | Z-Fight Bias
  <dt>ColorCubeAffine.bas</dt>
   <dd>For that Playstation 1 look, easily toggle Affine versus Perspective Correct triangle rendering.</dd>
 </dl>
+
 ### Skybox programs
+
 <dl>
  <dt>SkyboxLongTube.bas</dt>
   <dd>Stay inside the cube to get a Skybox background. Near plane clipping and major drawing speed increase.</dd>
@@ -112,7 +114,9 @@ Yes | Z-Fight Bias
  <dt>TrilinearVariants.bas</dt>
   <dd>Adds a moving sun light source to the road and fence scene, and you can switch between 5 or 8 point TLMMI</dd>
 </dl>
+
 ### AliasObj 3D Object File programs
+
 <dl>
  <dt>AliasObjFile.bas</dt>
   <dd>Loads .obj with .mtl model files and renders them with environmental shading (ambient, diffuse, and specular vertex lighting).</dd>
@@ -398,6 +402,10 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 ### Hardware considerations
  Go take a close look at the circuit board of a 3D graphics accelerator from around 1996 - 2002 searching for the memory chips. You will notice them in groups of 4. This is entirely due to bilinear sampling. The need is to pull four 16-bit texture samples in one read cycle, requiring a 64-bit bus at minimum. The general expectation set by 3dfx became zero-penalty 4-point bilinear texture sampling.
 
+ When a texture is loaded, its data needs to be swizzled so that any 4 possible samples are adjacent. So for example texels (0,0), (1,0), (0,1), and (1,1) are stored into the first available address in each chip respectively. What comes next in the sequence is vendor dependent. But however it is done a sample request anywhere needs to hit all 4 chips at one time.
+
+ If a texture was just stored in rows then columns order like it is when in CPU RAM, then typically only 2 chips would get fetched from twice to retrieve a bilinear sample. Halving the speed like this wouldn't be competitive when the solution is just swapping some address lines around.
+
  Photo: Each of the four EDO-RAM chips have a 16-bit bus, creating a 64 bit wide bus. The texturing performance issues are more to do with the memory controller and lack of texture cache on the 86C325, because 50 nanoseconds is quite fast for the time.
 
 ![S3_ViRGE_4RAM](/docs/S3_ViRGE_4RAM.jpg)
@@ -410,6 +418,18 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 3. Mirror - (uncommon) Texture coordinates fold back symmetrically. For example 2 texels above the maximum, coordinate becomes maximum - 2.
 
  A program named *TextureWrapOptions.bas* in the Concepts folder was used to develop the Tile versus Clamp options. It draws a 2D visual as the options are changed by pressing number keys on the keyboard.
+
+### Half texel offset
+ When using bilinear filtering, the generally accepted practice is to offset texel coordinates by 0.5 in both dimensions. When using nearest neighbor, it is not offset.
+ 
+ The shortest explanation for a 0.5 offset is that it looks better. A slightly deeper explanation has to do with a natural numerical tendency to want to creep towards and away from (0, 0) when down/upsampling the surrounding 4 pixels.
+ 
+ If we take a broad look towards the most common characteristic of a texture on a Graphics Accelerator, it is that it has a length and width of a power of 2. The four corners of a texture in (U, V) coordinates are (0, 0) to (width, 0) to (width, height) to (0, height).
+
+ Because texture length and width are even numbers, there is no exact center pixel. For example, on a 32 x 32 texture, the exact "center" is at 15.5, straddling 15 and 16. Superficially, this is where the 0.5 offset comes from. Images upscaled and downscaled from center have less introduced anomalies.
+
+#### Pedantic footnote
+ Yes 1 is a power of 2. Yes 1 is odd, but no it is not useful to mention this.
 
 ## Color Blending
  To arrive at the blended color for a given pixel, Graphics Accelerators made available a linear interpolation circuit in the form of:
