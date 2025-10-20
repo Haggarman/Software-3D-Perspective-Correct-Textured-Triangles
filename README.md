@@ -188,10 +188,10 @@ Next Y
  The start value of Y at vertex A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation. This also holds true for the start of each horizontal span. The starting X is also rounded up to the next integer. The span attribute's starting X values are also interpolated ahead using the amount by which X was rounded up.
 
 ## Lighting
- To make a scene look more realistic, for little additional cost the colors of the triangles can be changed based on distance and on how they face a light source. As far as renderer hardware is concerned, this is a matter of the using color attributes sent over to it. In other words the main CPU (or a coprocessor) is responsible for doing the lighting calculations as desired.
+ To make a scene look more realistic, for little additional cost the colors of the triangles can be changed based on distance and on how they face a light source. As far as renderer hardware is concerned, this is a matter of using the color attributes sent over to it. In other words the main CPU (or a coprocessor) is responsible for doing the lighting calculations as desired.
 
 ### Flat shading
- For flat shading, the entirety of the triangle is given the same color shade. Either the color of the triangle can directly be sent over, or a fixed color register set beforehand and then modulating value that represents brightness can be sent over. Flat shading gives a "blocky" look especially when paired with meshes composed of a very low number of triangles.
+ For flat shading, the entirety of the triangle is given the same color shade. Either the color of the triangle can directly be sent over as part of the command parameters, or a fixed color register set beforehand and then a modulating value that represents brightness can be sent over. Flat shading gives a "blocky" look especially when paired with meshes composed of a very low number of triangles.
 
 ### Gouraud Shading
  Gouraud shading offers a visual improvement as compared to flat shading, for a little more effort.
