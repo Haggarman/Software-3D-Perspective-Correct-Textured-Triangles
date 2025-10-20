@@ -20,6 +20,8 @@
 
  Instead, it had to be decades later when a random Youtube video suggestion led me to javidx9 "Code-It-Yourself! 3D Graphics Engine" series. To him I am eternally grateful for cutting through the rubbish and explaining things in a straightforward manner. I was once again able to soar, getting to write performant realtime tri-linear mip-mapping, which was the darling technology of the time.
 
+ This repository represents the 3D texturing programming book I wish I had when I was in highschool.
+
 ## Screenshots
  ![Trimaxion](/docs/Trimaxion.png)
  ![Aika](/docs/Aika.png)
@@ -127,7 +129,7 @@ Yes | Z-Fight Bias
  The triangles are specified by vertexes A, B, and C. They are sorted by the triangle drawing subroutine so that A is always on top and C is always on the bottom. That still leaves two categories where the knee at B faces left or right. The triangle drawing subroutine also adjusts for this so that pixels are drawn from left to right.
  ![TrianglesABC](/docs/TrianglesABC.png)
 ### DDA
- DDA (Digital Difference Analyzer) is a complicated name for a simple concept. Count from a start value to an end value by steps of 1. And then set up additional counter(s) that change in value along with those steps.
+ DDA (Digital Difference Analyzer) is a complicated name for a simple concept. Count from a start value to an end value by steps of 1. And then set up additional accumulators that change in value along with those steps.
 
  Simplified pseudocode example:
 ```
@@ -152,28 +154,53 @@ Next Y
 ### DDA as Applied to Triangles
  The DDA algorithm is used to simultaneously step on whole number Y increments from vertex Ax to vertex Cx on the major edge, and from vertex Ax to vertex Bx on the minor edge. When the Minor Edge DDA reaches vertex By, the minor edge start values and steps are recalculated to be from vertex Bx to vertex Cx. This process is often termed "edge walking". Note that for a flat-topped triangle where vertex By = vertex Ay, the minor edge recalculation is performed immediately.
 
- Horizontal spans of pixels are drawn from Major edge X to Minor edge X-1. This process of writing to sequential memory addresses can be performed at the maximum speed of the video memory with a very efficient hardware-assisted pixel pipeline. The purpose of drawing up to but not including Minor edge X has to do with overdraw. Two triangles sharing two vertexes will have the pixels of the shared edge redrawn, wasting cycles. This is in fact so commonly encountered when drawing meshes, it has the term "rounding rule". The rounding rule for this rasterizer is to skip the rightmost and bottom pixels.
+ Horizontal spans of pixels are drawn from X1 to X2. This process of writing to sequential memory addresses can be performed at the maximum speed of the video memory with a very efficient hardware-assisted pixel pipeline.
+
 ### Demonstration
- Please see the program in the Concepts folder titled *TwoTriangles.bas* for a concise example of how DDA is used to draw textured triangles.
+ Please see the program in the Concepts folder titled *TwoTriangles.bas* for a concise example of how DDA is used to draw textured triangles. I wouldn't want you the reader to get bored so it does do texturing. The hope is that you can see how a set of 3 geometric points (vertexA, vertexB, and vertexC) get rasterized as a triangle using DDA.
+
+### Rasterize?
+ In this context, to rasterize means to draw a geometrically defined shape as pixels using evenly spaced parallel lines. Similar to how a CRT monitor draws the display image using horizontal lines row by row, or a typewriter stamps characters onto paper from left to right, top to bottom.
+
+### Overdraw
+ In the Two Triangles example, the purpose of drawing up to but not including the rightmost pixel on a horizontal span has to do with overdraw. Two triangles sharing two vertexes will have the pixels of the shared edge redrawn, wasting cycles. This is in fact so commonly encountered when drawing meshes, it has the term "rounding rule". The rounding rule for this rasterizer is to skip the rightmost and bottom pixels.
+
+### Mesh?
+ When thinking of a mesh, think of a large quilt sewn from smaller squares. The idea of a mesh is a repeating pattern of consistently sized shapes sharing edges and vertexes.
+
+ For example, two right triangles that share the same hypotenuse creates a square. Consider the corners (vertexes) of a square-shaped repeating pattern labeled A, B, C, D in a clockwise order. The first triangle is A, B, C. And the second triangle is A, C, D. The line from A to C is shared.
+
+ Now connect a series of these squares together aligning edges, making a grid or in other words a 2D mesh. Notice edges A to B, B to C, C to D, and D to A are shared. Without the "rounding rule" these edges would be drawn twice. A pixel at a vertex in the middle would be drawn 8 times.
+ 
+ To take this to its conclusion-- When modeling a 3D object as a mesh, a way to think of it is like wrapping a quilt around the object. Triangles rarely stand alone and are more likely part of a mesh that represents an object.
 
 ### Why use DDA?
  DDA was used because not all math operations complete in the same amount of time. In this case we are comparing repeated additions to an accumulator, versus multiply then divide operations.
- Addition requires significantly less circuitry than division. Division also requires multiple clocks whereas addition can complete in one clock. Multiplication is somewhere inbetween, but any multiplication that can be avoided helps speed.
+ Addition requires significantly less circuitry than division. Division also requires multiple clocks whereas addition can complete in one clock. Multiplication is somewhere in-between, but any multiplication that can be avoided helps speed.
  
  In other words, dividing (deltax / deltay) once before a loop to determine a step value and then adding that step value, is going to be faster than multiplying and dividing at every single step within the loop.
  
  Sneakily, many of the earliest PC graphics accelerators left the division calculation up the main system CPU as part of the driver library. The driver then fed these DDA values over to the Graphics Accelerator in a large block move.
+
 ### Pre-stepping
  vertexAy is a floating point value but pixels are evenly spaced at integers. It is not okay to just round vertex coordinates to the nearest screen pixel integer, as in motion this causes vertex wobbling and unsightly seams between adjacent triangles.
  
  The start value of Y at vertex A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation. This also holds true for the start of each horizontal span. The starting X is also rounded up to the next integer. The span attribute's starting X values are also interpolated ahead using the amount by which X was rounded up.
 
-### Gouraud Shading
- Gouraud shading offers a visual improvement as compared to flat shading (flat as in the entire triangle having one same color). Gouraud is very fast, but it does not factor in depth. This can make for odd results under close scrutiny.
+## Lighting
+ To make a scene look more realistic, for little additional cost the colors of the triangles can be changed based on distance and on how they face a light source. As far as renderer hardware is concerned, this is a matter of the using color attributes sent over to it. In other words the main CPU (or a coprocessor) is responsible for doing the lighting calculations as desired.
 
- As mentioned above, each triangle vertex can have attributes. For example it is common to assign Red, Green, Blue primary color components to each of the 3 vertexes. DDA can be used to smoothly transition the color across the face of the triangle.
+### Flat shading
+ For flat shading, the entirety of the triangle is given the same color shade. Either the color of the triangle can directly be sent over, or a fixed color register set beforehand and then modulating value that represents brightness can be sent over. Flat shading gives a "blocky" look especially when paired with meshes composed of a very low number of triangles.
+
+### Gouraud Shading
+ Gouraud shading offers a visual improvement as compared to flat shading, for a little more effort.
+
+ Each triangle's vertex can be made to have attributes beyond their location. For example it is common to assign Red, Green, Blue primary color components to each of the 3 vertexes. DDA can be used to smoothly transition the color across the face of the triangle.
 
  To try to explain this in the most simple way, it is calculated this way: Starting at vertex A, how much does the red color channel change when moving one pixel down? How much does red change when moving one pixel to the right? Repeat the calculations for green and blue channels respectively. Use these six values of delta Red per delta Y, delta Red per delta X, delta Green per delta Y, etc.  when drawing the triangle to affect the final color. For example the RGB values could be used directly for a non-textured colored triangle, or added to a color sampled from a texture, or multiplied with the texture color, or many other combinations.
+
+ Gouraud is very fast and uses minimal circuitry when it does not factor in depth. This can make for odd results under close scrutiny. It would still be called Gouraud shading even if depth was considered, but mid 1990's Graphics Accelerator hardware did not do that.
 
 ## Projection
 ### Core Concept
@@ -266,7 +293,17 @@ Affine      | Perspective
  Division is expensive, but overdraw of a pixel is ever so more. Division by Z can be optimized by multiplying by the inverse of Z instead. The visual benefits outweigh the costs and this is why reverse projection won.
 
 ## Clipping
+
+### Side Frustum Clipping
+ When using fixed point numbers, the triangles need to be clipped to the up, down, left, and right edges of the view frustum. If this isn't done, projected points will easily rollover and wrap around causing some pretty terrible looking visual glitches.
+
+ I'm not doing that here because I'm using floating point. The advantage of floating point is that we can range all the way up from negative infinity to positive infinity. A float's loss of precision as magnitude increases doesn't matter. At that point you're staring at a few blown up texels covering the entire screen, blocking the view of everything behind it.
+
+ I felt I would lose the plot and purpose here to do full frustum clipping. It's boring and brute-force and covered elsewhere.
+
 ### Near Frustum Clipping
+ Near frustum clipping is a necessity. For a plane where Z=0, this represents the camera's Z location in space. Since no two objects can occupy the same space, this dreaded divide-by-zero singularity needs to be avoided.
+
  For this discussion, I am asserting that an object moving forward from the viewer increases in +Z distance. Note this can differ in well-known graphics libraries.
 
  Projecting and rendering what is behind the camera (-Z) makes no sense perceptually. Although it might be mathematically correct for surfaces to invert that pass the Z=0 camera plane, we do not have double-sided eyeballs that are able to simultaneously project light onto both sides of our retinas. So we need to handle this limited field of view while rendering.
