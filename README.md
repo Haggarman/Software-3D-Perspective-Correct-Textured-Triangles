@@ -190,6 +190,10 @@ Next Y
 ## Lighting
  To make a scene look more realistic, for little additional cost the colors of the triangles can be changed based on distance and on how they face a light source. As far as renderer hardware is concerned, this is a matter of using the color attributes sent over to it. In other words the main CPU (or a coprocessor) is responsible for doing the lighting calculations as desired.
 
+Flat Shading | Gouraud Shading
+--- | ---
+ ![Flat Spoon(/docs/SpoonFlatShading.png) | ![Gouraud Spoon](/docs/SpoonGouraudShading.png)
+
 ### Flat shading
  For flat shading, the entirety of the triangle is given the same color shade. Either the color of the triangle can directly be sent over as part of the command parameters, or a fixed color register set beforehand and then a modulating value that represents brightness can be sent over. Flat shading gives a "blocky" look especially when paired with meshes composed of a very low number of triangles.
 
@@ -201,6 +205,13 @@ Next Y
  To try to explain this in the most simple way, it is calculated this way: Starting at vertex A, how much does the red color channel change when moving one pixel down? How much does red change when moving one pixel to the right? Repeat the calculations for green and blue channels respectively. Use these six values of delta Red per delta Y, delta Red per delta X, delta Green per delta Y, etc.  when drawing the triangle to affect the final color. For example the RGB values could be used directly for a non-textured colored triangle, or added to a color sampled from a texture, or multiplied with the texture color, or many other combinations.
 
  Gouraud is very fast and uses minimal circuitry when it does not factor in depth. This can make for odd results under close scrutiny. It would still be called Gouraud shading even if depth was considered, but mid 1990's Graphics Accelerator hardware did not do that.
+
+### Phong Shading
+ Mostly hype. Graphics Accelerators didn't offer to calculate this directly.
+
+ Blinn-Phong is basically a method to draw a specular highlight on top of a triangle's surface. That is, to draw a bright disc vaguely representing the sun or other strongly collimated light source.
+
+ If the specular (blinn-phong) lighting value calculated at each vertex is just added to the directional lighting (lambertian) value, one gets Specular Gouraud. If large triangles are drawn, highlight effects can only be seen at the vertexes of a mesh. If the mesh triangles are kept relatively small, the effect looks plenty convincing.
 
 ## Projection
 ### Core Concept
@@ -277,15 +288,19 @@ For X = 1 to 10
 Next X
 ```
 ### Reciprocal Hardware
- On the graphics accelerator cards, the Newton-Raphson method is used to find the inverse of a positive number. This includes a digital priority encoder to generate an initial guess, barrel shifters, a primary lookup table rom, and a second smaller lookup correction table rom, and some adders.
+ On the graphics accelerator cards, a dual lookup-table method is used to find the reciprocal.
 
- Because this era's hardware used fixed-point math, it was necessary to express the depth as ranging from 0 to 1 equivalent when it reached the graphics chip line rasterizer. For example s1.14 format. This range limitation made clipping to the near and far planes of the view frustum critical. There was a lot of pop-in where distant objects suddenly appeared. Pop-in was not only because of limited computing resources and fill rates. Geometry simply could not exist further out than the far clipping plane as far as the hardware was concerned.
+ Thanks goes to Semplar on Discord for explaining with this Desmos graph. The primary lookup table A holds the function (1 - X) / (1 + X) in range from 0.0 to 1.0, and the second table B holds the derivative of that function.
+
+![Reciprocal Method](/docs/ReciprocalMethodLUT.png)
+
+ Because this era's hardware used fixed-point math, it was necessary to express the depth as ranging from 0 to 1 equivalent when it reached the graphics chip line rasterizer. For example s1.14 format. This range limitation made clipping to the near and far planes of the view frustum critical. There was a lot of pop-in where distant objects suddenly appeared. Pop-in was not only because of limited computing resources and fill rates. Texturing simply could not exist further out than the far clipping plane as far as the hardware was concerned.
 
 ### Demonstration
  The program called *ColorCubeAffine.bas* allows you to easily flip between Affine and Perspective Correct rendering. Please review the code comments in the two locations where the small difference is made depending on the value of **Affine_Only**. The first location is where the vertex attributes are loaded in the main triangle drawing loop. The second location is where the pixel color value is determined in subroutine **TexturedVertexColorAlphaTriangle()**.
 Affine      | Perspective
 --- | ---
-![CubeAffine](/docs/CubeAffine.png) | ![CubePerspective](/docs/CubePerspective.png)
+ ![CubeAffine](/docs/CubeAffine.png) | ![CubePerspective](/docs/CubePerspective.png)
 
 ### Bottom Line
  Being willing to dedicate huge amounts of silicon real estate to perform this 1 / 1 / Z algorithm is what separated true perspective projection graphics acceleration hardware from the more primitive affine transformation hardware.
