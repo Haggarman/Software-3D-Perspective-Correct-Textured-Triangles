@@ -192,7 +192,7 @@ Next Y
 
 Flat Shading | Gouraud Shading
 --- | ---
- ![Flat Spoon(/docs/SpoonFlatShading.png) | ![Gouraud Spoon](/docs/SpoonGouraudShading.png)
+ ![Flat Spoon](/docs/SpoonFlatShading.png) | ![Gouraud Spoon](/docs/SpoonGouraudShading.png)
 
 ### Flat shading
  For flat shading, the entirety of the triangle is given the same color shade. Either the color of the triangle can directly be sent over as part of the command parameters, or a fixed color register set beforehand and then a modulating value that represents brightness can be sent over. Flat shading gives a "blocky" look especially when paired with meshes composed of a very low number of triangles.
