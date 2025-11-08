@@ -585,7 +585,14 @@ Y | . | # | # | #
  Think about rendering a certain text character like 'A' in size 8 font and again in size 120 font. You'd want both to look nice and not be pixellated.
  
  It is correct, however, that a given sized triangle will increase its average LOD when travelling further away from the viewer due to perspective projection.
+
+### False Coloring
+ To be able to visualize this better, each mipmap level can be given a false color tinting that is distinct from the others.
  
+ Here is a rendered road leading off into the distance, with the first reduction level being tinted red, then blue, then orange, purple, and finally green.
+
+ ![False Colored Mipmap Basic Concept](/docs/MipmapBasicConcept.png)
+
 ### Calculating LOD
 
  It takes entire articles to explain why, but let's simplify with this recipe:
@@ -611,6 +618,15 @@ Y | . | # | # | #
  So in the end, the fractional LOD portion is used in yet another round of interpolation between two bilinear interpolated RGB values, to reach the final pixel color values. Remember your adjectives: mono = 1, bi = 2, tri = 3.
  
  One could use 5 texel reads on the S3 ViRGE instead of 8. It could be configured so that the larger texture gets bilinear sampling, and the smaller texture gets nearest point sampling. And then combine the two to result in a modified tri-linear mipmap interpolation. As for a visual description, it looks fuzzy but still better than the abrupt changes of not having any interpolation.
+
+### More cheating
+ On the SGI Ultra 64 RDP, the largest of the four possible (u, v) deltas are taken as the mipmap level, without calculating the pythagorean distance. As in picking the largest delta_U or delta_V value in steps 2 and 3 above.
+ 
+ This overapplies the mipmap effect and produces an axis-aligned square shape that can be seen with false coloring.
+
+Ultra64 Square | Academic Curved
+--- | ---
+ ![Ultra64](/docs/MipmapUltra64.png) | ![Academic](/docs/MipmapAcademic.png)
 
 ### Limitations of mip mapping
 
