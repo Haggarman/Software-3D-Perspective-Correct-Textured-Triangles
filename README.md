@@ -290,9 +290,17 @@ Next X
 ### Reciprocal Hardware
  On the graphics accelerator cards, a dual lookup-table method is used to find the reciprocal.
 
- Thanks goes to Semplar on Discord for explaining with this Desmos graph. The primary lookup table A holds the function (1 - X) / (1 + X) in range from 0.0 to 1.0, and the second table B holds the derivative of that function.
+ Consider the function f(x) = (1 - x) / (1 + x) in range from 0.0 to 1.0 and how well behaved the curve is. As opposed to if 1 / x was used directly instead, where the function starts as undefined at x=0, and then rolls down from positive infinity as x increases.
 
-![Reciprocal Method](/docs/ReciprocalMethodLUT.png)
+ ![Reciprocal Method](/docs/ReciprocalMethodOneMinusX.png)
+
+ The primary lookup Table A holds the ability to calculate the reciprocal after some bit shifting of x, and the second Table B holds the derivative of Table A (as in difference between two adjacent values) to interpolate the gaps.
+
+ Thanks goes to Semplar on Discord for explaining with this Desmos graph.
+
+ ![Lookup Tables](/docs/ReciprocalMethodLUT.png)
+
+ Although pipelined, this operation had to be performed per pixel. This fast inverse algorithm is another secret sauce that made perspective correct texturing feasible. 
 
  Because this era's hardware used fixed-point math, it was necessary to express the depth as ranging from 0 to 1 equivalent when it reached the graphics chip line rasterizer. For example s1.14 format. This range limitation made clipping to the near and far planes of the view frustum critical. There was a lot of pop-in where distant objects suddenly appeared. Pop-in was not only because of limited computing resources and fill rates. Texturing simply could not exist further out than the far clipping plane as far as the hardware was concerned.
 
@@ -347,7 +355,7 @@ Triangle 1: A to B, B to C, **C to A**
 
 Triangle 2: **A to C**, C to D, D to A
 
-![Triangle Near Clip](/docs/NearClip.png)
+ ![Triangle Near Clip](/docs/NearClip.png)
 
 #### Number of Triangles
 
@@ -427,6 +435,38 @@ ID | Name | Description
 
  So it ends up being 3 area multiplications per color component. For RGB, that is just 9 total multiplications.
 
+```
+'Given floating point offset by -0.5 texel coordinates (cm5, rm5)
+'Also given clamped integer texture coordinates (cc, rr) and (cc1, rr1):
+Frac_cc1 = cm5 - Int(cm5)
+Frac_rr1 = rm5 - Int(rm5)
+
+If Frac_cc1 > Frac_rr1 Then
+    ' top-right
+    Area_11 = Frac_rr1
+    Area_00 = 1.0 - Frac_cc1
+    ' by substitution, Area_2f = 1.0 - (Area_00 + Area_11)
+    Area_2f = Frac_cc1 - Frac_rr1
+
+    uv_f = Texture1(cc1, rr)
+Else
+    ' bottom-left
+    Area_00 = 1.0 - Frac_rr1
+    Area_11 = Frac_cc1
+    Area_2f = Frac_rr1 - Frac_cc1
+
+    uv_f = Texture1(cc, rr1)
+End If
+
+uv_0_0 = Texture1(cc, rr)   ' top left
+uv_1_1 = Texture1(cc1, rr1) ' bottom right
+
+' HERE ARE THE 9 MULTIPLICATIONS
+r0 = _Red32(uv_f)   * Area_2f + _Red32(uv_0_0)   * Area_00 + _Red32(uv_1_1)   * Area_11
+g0 = _Green32(uv_f) * Area_2f + _Green32(uv_0_0) * Area_00 + _Green32(uv_1_1) * Area_11
+b0 = _Blue32(uv_f)  * Area_2f + _Blue32(uv_0_0)  * Area_00 + _Blue32(uv_1_1)  * Area_11
+```
+
 ### 4 Point Bilinear
 
  More tricks for speed even with bilinear.
@@ -435,7 +475,7 @@ ID | Name | Description
  The straightforward approach is to use weights to tug at the four corners of a unit square. For RGB, this requires 15 multiplications:
 
 ```
-Given packed RGB values T1_uv_0_0, T1_uv_1_0, T1_uv_0_1, T1_uv_1_1; and texel coordinate (cm5, rm5):
+'Given packed RGB values T1_uv_0_0, T1_uv_1_0, T1_uv_0_1, T1_uv_1_1; and texel coordinate (cm5, rm5):
 Frac_cc1 = cm5 - Int(cm5)
 Frac_rr1 = rm5 - Int(rm5)
 
@@ -460,7 +500,7 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 
  Photo: Each of the four EDO-RAM chips have a 16-bit bus, creating a 64 bit wide bus. The texturing performance issues are more to do with the memory controller and lack of texture cache on the 86C325, because 50 nanoseconds is quite fast for the time.
 
-![S3_ViRGE_4RAM](/docs/S3_ViRGE_4RAM.jpg)
+ ![S3_ViRGE_4RAM](/docs/S3_ViRGE_4RAM.jpg)
 
 ### Texture boundaries
  Nothing is really preventing the U or V texel coordinates from going outside of the range of the sampled texture. The question becomes what to do. And the answer is that it depends on what the artist wants. So it makes sense to give them the option.
