@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "MultiViewport 5"
+_Title "MultiViewport 6"
 ' 2025 Haggarman
 ' Render to multiple viewports on the same screen
 ' based on Trilinear Mip Mapping variants
@@ -370,8 +370,9 @@ Dim Shared LOD_aspect_squared As Single
 
 LOD_mode = 1
 LOD_max = 0 ' 0 is the base level texture (largest)
-LOD_aspect_vertical = 0.5 ' LOD calculation acts like the textures are 1/2 as tall than as wide. Value chosen based on expected grazing angle of the texture.
-LOD_aspect_squared = LOD_aspect_vertical * LOD_aspect_vertical
+LOD_aspect_vertical = 1.0 ' default
+LOD_aspect_squared = 1.0
+' Call this to change LOD aspect: Set_LOD_AspectVertical 1.0
 
 ' Load the Mesh
 Dim Triangles_In_A_Tree
@@ -678,6 +679,7 @@ Do
 
         Select Case viewnum
             Case 0:
+                ' Looking straight ahead
                 ' yaw spin around Y axis
                 Matrix4_MakeRotation_Y fYaw, matCameraRot()
                 Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), vLookDir
@@ -689,7 +691,10 @@ Do
                 ' Make view matrix from Camera
                 Matrix4_QuickInverse matCamera(), matView()
 
+                Set_LOD_AspectVertical 0.5
+
             Case 1:
+                ' Looking down from above
                 ' yaw spin around Y axis
                 Matrix4_MakeRotation_Y fYaw, matCameraRot()
                 Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), vLookDir
@@ -703,7 +708,10 @@ Do
                 ' Make view matrix from Camera
                 Matrix4_QuickInverse matCamera(), matView()
 
+                Set_LOD_AspectVertical 1.0
+
             Case 2:
+                ' Looking forward but can tilt neck
                 ' the neck pitches up and down first
                 Matrix4_MakeRotation_X fPitch, matCameraRot()
                 Multiply_Vector3_Matrix4 vCameraHomeFwd, matCameraRot(), vLookPitch
@@ -718,6 +726,8 @@ Do
 
                 ' Make view matrix from Camera
                 Matrix4_QuickInverse matCamera(), matView()
+
+                Set_LOD_AspectVertical 0.5
         End Select
 
         ' Draw Skybox 2-28-2023
@@ -2339,7 +2349,7 @@ Sub FOVchange
     If Frustum_FOV_deg < 10.0 Then Frustum_FOV_deg = 10.0
     If Frustum_FOV_deg > 120.0 Then Frustum_FOV_deg = 120.0
     Frustum_FOV_ratio = 1.0 / Tan(_D2R(Frustum_FOV_deg * 0.5))
-    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is wider than it is tall.
+    matProj(0, 0) = Frustum_Aspect_Ratio * Frustum_FOV_ratio ' output X = input X * factors. The screen is usually wider than it is tall.
     matProj(1, 1) = -Frustum_FOV_ratio ' output Y = input Y * factors. Negate so that +Y is up
     matProj(2, 2) = Frustum_Far / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, scale factor applied to input Z.
     matProj(3, 2) = (-Frustum_Far * Frustum_Near) / (Frustum_Far - Frustum_Near) ' remap output Z between near and far planes, constant offset.
@@ -2365,6 +2375,12 @@ Sub SetRenderViewport (VP As render_viewport)
 
     Frustum_Aspect_Ratio = halfHeight / halfWidth
     FOVchange
+End Sub
+
+Sub Set_LOD_AspectVertical (value As Single)
+    ' Example for 0.5: LOD calculation acts like the textures are 1/2 as tall than as wide. Value based on commonly expected grazing angle of the texture.
+    LOD_aspect_vertical = value
+    LOD_aspect_squared = LOD_aspect_vertical * LOD_aspect_vertical
 End Sub
 
 Sub NearClip (A As vec3d, B As vec3d, C As vec3d, D As vec3d, TA As vertex_attribute7, TB As vertex_attribute7, TC As vertex_attribute7, TD As vertex_attribute7, result As Integer)
