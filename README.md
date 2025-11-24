@@ -318,50 +318,65 @@ Affine      | Perspective
  Division is expensive, but overdraw of a pixel is ever so more. Division by Z can be optimized by multiplying by the inverse of Z instead. The visual benefits outweigh the costs and this is why reverse projection won.
 
 ## Clipping
+ Point clipping in 3D is defined as constraining a point's location to one side of a plane. Line clipping can change the value of one of its points to the intersection of the plane.
+ 
+ Since a triangle is defined by 3 points and 3 lines, polygon clipping is more involved. Points defining the shape need to be inserted or deleted at plane intersections.
 
-### Side Frustum Clipping
- When using fixed point numbers, the triangles need to be clipped to the up, down, left, and right edges of the view frustum. If this isn't done, projected points will easily rollover and wrap around causing some pretty terrible looking visual glitches.
+ Triangle clipping can be performed in 3D space prior to projection, or in 2D screen space after projection.
 
- I'm not doing that here because I'm using floating point. The advantage of floating point is that we can range all the way up from negative infinity to positive infinity. A float's loss of precision as magnitude increases doesn't matter. At that point you're staring at a few blown up texels covering the entire screen, blocking the view of everything behind it.
+### 3D Side Frustum Clipping
+ When using fixed point numbers, the triangles must be clipped to the up, down, left, and right edges of the 3D view frustum. If this isn't done, projected points will easily rollover and wrap around causing some pretty terrible looking visual glitches.
 
- I felt I would lose the plot and purpose here to do full frustum clipping. It's boring and brute-force and covered elsewhere.
+ I'm not doing that here because I'm using floating point. The advantage of floating point is that we can range all the way up from negative infinity to positive infinity. A float's loss of precision as magnitude increases doesn't matter. At that stage you're staring at a few blurry, blown-up texels covering the entire screen, blocking the view of everything behind it.
 
-### Near Frustum Clipping
+ I felt I would lose the plot and purpose here to do full 3D frustum clipping. The Sutherland–Hodgman line clipping algorithm is boring and brute-force and covered elsewhere.
+
+### 2D Screen Space Clipping
+ A point and its attributes can still be clipped after projection. Since both 3D clipping and 3D projection involve multiplication and division, in practice it isn't a time saver to clip to the sides prior to projection when using floating point numbers.
+
+ Since the triangles are rendered as a series of horizontal spans, the clipping is performed with simple linear interpolation.
+
+ The top, bottom, left, and right clipping values of the viewport do not need to be at the edges of the screen. For example, consider a 2 player split-screen racing game. For this screen layout it would perform the draw loop twice, changing the clip and screen centering values for each player's viewport.
+
+ Even with one player, it was often advantageous for framerate reasons to have a smaller 3D rendering area. Graphics Accelerators are fill-rate limited. Bit blit 2D backgrounds and foregrounds copied to video ram much more quickly than textured 3D triangles.
+
+### 3D Near Frustum Clipping
  Near frustum clipping is a necessity. For a plane where Z=0, this represents the camera's Z location in space. Since no two objects can occupy the same space, this dreaded divide-by-zero singularity needs to be avoided.
 
  For this discussion, I am asserting that an object moving forward from the viewer increases in +Z distance. Note this can differ in well-known graphics libraries.
 
  Projecting and rendering what is behind the camera (-Z) makes no sense perceptually. Although it might be mathematically correct for surfaces to invert that pass the Z=0 camera plane, we do not have double-sided eyeballs that are able to simultaneously project light onto both sides of our retinas. So we need to handle this limited field of view while rendering.
 
-We have 3 options:
+ We have 4 options:
 
-1. Constrain movement so that any Z coordinate can never be less than the near frustrum plane Z value.
+1. Constrain movement so that any Z coordinate can never be less than the near frustum plane Z value.
 2. Do not draw (as in cull) the triangle if any Z is less than the near frustum plane Z value.
-3. Clip the triangle so that its Z coordinates remain at least at the near frustum.
+3. Limit any Z coordinate value to the near frustum plane minimum. This causes a squishing effect.
+4. Clip the triangle so that all Z coordinates remain at least at the near frustum.
 
-I would say the options follow a natural progression, where many programmers give up before reaching option 3.
+ I would say the options follow a natural progression, where many programmers give up before reaching option 4.
 
-With option 3, we are fortunate with front clipping because the near frustum plane is always parallel to the rendering screen surface (with traditional single-point projection). This reduces the required math down from a 3D vector intersecting a 3D plane, to a 2D line intersecting a 1D plane.
+ With option 4, we are fortunate with front clipping because the near frustum plane is always parallel to the rendering screen surface (with traditional single-point projection). This reduces the required math down from a 3D vector intersecting a 3D plane, to a 2D line intersecting a 1D plane. Linear interpolation is used, once again.
 
 #### Tesselation
 
-We are also in a sense unlucky in trying to just draw triangles. If one Z value (of 3) needs to be clipped, this creates a 4 point "quadrangle". We need to tesselate to create 2 triangles out of this quadrangle.
+ We are also in a sense unlucky in trying to just draw triangles. If one Z value (of 3) needs to be clipped, this creates a 4 point "quadrangle". We need to tesselate to create 2 triangles out of this quadrangle.
 
 #### Winding Order
 
-Imagine hammering 3 nails partially into a board. The nails representing the vertexes of the triangle. Then proceed to wrap a string around the outline of these nails. You have 2 ways of winding: clockwise or counter-clockwise. Preserving winding order preserves which side of the tesselated triangle is facing the viewer.
+ Imagine hammering 3 nails partially into a board. The nails representing the vertexes of the triangle. Then proceed to wrap a string around the outline of these nails. You have 2 ways of winding: clockwise or counter-clockwise. Preserving winding order preserves which side of the tesselated triangle is facing the viewer.
 
-Setting some ground rules can make this clipping process less painful. In this codebase, two triangles share a side (vertex A and vertex C). Triangles wind in the following order:
+ Setting some ground rules can make this clipping process less painful. In this codebase, two triangles share a side (vertex A and vertex C). Triangles wind in the following order:
 
-Triangle 1: A to B, B to C, **C to A**
+ Triangle 1: A to B, B to C, **C to A**
 
-Triangle 2: **A to C**, C to D, D to A
+ Triangle 2: **A to C**, C to D, D to A
 
  ![Triangle Near Clip](/docs/NearClip.png)
 
 #### Number of Triangles
 
-The near clipping function returns the number of triangles (n = 0, 1, or 2) after clipping.
+ The near clipping function returns the number of triangles (n = 0, 1, or 2) after clipping.
 
 - n = 0: The input triangle is culled (not drawn).
 
@@ -371,15 +386,15 @@ The near clipping function returns the number of triangles (n = 0, 1, or 2) afte
 
 #### Demonstration
 
-The test program that was used to develop and debug the NearClip function is available in the Concepts folder. Program *NearFrustumClipTriangleAttributes.bas* rotates and clips a single triangle, while animating the winding order as crawling dots.
+ The test program that was used to develop and debug the NearClip function is available in the Concepts folder. Program *NearFrustumClipTriangleAttributes.bas* rotates and clips a single triangle, while animating the winding order as crawling dots.
 
 ### Backface culling
 
-Imagine ink bleeding through paper so that both sides have ink on them. The printed side is the front face, and the opposite bled-through side is the back face. Seeing both sides is sometimes desirable, like for a leaf. But with closed solid objects made of multiple triangles, it is more efficient to not draw the back-facing triangles because they will never be seen.
+ Imagine ink bleeding through paper so that both sides have ink on them. The printed side is the front face, and the opposite bled-through side is the back face. Seeing both sides is sometimes desirable, like for a leaf. But with closed solid objects made of multiple triangles, it is more efficient to not draw the back-facing triangles because they will never be seen.
 
-The winding order of the triangle's vertexes determines which side is the front face. The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer. 
+ The winding order of the triangle's vertexes determines which side is the front face. The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer. 
 
-If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
+ If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
 
 ## Texture Sampling
 
