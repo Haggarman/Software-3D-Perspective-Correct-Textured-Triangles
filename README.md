@@ -36,7 +36,7 @@
 
 ## Capabilities
  Let's list what has currently been implemented or explored, Final Reality Advanced benchmark style.
- 
+
 Y/N | 3D graphics options
 --- | --------
 Yes | Texture bi-linear filtering
@@ -173,20 +173,20 @@ Next Y
  For example, two right triangles that share the same hypotenuse creates a square. Consider the corners (vertexes) of a square-shaped repeating pattern labeled A, B, C, D in a clockwise order. The first triangle is A, B, C. And the second triangle is A, C, D. The line from A to C is shared.
 
  Now connect a series of these squares together aligning edges, making a grid or in other words a 2D mesh. Notice edges A to B, B to C, C to D, and D to A are shared. Without the "rounding rule" these edges would be drawn twice. A pixel at a vertex in the middle would be drawn 8 times.
- 
+
  To take this to its conclusion-- When modeling a 3D object as a mesh, a way to think of it is like wrapping a quilt around the object. Triangles rarely stand alone and are more likely part of a mesh that represents an object.
 
 ### Why use DDA?
  DDA was used because not all math operations complete in the same amount of time. In this case we are comparing repeated additions to an accumulator, versus multiply then divide operations.
  Addition requires significantly less circuitry than division. Division also requires multiple clocks whereas addition can complete in one clock. Multiplication is somewhere in-between, but any multiplication that can be avoided helps speed.
- 
+
  In other words, dividing (deltax / deltay) once before a loop to determine a step value and then adding that step value, is going to be faster than multiplying and dividing at every single step within the loop.
- 
+
  Sneakily, many of the earliest PC graphics accelerators left the division calculation up the main system CPU as part of the driver library. The driver then fed these DDA values over to the Graphics Accelerator in a large block move.
 
 ### Pre-stepping
  vertexAy is a floating point value but pixels are evenly spaced at integers. It is not okay to just round vertex coordinates to the nearest screen pixel integer, as in motion this causes vertex wobbling and unsightly seams between adjacent triangles.
- 
+
  The start value of Y at vertex A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation. This also holds true for the start of each horizontal span. The starting X is also rounded up to the next integer. The span attribute's starting X values are also interpolated ahead using the amount by which X was rounded up.
 
 ## Lighting
@@ -213,7 +213,7 @@ Flat Shading | Gouraud Shading
 
  Blinn-Phong is basically a method to draw a specular highlight on top of a triangle's surface. That is, to draw a bright disc vaguely representing the sun or other strongly collimated light source.
 
- If the specular (blinn-phong) lighting value calculated at each vertex is just added to the directional lighting (lambertian) value, one gets Specular Gouraud. If large triangles are drawn, highlight effects can only be seen at the vertexes of a mesh. If the mesh triangles are kept relatively small, the effect looks plenty convincing.
+ If the specular (blinn-phong) lighting value calculated at each vertex is just added to the directional lighting (lambertian) value, one gets Specular Gouraud. If large triangles are drawn, specular highlight effects can only be seen near the vertexes of a mesh. If the mesh triangles are kept relatively small, the effect looks plenty convincing.
 
 ## Projection
 ### Core Concept
@@ -254,7 +254,7 @@ Flat Shading | Gouraud Shading
 
 ### W Space
  This gets a little bit abstract at this point, but would you agree that Z = 1 / 1 / Z ?
- 
+
  As in if we take the inverse of an inverse of a number, we get the same number back?
 
  How about expressing this as Z = 1 / W, having previously calculated W = 1 / Z?
@@ -265,7 +265,7 @@ Flat Shading | Gouraud Shading
 
 ### Over Z
  At some point back in the 20th century, someone mathing around had a eureka moment to express the vertex attributes per units of Z. For example, divide the blueness of VertexA and VertexB both by Z, then linearly interpolate, and then undo the "over Z" to get the blue value back. This gets beyond the visually incorrect but very fast Gouraud shading.
- 
+
  Or more seriously, this insight led to dividing the U and V texel coordinates each by Z before starting the drawing loops. Then using linear interpolation of 1/Z across the triangle face. And then finally multiplying U * Z and V * Z at each pixel to recover the true texel coordinate pair to sample.
 
 ```
@@ -275,7 +275,7 @@ Flat Shading | Gouraud Shading
  VoZ = V texel vertical attribute * OoZ    ' sometimes called T
 ```
  Not shown here, but dividing the other vertex attributes (R, G, B, A, etc.) by Z makes it possible to then use DDA to achieve perspective correct color blending when stepping from one pixel to the next.
- 
+
  Converting W back to Z is performed per-pixel and thus requires a very fast approximate inverse calculation:
 ```
 For X = 1 to 10
@@ -302,7 +302,7 @@ Next X
 
  ![Lookup Tables](/docs/ReciprocalMethodLUT.png)
 
- Although pipelined, this operation had to be performed per pixel. This fast inverse algorithm is another secret sauce that made perspective correct texturing feasible. 
+ Although pipelined, this operation had to be performed per pixel. This fast inverse algorithm is another secret sauce that made perspective correct texturing feasible.
 
  Because this era's hardware used fixed-point math, it was necessary to express the depth as ranging from 0 to 1 equivalent when it reached the graphics chip line rasterizer. For example s1.14 format. This range limitation made clipping to the near and far planes of the view frustum critical. There was a lot of pop-in where distant objects suddenly appeared. Pop-in was not only because of limited computing resources and fill rates. Texturing simply could not exist further out than the far clipping plane as far as the hardware was concerned.
 
@@ -319,7 +319,7 @@ Affine      | Perspective
 
 ## Clipping
  Point clipping in 3D is defined as constraining a point's location to one side of a plane. Line clipping can change the value of one of its points to the intersection of the plane.
- 
+
  Since a triangle is defined by 3 points and 3 lines, polygon clipping is more involved. Points defining the shape need to be inserted or deleted at plane intersections.
 
  Triangle clipping can be performed in 3D space prior to projection, or in 2D screen space after projection.
@@ -392,7 +392,7 @@ Affine      | Perspective
 
  Imagine ink bleeding through paper so that both sides have ink on them. The printed side is the front face, and the opposite bled-through side is the back face. Seeing both sides is sometimes desirable, like for a leaf. But with closed solid objects made of multiple triangles, it is more efficient to not draw the back-facing triangles because they will never be seen.
 
- The winding order of the triangle's vertexes determines which side is the front face. The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer. 
+ The winding order of the triangle's vertexes determines which side is the front face. The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer.
 
  If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
 
@@ -406,48 +406,48 @@ ID | Name | Description
 1 | 3-Point N64 | A distinct hexagonal look using Barycentric (area) math.
 2 | Bilinear Fix | Blurry 4-point sampling, with some speed-up tricks.
 3 | Bilinear Float | The standard blurry 4-point sampling written without tricks.
- 
+
 ### 3 Point?
  I have always wondered about the "rupee" 3-Point interpolation of the N64. Its creator calls it triangle (triangular?) texture sampling. An optimized version can be seen in the function ReadTexel3Point().
- 
+
  ![3 point interpolation](/docs/3PointInterpolation.png)
- 
+
  I hope to be able to describe the math behind it clearly.
- 
+
  When a rendered triangle is drawn larger than the size of the texture, the texture is sampled in-between the texels to magnify it more smoothly.
- 
+
  If each of the dots of a texture are considered to be at whole number intervals, then the space between two adjacent texels is some fractional number.
  The fractional U and V coordinates vary from 0 to 0.999....
- 
+
  Fractional_U = U - floor(U)
- 
+
  Fractional_V = V - floor(V)
- 
+
  When we desire to interpolate on 2 axes for the U and V coordinates it would seem we need a square. We would need to interpolate somewhere inbetween the the 4 corners.
- 
+
 (U, V) | (U+1, V)
 ------ | -----------
 (U, V+1) | (U+1, V+1)
- 
+
  But what if we cut the square diagnonally in half, forming two triangles that share a hypotenuse? Now there are only 3 texels to interpolate between.
- 
+
  Independent of which half is used, two sampling coordinates will stay the same. But for the third point, it must be determined what triangle "half" an interior point is in. Which of the two possible ways the triangles are divided requires an algorith for determining which sample is chosen. This can be done by:
  1. **IF** Fractional_U + Fractional_V > 1.0  **THEN** ...Bottom Right... **ELSE** ...Top Left...
  2. **IF** Fractional_U > Fractional_V **THEN** ...Top Right... **ELSE** ...Bottom Left...
- 
+
  Now for the blending between these three points. It is entirely possible to use the general case Barycentric math formula. It would be used to find out the 3 subdivided areas of any given point within the interior of these 3 vertexes. And then sum the ratios (weights) of the 3 areas multiplied by the color at each of the opposing vertexes arrives at the correct blended color. But to do that would require more math steps than bilinear interpolation. That is clearly not what is going on in the N64 hardware if the entire intention was cost reduction.
- 
+
  Consider the following truths about this Barycentric triangle:
- 
+
  1. The lengths of the legs of the outer triangle are exactly 1.0
  2. The outer triangle is always a right triangle.
  3. The area of the outer triangle is 0.5 always. (1/2 * base * height).
  4. Two of the three interior subdivided triangles can be easily decomposed into a sum of two right triangles.
  4. Two of the three interior subdivided triangles have one leg that is exactly 1.0 in length.
  5. The area of the more difficult subdivided triangle can instead be determined by subtraction from the total area 0.5
- 
+
  The big leap in understanding is that twice the area of a right-triangle is a rectangle. If the total area of the triangle is 0.5, conceptually the area of a square is 1.0. Removing the 1/2 constant in the process of determining the areas is one less operation step. Doing that allows the fractional U or fractional V coordinate to be used directly as the area.
- 
+
  Area = 2 * 1/2 * 1.0 * Fractional_U is just Fractional_U.
 
  So it ends up being 3 area multiplications per color component. For RGB, that is just 9 total multiplications.
@@ -513,6 +513,14 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 
  When a texture is loaded, its data needs to be swizzled so that any 4 possible samples are adjacent. So for example texels (0,0), (1,0), (0,1), and (1,1) are stored into the first available address in each chip respectively. What comes next in the sequence is vendor dependent. But however it is done a sample request anywhere needs to hit all 4 chips at one time.
 
+ Here is an example of how a 4x4 texture could be loaded so that any square sampling of 4 texels hits all 4 chips (chips numbered 0 to 3). Other arrangements are possible.
+
+0 | 1 | 2 | 3
+--- | --- | --- | ---
+2 | 3 | 0 | 1
+0 | 1 | 2 | 3
+2 | 3 | 0 | 1
+
  If a texture was just stored in rows then columns order like it is when in CPU RAM, then typically only 2 chips would get fetched from twice to retrieve a bilinear sample. Halving the speed like this wouldn't be competitive when the solution is just swapping some address lines around.
 
  Photo: Each of the four EDO-RAM chips have a 16-bit bus, creating a 64 bit wide bus. The texturing performance issues are more to do with the memory controller and lack of texture cache on the 86C325, because 50 nanoseconds is quite fast for the time.
@@ -530,9 +538,9 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 
 ### Half texel offset
  When using bilinear filtering, the generally accepted practice is to offset texel coordinates by 0.5 in both dimensions. When using nearest neighbor, it is not offset.
- 
+
  The shortest explanation for a 0.5 offset is that it looks better. A slightly deeper explanation has to do with a natural numerical tendency to want to creep towards and away from (0, 0) when down/upsampling the surrounding 4 pixels.
- 
+
  If we take a broad look towards the most common characteristic of a texture on a Graphics Accelerator, it is that it has a length and width of a power of 2. The four corners of a texture in (U, V) coordinates are (0, 0) to (width, 0) to (width, height) to (0, height).
 
  Because texture length and width are even numbers, there is no exact center pixel. For example, on a 32 x 32 texture, the exact "center" is at 15.5, straddling 15 and 16. Superficially, this is where the 0.5 offset comes from. Images upscaled and downscaled from center have less introduced anomalies.
@@ -545,7 +553,7 @@ b1 = Int(_Blue32(T1_uv_0_0)  * weight_00 + _Blue32(T1_uv_1_0)  * weight_10 + _Bl
 ```
 Color = (A - B) * C + D
 ```
- Variables A thru D could be configured from a numbered list of various signal sources, much like how patch cables can be moved around on an audio modular synthesizer. Note that letters A to D here are indexes representing the patch channel. The red, green, and blue components are calculated in parallel. In other words, this takes 6 full adders and 3 multipliers. 
+ Variables A thru D could be configured from a numbered list of various signal sources, much like how patch cables can be moved around on an audio modular synthesizer. Note that letters A to D here are indexes representing the patch channel. The red, green, and blue components are calculated in parallel. In other words, this takes 6 full adders and 3 multipliers.
 
  Because "A - B" would be too restrictive, some of the indexes for "B" would be "one minus B", so that it was effectively A + B instead. Logically this is an XOR (2's complement NOT inversion) so it's not as if it took many transistors to implement.
 
@@ -581,7 +589,7 @@ Soft Edge | Hard Edge | 1-Bit Mask
 
  Coverage is a representation of how filled in a sampled pixel is. Let's just give an example of what might be seen at one pixel at the curved edge of a circle. The "#" represents the foreground, and the "." represents the background. This has a coverage value of 6 out of a possible value of 16, in what is termed 4 x 4 sub-sampling.
 
-. | 1/4 X | 2/4 X | 3/4 X | X
+Cvg | 1/4 X | 2/4 X | 3/4 X | X
 --- | --- | --- | --- | ---
 1/4 Y | . | . | . | .
 2/4 Y | . | . | . | #
@@ -631,21 +639,21 @@ Y | . | # | # | #
 ### Level of Detail (LOD)
 
  Now with a stack of at least two texture maps (a mipmap), how do you choose which one to use? If you said, distance from the viewer you're on the wrong track.
- 
+
  If we were to display a triangle at the exact 1:1 ratio where one onscreen pixel maps to one texel, LOD = 0.
  If one pixel maps to the area of 4 texels, LOD = 1.
  If one pixel maps to 16 texels, LOD = 2.
  And so on.
- 
+
  So it is more to do with how cleanly a texel maps onto a pixel, than distance. One could have different sized triangles at the same Z distance, with the same texture and same (U,V) vertex attributes, but they would demand different LOD levels.
- 
+
  Think about rendering a certain text character like 'A' in size 8 font and again in size 120 font. You'd want both to look nice and not be pixellated.
- 
+
  It is correct, however, that a given sized triangle will increase its average LOD when travelling further away from the viewer due to perspective projection.
 
 ### False Coloring
  To be able to visualize this better, each mipmap level can be given a false color tinting that is distinct from the others.
- 
+
  Here is a rendered road leading off into the distance, with the first reduction level being tinted red, then blue, then orange, purple, and finally green.
 
  ![False Colored Mipmap Basic Concept](/docs/MipmapBasicConcept.png)
@@ -665,20 +673,20 @@ Y | . | # | # | #
 
 ### Mip map interpolation
  Plug your noise and say it in a really snobby voice: Tri-Linear Mipmap Interpolation (TLMMI).
- 
+
  Using an integer LOD to select only one texture map isn't enough for the highest quality graphics. You actually can see the jump from one texture to the next plain as day, just like you can see the jump from one texel to the next when using nearest point sampling.
- 
+
  Blending is needed. The visually optimal ideal is to straddle two textures with index int(LOD) and int(LOD) + 1.
- 
+
  Recall the bilinear texture sample filter requires 4 texel reads, so double that to get 8 reads per pixel for TLMMI. Unless you had a Voodoo 2 graphics card with two T-REX samplers, this cuts the fill rate by a little over half. And if you have a S3 ViRGE... all I can say is oof.
- 
+
  So in the end, the fractional LOD portion is used in yet another round of interpolation between two bilinear interpolated RGB values, to reach the final pixel color values. Remember your adjectives: mono = 1, bi = 2, tri = 3.
- 
+
  One could use 5 texel reads on the S3 ViRGE instead of 8. It could be configured so that the larger texture gets bilinear sampling, and the smaller texture gets nearest point sampling. And then combine the two to result in a modified tri-linear mipmap interpolation. As for a visual description, it looks fuzzy but still better than the abrupt changes of not having any interpolation.
 
 ### More cheating
  On the SGI Ultra 64 RDP, the largest of the four possible (u, v) deltas are taken as the mipmap level, without calculating the pythagorean distance. As in picking the largest delta_U or delta_V value in steps 2 and 3 above.
- 
+
  This overapplies the mipmap effect and produces an axis-aligned square shape that can be seen with false coloring.
 
 Ultra64 Square | Academic Curved
@@ -688,15 +696,15 @@ Ultra64 Square | Academic Curved
 ### Limitations of mip mapping
 
  Examining the road textures by moving the camera around, it becomes blurry rather soon into the distance. This is because the highest value of the 4 possible LOD numbers is determining what reduced size texture to sample.
- 
+
  Nice high-resolution vertical walls or horizontal ground surface textures that occupy the largest portions of texture memory will barely get used when LOD is performed this way.
- 
+
  This realization lead to two innovations not long after the graphics accelerators covered here.
 1. Lossy data compression can be used on the largest textures. For example store exact values every 4th texel and then some bitfields to shape the interpolation curve between them. A tiny bit more hardware but this could lead to a patent (groan).
 2. Keep the X and Y LODs separated for a 2 dimensional lookup of the texture. This is called Anisotropic texturing. In our program examples, this would work great for the square road texture because it is often drawn crushed vertically but wide horizontally.
 
-### Why do I feel mip mapping is overrated? 
- 
+### Why do I feel mip mapping is overrated?
+
 1. Unnecessary: Due to memory size limitations, textures weren't very large in this era. A good majority of the time a small texture was being stretched (magnified) onto a larger triangle.
 2. Temporal Blending: When in motion, the hit and missed texels average out over time. Most interesting 3D games involve exploring a huge world.
 3. Shimmering: On a hot sunny day, our human visual system already deals well with the shimmering lensing distortion of objects off in the distance caused by heated air currents. Undersampling kind of mimics this.
@@ -721,6 +729,6 @@ In the end, both companies were sold off. But it's how they're remembered and ce
  16-bit doesn't cut it: Basically all of these first-generation 3D accelerator chips internally had 8 bits per color channel, but dithered the final colors into either RGB 555 or RGB 565, thinking we wouldn't notice. For perspective, having a healthy variety of texture color reduction and compression choices to save memory footprint leads to overall more visual variety and better graphical look. But skimping on 3 bits per channel in the final display framebuffer is just being really cheap. This isn't the first time, and it won't be the last time that dithering is used to inflate the number of bits. Well on average it's 8 bits... if you stand far enough back and squint your eyes. And yes a lot of your HDR displays are only 8-bit, twice dithered.
 
  Page 1298 of a bloated Black Book I quote as follows: "Try to imagine any American 17-year-old of your acquaintance inventing backface removal. Try to imagine any teenager you know even using the phrase 'the cross product equations found in any math book'." Well, I was probably 16 at the time I read it, and that stung leaving a permanent scar.
- 
+
 ## Research
  Please refer to the Literature folder for datasheets on the Graphics Accelerators. There are also a few other 3D related documents.
