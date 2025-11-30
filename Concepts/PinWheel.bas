@@ -1,11 +1,13 @@
 Option _Explicit
-_Title "PinWheel 1: Move with arrows, scale with + or - , press ESC to exit"
+_Title "PinWheel 2: Move with arrows, scale with + or - , F to change filter, press ESC to exit"
 ' 2025 Haggarman
 '
-' The point is to look for gaps or overdraw or texel weirdness.
+' The point is to look for an all green pinwheel. Gaps or overdraw will show up as other colors.
+' Press F to flip to the actual rendering and again to go back to showing overdraw.
 '
 Dim Shared DISP_IMAGE As Long
 Dim Shared WORK_IMAGE As Long
+Dim Shared FILTER_IMAGE As Long
 Dim Shared Size_Screen_X As Integer, Size_Screen_Y As Integer
 Dim Shared Size_Render_X As Integer, Size_Render_Y As Integer
 
@@ -20,6 +22,7 @@ Screen DISP_IMAGE
 _DisplayOrder _Software
 
 WORK_IMAGE = _NewImage(Size_Render_X, Size_Render_Y, 32)
+FILTER_IMAGE = _NewImage(Size_Render_X, Size_Render_Y, 32)
 _DontBlend
 
 Dim Shared Screen_Z_Buffer_MaxElement As Long
@@ -110,7 +113,7 @@ T1_SelectCatalogTexture 0
 ' Load what is called a mesh from data statements.
 ' (x0,y0,z0) (x1,y1,z1) (x2,y2,z2) (u0,v0) (u1,v1) (u2,v2) texture options
 Dim Triangles_In_The_Object As Integer
-Triangles_In_The_Object = 4
+Triangles_In_The_Object = 8
 
 Dim Shared Mesh_Last_Element As Integer
 Mesh_Last_Element = Triangles_In_The_Object - 1
@@ -161,6 +164,7 @@ Dim finish_ms As Double
 ' Main loop stuff
 Dim KeyNow As String
 Dim ExitCode As Integer
+Dim Shared Filter_Selection As Integer
 Dim FrameCounter As Long
 Dim animationStep As Integer
 Dim depth_w As Single
@@ -169,6 +173,7 @@ Dim pin As vec3d
 
 main:
 ExitCode = 0
+Filter_Selection = 1
 FrameCounter = 0
 animationStep = 0
 myscale = 32 ' scale up a "unit triangle" that is otherwise 0..1
@@ -192,6 +197,7 @@ Do
     T1_SelectCatalogTexture 0 ' choose the first loaded texture and set the T1_ texture vars
 
     ' Normally we would project the triangle points from 3D to 2D.
+    ' Here we fill in directly from the mesh, scaling X and Y by myscale.
     depth_w = 1.0 / pin.z
     For tri_num = 0 To Mesh_Last_Element
         If tri_num = animationStep Then _Continue
@@ -216,15 +222,36 @@ Do
         TexturedNonlitTriangle vertexA, vertexB, vertexC
     Next tri_num
 
+
+    If Filter_Selection = 0 Then
+        _PutImage , WORK_IMAGE, DISP_IMAGE
+        _Dest DISP_IMAGE
+        Locate 1, 1
+        Color _RGB32(177, 227, 255), Fog_color
+        Print "Actual Framebuffer";
+    Else
+        CalculateOverdrawFilter
+        _PutImage , FILTER_IMAGE, DISP_IMAGE
+        _Dest DISP_IMAGE
+        ' Show a Legend
+        Locate 1, 1
+        Color _RGB32(177, 227, 255), Fog_color
+        Print "Overdraw:";
+        Color 0, Fog_color
+        Print " 0 ";
+        Color 0, _RGB32(50, 250, 50)
+        Print " 1 ";
+        Color 0, _RGB32(155, 67, 222)
+        Print " 2 ";
+        Color 0, _RGB32(200, 194, 28)
+        Print " 3+";
+    End If
     finish_ms = Timer(.001)
 
-    _PutImage , WORK_IMAGE, DISP_IMAGE
-    _Dest DISP_IMAGE
-    Locate Int(Size_Screen_Y \ 16) - 2, 1
-    Color _RGB32(177, 227, 255)
-    Print Using "render time #.###"; finish_ms - start_ms
-    Color _RGB32(249, 244, 17)
-    Print "ESC to exit. ";
+    '_Dest DISP_IMAGE
+    'Locate Int(Size_Screen_Y \ 16) - 2, 1
+    'Color _RGB32(177, 227, 255), Fog_color
+    'Print Using "render time #.###"; finish_ms - start_ms
 
     _Limit 60
     _Display
@@ -247,6 +274,9 @@ Do
             myscale = myscale + 1
         ElseIf KeyNow = "-" Then
             myscale = myscale - 1
+        ElseIf KeyNow = "F" Then
+            Filter_Selection = Filter_Selection + 1
+            If Filter_Selection >= 2 Then Filter_Selection = 0
         End If
     End If
 
@@ -305,21 +335,38 @@ End
 ' .0 = T1_option_clamp_width
 ' .1 = T1_option_clamp_height
 
+' An 8 triangle pinwheel
 MESHDATA:
-Data 0,0,1,-1,-1,1,1,-1,1
-Data 0.5,0.5,0,0,1,0
+Data 0,0,1,0,-1,1,1,-1,1
+Data 0.5,0.5,0.5,0,1,0
 Data 0,0
 
-Data 0,0,1,1,-1,1,1,1,1
-Data 0.5,0.5,1,0,1,1
+Data 0,0,1,1,-1,1,1,0,1
+Data 0.5,0.5,1,0,1,0.5
 Data 0,0
 
-Data 0,0,1,1,1,1,-1,1,1
-Data 0.5,0.5,1,1,0,1
+Data 0,0,1,1,0,1,1,1,1
+Data 0.5,0.5,1,0.5,1,1
 Data 0,0
 
-Data 0,0,1,-1,1,1,-1,-1,1
-Data 0.5,0.5,0,1,0,0
+Data 0,0,1,1,1,1,0,1,1
+Data 0.5,0.5,1,1,0.5,1
+Data 0,0
+
+Data 0,0,1,0,1,1,-1,1,1
+Data 0.5,0.5,0.5,1,0,1
+Data 0,0
+
+Data 0,0,1,-1,1,1,-1,0,1
+Data 0.5,0.5,0,1,0,0.5
+Data 0,0
+
+Data 0,0,1,-1,0,1,-1,-1,1
+Data 0.5,0.5,0,0.5,0,0
+Data 0,0
+
+Data 0,0,1,-1,-1,1,0,-1,1
+Data 0.5,0.5,0,0,0.5,0
 Data 0,0
 
 Sub T1_SelectCatalogTexture (texnum As Integer)
@@ -334,6 +381,51 @@ Sub T1_SelectCatalogTexture (texnum As Integer)
     T1_mblock = _MemImage(T1_ImageHandle)
     T1_width = _Width(T1_ImageHandle): T1_width_MASK = T1_width - 1
     T1_height = _Height(T1_ImageHandle): T1_height_MASK = T1_height - 1
+End Sub
+
+Sub CalculateOverdrawFilter
+    ' Colorizes based on how many times pixels were overdrawn
+
+    ' Filter Screen Memory Pointers
+    Static filter_mem_info As _MEM
+    Static filter_next_row_step As _Offset
+    Static filter_row_base As _Offset ' Calculated every next row
+    Static filter_address As _Offset ' Calculated at every starting column
+
+    filter_mem_info = _MemImage(FILTER_IMAGE)
+    filter_next_row_step = 4 * Size_Render_X
+
+    Static R As Long
+    Static C As Long
+    Static zbuf_index As _Unsigned Long ' Z-Buffer
+    Static lookup_color As Long
+    Static pixel_value As _Unsigned Long
+
+    _Dest FILTER_IMAGE
+    filter_row_base = filter_mem_info.OFFSET
+    For R = 0 To Size_Render_Y - 1
+        filter_address = filter_row_base
+        zbuf_index = R * Size_Render_X
+        For C = 0 To Size_Render_X - 1
+            lookup_color = Int(Screen_Z_Buffer(zbuf_index))
+            Select Case lookup_color
+                Case 0:
+                    pixel_value = Fog_color
+                Case 1:
+                    pixel_value = _RGB32(50, 250, 50)
+                Case 2:
+                    pixel_value = _RGB32(155, 67, 222)
+                Case Else:
+                    pixel_value = _RGB32(200, 194, 28)
+            End Select
+
+            _MemPut filter_mem_info, filter_address, pixel_value
+            filter_address = filter_address + 4
+            zbuf_index = zbuf_index + 1
+        Next C
+        filter_row_base = filter_row_base + filter_next_row_step
+    Next R
+
 End Sub
 
 Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
@@ -446,6 +538,7 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
     Static row As Long
     Static col As Long
     Static draw_max_x As Long
+    Static zbuf_index As _Unsigned Long ' Z-Buffer
     Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
     Static pixel_value As _Unsigned Long ' The ARGB value to write to screen
 
@@ -552,8 +645,11 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
 
             ' Draw the Horizontal Scanline
             ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
+            zbuf_index = row * Size_Render_X + col
             screen_address = screen_row_base + 4 * col
             While col < draw_max_x
+                ' special use of Z buffer to count the number of times a pixel was written.
+                Screen_Z_Buffer(zbuf_index) = Screen_Z_Buffer(zbuf_index) + 1
 
                 Static cc As Integer
                 Static rr As Integer
@@ -594,6 +690,7 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
                 _MemPut screen_mem_info, screen_address, pixel_value
                 'PSet (col, row), pixel_value
 
+                zbuf_index = zbuf_index + 1
                 tex_w = tex_w + tex_w_step
                 tex_z = 1 / tex_w ' execution time for this can be absorbed when result not required immediately
                 tex_u = tex_u + tex_u_step

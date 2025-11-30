@@ -165,7 +165,17 @@ Next Y
  In this context, to rasterize means to draw a geometrically defined shape as pixels using evenly spaced parallel lines. Similar to how a CRT monitor draws the display image using horizontal lines row by row, or a typewriter stamps characters onto paper from left to right, top to bottom.
 
 ### Overdraw
- In the Two Triangles example, the purpose of drawing up to but not including the rightmost pixel on a horizontal span has to do with overdraw. Two triangles sharing two vertexes will have the pixels of the shared edge redrawn, wasting cycles. This is in fact so commonly encountered when drawing meshes, it has the term "rounding rule". The rounding rule for this rasterizer is to skip the rightmost and bottom pixels.
+ In the Two Triangles example, the purpose of drawing up to but not including the rightmost pixel on a horizontal span has to do with overdraw. Two triangles sharing two vertexes will have the pixels of the shared edge redrawn, wasting cycles. This is in fact so commonly encountered when drawing meshes, it has the term "rounding rule".
+
+ The rounding rule for this rasterizer is to skip the rightmost and bottom pixels. The Pinwheel Test is a simple way to check for overdraw. Eight triangles surrounding a central point join edges to form a square. During drawing of this shape, if a pixel is drawn more than once it is given a different color.
+
+ Please see *PinWheel.bas* in the Concepts folder. The goal is to see a solid green square without different colors within indicating overdraw.
+
+ Here is a screenshot of an induced pinwheel test failure showing multiple pixels overdrawn:
+ ![Pinwheel Test Failure](/docs/PinWheelFail.png)
+
+#### Divots
+ It is also possible to miss pixels where they are expected to be drawn. These holes are sometimes called divots, named after the golf term. Extra unwanted pixels are called stray pixels.
 
 ### Mesh?
  When thinking of a mesh, think of a large quilt sewn from smaller squares. The idea of a mesh is a repeating pattern of consistently sized shapes sharing edges and vertexes.
