@@ -1,6 +1,7 @@
 Option _Explicit
-_Title "Alias Object File 63"
+_Title "Alias Object File 64"
 ' 2024 Haggarman
+'  V64 Another light mode to force illum model to hide badly defined specular lighting.
 '  V63 Selectable Alpha mask edge type.
 '  V62 Simplify 3D point perspective projection function. map_d forces on backface.
 '  V61 Turntable and other selectable spin rotations.
@@ -31,7 +32,7 @@ _Title "Alias Object File 63"
 '
 Declare Library ""
     ' grab a C99 function from math.h
-    Function powf! (ByVal ba!, Byval ex!)
+    Function powf! (ByVal ba!, ByVal ex!)
 End Declare
 
 Dim Shared DISP_IMAGE As Long
@@ -401,7 +402,7 @@ End If
 ' always create at least one material. 0 just creates a single element index 0.
 Dim Shared Materials(Materials_Count) As newmtl_type
 ' sensible defaults to at least show something.
-Materials(0).illum = 2
+Materials(0).illum = illum_model_blinn_phong
 Materials(0).options = T1_option_no_T1
 Materials(0).map_Kd = 0 ' invalid handle intentionally
 Materials(0).diaphaneity = 1.0
@@ -658,10 +659,12 @@ Dim triCount As Integer
 Dim Animate_Spin As Integer
 Dim Draw_Environment_Map As Integer
 Dim Draw_Backface As Integer
-Dim Gouraud_Shading_Selection As Integer
+Dim Gouraud_Use_Normals As Integer
+Dim Illum_Override As Integer
 Dim Jog_Motion_Selection As Integer
 Dim Alpha_Mask_Selection As Integer
 Dim thisMaterial As newmtl_type
+Dim illum_model As Long
 Dim triloop_input_poll As Long
 Dim Shared Pixels_Drawn_This_Frame As Long
 
@@ -671,7 +674,8 @@ ExitCode = 0
 Animate_Spin = 0
 Draw_Environment_Map = -1
 Draw_Backface = 0
-Gouraud_Shading_Selection = 1
+If Vtx_Normals_Count = 0 Then Gouraud_Use_Normals = 0 Else Gouraud_Use_Normals = 1
+Illum_Override = 0
 Jog_Motion_Selection = 1
 Alpha_Mask_Selection = 0
 actor = 1
@@ -935,7 +939,7 @@ Do
         Vector3_Delta vCameraPsn, pointWorld0, cameraRay0 ' be careful, this is not normalized.
         dotProductCam = Vector3_DotProduct!(tri_normal, cameraRay0) ' only interested here in the sign
 
-        If Draw_Backface _Orelse (dotProductCam < 0.0) _Orelse (Texture_options And T1_option_no_backface_cull) Then
+        If Draw_Backface _OrElse (dotProductCam < 0.0) _OrElse (Texture_options And T1_option_no_backface_cull) Then
             ' Front facing is negative dot product because obj vertex is specified with counter-clockwise (CCW) winding.
             ' Convert World Space --> View Space
             Multiply_Vector3_Matrix4 pointWorld0, matView(), pointView0
@@ -943,7 +947,7 @@ Do
             Multiply_Vector3_Matrix4 pointWorld2, matView(), pointView2
 
             ' Skip if all Z is too close
-            If (pointView0.z < Frustum_Near) _Andalso (pointView1.z < Frustum_Near) _Andalso (pointView2.z < Frustum_Near) Then GoTo Lbl_SkipTriAll
+            If (pointView0.z < Frustum_Near) _AndAlso (pointView1.z < Frustum_Near) _AndAlso (pointView2.z < Frustum_Near) Then GoTo Lbl_SkipTriAll
 
             ' Texture 1
             T1_mod_A = thisMaterial.diaphaneity ' all illumination models use d
@@ -971,7 +975,19 @@ Do
             End If
 
             ' Lighting
-            Select Case thisMaterial.illum
+            Select Case Illum_Override
+                Case 0
+                    illum_model = thisMaterial.illum
+                Case 1
+                    illum_model = illum_model_lambertian
+                Case 2
+                    illum_model = illum_model_reflection_map
+                    thisMaterial.Ks_r = 0.95
+                    thisMaterial.Ks_g = 0.95
+                    thisMaterial.Ks_b = 0.88
+            End Select
+
+            Select Case illum_model
                 Case illum_model_constant_color
                     ' Kd only
 
@@ -1011,7 +1027,7 @@ Do
                 Case illum_model_lambertian
                     ' ambient constant term plus a diffuse shading term for the angle of each light source
 
-                    Select Case Gouraud_Shading_Selection
+                    Select Case Gouraud_Use_Normals
                         Case 0:
                             ' Flat face shading with runtime normal calculation
                             Light_Directional = -Vector3_DotProduct!(tri_normal, vLightDir) ' CCW winding
@@ -1090,7 +1106,7 @@ Do
 
                 Case illum_model_blinn_phong
                     ' ambient constant term, plus a diffuse and specular shading term for each light source
-                    Select Case Gouraud_Shading_Selection
+                    Select Case Gouraud_Use_Normals
                         Case 0:
                             ' Flat face shading with runtime normal calculation
 
@@ -1232,7 +1248,7 @@ Do
                     T1_mod_G = thisMaterial.Ks_g
                     T1_mod_B = thisMaterial.Ks_b
 
-                    Select Case Gouraud_Shading_Selection
+                    Select Case Gouraud_Use_Normals
                         Case 0:
                             ' Flat face shading
                             vertex_normal_A = tri_normal
@@ -1272,7 +1288,7 @@ Do
 
             ' Clip if any Z is too close. Assumption is that near clip is uncommon.
             ' If there is a lot of near clipping going on, please remove this precheck and just always call NearClip.
-            If (pointView0.z < Frustum_Near) _Orelse (pointView1.z < Frustum_Near) _Orelse (pointView2.z < Frustum_Near) Then
+            If (pointView0.z < Frustum_Near) _OrElse (pointView1.z < Frustum_Near) _OrElse (pointView2.z < Frustum_Near) Then
                 NearClip pointView0, pointView1, pointView2, pointView3, vatr0, vatr1, vatr2, vatr3, triCount
                 If triCount = 0 Then GoTo Lbl_SkipTriAll
             Else
@@ -1500,15 +1516,24 @@ Do
             Print " (A)lpha 1-bit Edge"
     End Select
 
-    Print "Press G for Lighting: ";
-    Select Case Gouraud_Shading_Selection
+    Print "(G)ouraud Lighting: ";
+    Select Case Gouraud_Use_Normals
         Case 0
-            Print "Flat using face normals"
+            Print "Flat"
         Case 1
-            Print "Gouraud using vertex normals"
-        Case 2
-            Print "Mirror"
+            Print "Vertex Normals"
     End Select
+
+    Print "(L)ighting Model: ";
+    Select Case Illum_Override
+        Case 0
+            Print "from material"
+        Case 1
+            Print "force lambertian"
+        Case 2
+            Print "force metallic"
+    End Select
+
 
     render_period_ms = render_ms - trimesh_ms
     'If render_period_ms < 0.001 Then render_period_ms = 0.001
@@ -1569,8 +1594,8 @@ Do
             fPitch = 0.0
             fYaw = 0.0
         ElseIf KeyNow = "G" Then
-            Gouraud_Shading_Selection = Gouraud_Shading_Selection + 1
-            If Gouraud_Shading_Selection > 1 Then Gouraud_Shading_Selection = 0
+            Gouraud_Use_Normals = Gouraud_Use_Normals + 1
+            If Gouraud_Use_Normals > 1 Then Gouraud_Use_Normals = 0
         ElseIf KeyNow = "B" Then
             Draw_Backface = Not Draw_Backface
         ElseIf KeyNow = "J" Then
@@ -1582,6 +1607,9 @@ Do
         ElseIf KeyNow = "A" Then
             Alpha_Mask_Selection = Alpha_Mask_Selection + 1
             If Alpha_Mask_Selection > 2 Then Alpha_Mask_Selection = 0
+        ElseIf KeyNow = "L" Then
+            Illum_Override = Illum_Override + 1
+            If Illum_Override > 2 Then Illum_Override = 0
         ElseIf Asc(KeyNow) = 27 Then
             ExitCode = 1
         End If
@@ -1590,7 +1618,7 @@ Do
     Wend
 
     ' overrides
-    If Vtx_Normals_Count = 0 Then Gouraud_Shading_Selection = 0
+    If Vtx_Normals_Count = 0 Then Gouraud_Use_Normals = 0
 
 Loop Until ExitCode <> 0
 
