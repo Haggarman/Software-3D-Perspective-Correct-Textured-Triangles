@@ -1,5 +1,5 @@
 Option _Explicit
-_Title "PinWheel 2: Move with arrows, scale with + or - , F to change filter, press ESC to exit"
+_Title "PinWheel 4: Move with arrows, scale with + or - , F to change filter, S to spin"
 ' 2025 Haggarman
 '
 ' The point is to look for an all green pinwheel. Gaps or overdraw will show up as other colors.
@@ -161,9 +161,24 @@ Dim vertexC As vertex5
 Dim start_ms As Double
 Dim finish_ms As Double
 
+' Rotation
+Dim matRotZ(3, 3) As Single
+Dim point0 As vec3d
+Dim point1 As vec3d
+Dim point2 As vec3d
+
+Dim pointRotZ0 As vec3d
+Dim pointRotZ1 As vec3d
+Dim pointRotZ2 As vec3d
+
+' This is so that the object animates by rotating
+Dim spinAngleDegZ As Single
+spinAngleDegZ = 0.0
+
 ' Main loop stuff
 Dim KeyNow As String
 Dim ExitCode As Integer
+Dim Animate_Spin As Integer
 Dim Shared Filter_Selection As Integer
 Dim FrameCounter As Long
 Dim animationStep As Integer
@@ -171,8 +186,11 @@ Dim depth_w As Single
 Dim myscale As Single
 Dim pin As vec3d
 
+Dim frame_advance As Integer
+
 main:
 ExitCode = 0
+Animate_Spin = -1
 Filter_Selection = 1
 FrameCounter = 0
 animationStep = 0
@@ -183,6 +201,7 @@ pin.x = halfWidth
 pin.y = halfHeight
 pin.z = 1.0 ' cannot be 0
 
+frame_advance = 1
 
 Do
     start_ms = Timer(.001)
@@ -194,6 +213,20 @@ Do
     ' This is a qbasic only optimization. it sets the value to zero. it saves 10 ms.
     ReDim Screen_Z_Buffer(Screen_Z_Buffer_MaxElement)
 
+    If Animate_Spin Then
+        spinAngleDegZ = spinAngleDegZ + frame_advance * 0.460
+    End If
+
+    ' Set up rotation matrices
+    ' _D2R is just a built-in degrees to radians conversion
+    ' Rotation Z
+    matRotZ(0, 0) = Cos(_D2R(spinAngleDegZ))
+    matRotZ(0, 1) = Sin(_D2R(spinAngleDegZ))
+    matRotZ(1, 0) = -Sin(_D2R(spinAngleDegZ))
+    matRotZ(1, 1) = Cos(_D2R(spinAngleDegZ))
+    matRotZ(2, 2) = 1
+    matRotZ(3, 3) = 1
+
     T1_SelectCatalogTexture 0 ' choose the first loaded texture and set the T1_ texture vars
 
     ' Normally we would project the triangle points from 3D to 2D.
@@ -201,20 +234,38 @@ Do
     depth_w = 1.0 / pin.z
     For tri_num = 0 To Mesh_Last_Element
         If tri_num = animationStep Then _Continue
-        vertexA.x = pin.x + mesh(tri_num).x0 * myscale
-        vertexA.y = pin.y + mesh(tri_num).y0 * myscale
+
+        point0.x = mesh(tri_num).x0
+        point0.y = mesh(tri_num).y0
+        point0.z = mesh(tri_num).z0
+
+        point1.x = mesh(tri_num).x1
+        point1.y = mesh(tri_num).y1
+        point1.z = mesh(tri_num).z1
+
+        point2.x = mesh(tri_num).x2
+        point2.y = mesh(tri_num).y2
+        point2.z = mesh(tri_num).z2
+
+        ' Rotate in Z-Axis
+        Multiply_Vector3_Matrix4 point0, matRotZ(), pointRotZ0
+        Multiply_Vector3_Matrix4 point1, matRotZ(), pointRotZ1
+        Multiply_Vector3_Matrix4 point2, matRotZ(), pointRotZ2
+
+        vertexA.x = pin.x + pointRotZ0.x * myscale
+        vertexA.y = pin.y + pointRotZ0.y * myscale
         vertexA.w = depth_w
         vertexA.u = mesh(tri_num).u0 * T1_width * depth_w
         vertexA.v = mesh(tri_num).v0 * T1_height * depth_w
 
-        vertexB.x = pin.x + mesh(tri_num).x1 * myscale
-        vertexB.y = pin.y + mesh(tri_num).y1 * myscale
+        vertexB.x = pin.x + pointRotZ1.x * myscale
+        vertexB.y = pin.y + pointRotZ1.y * myscale
         vertexB.w = depth_w
         vertexB.u = mesh(tri_num).u1 * T1_width * depth_w
         vertexB.v = mesh(tri_num).v1 * T1_height * depth_w
 
-        vertexC.x = pin.x + mesh(tri_num).x2 * myscale
-        vertexC.y = pin.y + mesh(tri_num).y2 * myscale
+        vertexC.x = pin.x + pointRotZ2.x * myscale
+        vertexC.y = pin.y + pointRotZ2.y * myscale
         vertexC.w = depth_w
         vertexC.u = mesh(tri_num).u2 * T1_width * depth_w
         vertexC.v = mesh(tri_num).v2 * T1_height * depth_w
@@ -244,7 +295,7 @@ Do
         Color 0, _RGB32(155, 67, 222)
         Print " 2 ";
         Color 0, _RGB32(200, 194, 28)
-        Print " 3+";
+        Print " 3+"
     End If
     finish_ms = Timer(.001)
 
@@ -252,6 +303,13 @@ Do
     'Locate Int(Size_Screen_Y \ 16) - 2, 1
     'Color _RGB32(177, 227, 255), Fog_color
     'Print Using "render time #.###"; finish_ms - start_ms
+
+    Color _RGB32(177, 227, 255), Fog_color
+    If Animate_Spin Then
+        Print "Press S to Stop Spin"
+    Else
+        Print "Press S to Start Spin"
+    End If
 
     _Limit 60
     _Display
@@ -277,27 +335,29 @@ Do
         ElseIf KeyNow = "F" Then
             Filter_Selection = Filter_Selection + 1
             If Filter_Selection >= 2 Then Filter_Selection = 0
+        ElseIf KeyNow = "S" Then
+            Animate_Spin = Not Animate_Spin
         End If
     End If
 
     If _KeyDown(19712) Then
         ' Right arrow
-        pin.x = pin.x + 1.0
+        pin.x = pin.x + 0.721
     End If
 
     If _KeyDown(19200) Then
         ' Left arrow
-        pin.x = pin.x - 1.0
+        pin.x = pin.x - 0.721
     End If
 
     If _KeyDown(18432) Then
         ' Up arrow
-        pin.y = pin.y - 1.0
+        pin.y = pin.y - 0.721
     End If
 
     If _KeyDown(20480) Then
         ' Down arrow
-        pin.y = pin.y + 1.0
+        pin.y = pin.y + 0.721
     End If
 
 Loop Until ExitCode <> 0
@@ -368,6 +428,17 @@ Data 0,0
 Data 0,0,1,-1,-1,1,0,-1,1
 Data 0.5,0.5,0,0,0.5,0
 Data 0,0
+
+' Multiply a 3D vector into a 4x4 matrix and output another 3D vector
+' Important!: matrix o must be a different variable from matrix i. if i and o are the same variable it will malfunction.
+' To understand the optimization here. Mathematically you can only multiply matrices of the same dimension. 4 here.
+' But I'm only interested in x, y, and z; so don't bother calculating "w" because it is always 1.
+' Avoiding 7 unnecessary extra multiplications
+Sub Multiply_Vector3_Matrix4 (i As vec3d, m( 3 , 3) As Single, o As vec3d)
+    o.x = i.x * m(0, 0) + i.y * m(1, 0) + i.z * m(2, 0) + m(3, 0)
+    o.y = i.x * m(0, 1) + i.y * m(1, 1) + i.z * m(2, 1) + m(3, 1)
+    o.z = i.x * m(0, 2) + i.y * m(1, 2) + i.z * m(2, 2) + m(3, 2)
+End Sub
 
 Sub T1_SelectCatalogTexture (texnum As Integer)
     ' Fill in Texture 1 data
