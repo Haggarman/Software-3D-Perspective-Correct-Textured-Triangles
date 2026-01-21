@@ -55,6 +55,9 @@ Yes | Z-Fight Bias
 ## Language
  This collection of BASIC programs is written for the QB64 compiler.
  https://github.com/QB64-Phoenix-Edition/
+
+ **The newest commits here rely on at least version 4.2.0**
+
 ### Compiler Settings
  Be sure to set the option "Output EXE to Source Folder" in the Run menu. This is so that the .exe can find the texture image files.
 
@@ -721,7 +724,36 @@ Ultra64 Square | Academic Curved
 4. Low resolution: NTSC and VGA analog signals have intrinsic blending (low pass filtering). Remember we're talking 320x240 to 640x480 resolutions being upscaled here.
 5. Performance: Mip mapping is slower than not doing it. It was already a battle between looking nice and frames per second. It was common to be in the 12 to 20 fps range.
 
+## Limitations of the horizontal span rasterizer method
+ As this deep dive wraps up, it would be best to take an overall critical look at the effectiveness of rasterizing triangles using horizontal spans.
+
+### Razor thin triangles
+ Horizontally wide, but vertically thin triangles degenerate into isolated pixels.
+
+Thin | Thinner
+--- | ---
+ ![Thin](/docs/ThinTriangle.png) | ![Thinner](/docs/ThinnerTriangle.png)
+
+ This is because the span's beginning and end points are calculated at each whole number Y step, by definition. It is not looking at the interval between for example rows 12 and 13 to determine the width of row span 13. Rather the current span is using the X-major and X-minor values at exactly Y = 13.00000... and nothing in-between.
+
+ I wrote the Concepts program *MouseTriangle.bas* to easily move around the vertexes using the mouse cursor to allow you to cause this. It is difficult to witness this effect happening during normal mesh rendering.
+
+#### Subsampling Y
+ The solution, if one deems it worth solving, is to look at what numerically happens between two rows using subsampling.
+
+ The minimum and maximum values of X are calculated from looking at a set of subsampled rows. Think about how shrinking \ / or expanding / \ looks, or even slanting like / / where the min and max X values would all be different.
+ 
+ Each onscreen triangle is also likely to have one subsampling encounter with Y middle (aka Vertex B, or the knee of the triangle) shaped like this > when that particular line is subsampled. Again this affects min and max X.
+
+#### Who did it?
+ The creators of the Ultra64 RDP decided to use 4 subsamples vertically. In this realm their Y position is actually multiplied by 4 before running the edge walking DDA. This feeds into their pixel coverage calculation and ultimately into their two-pass deferred Anti-Aliasing. The first pass is when the line is drawn into memory, and the second pass is when the line is read out to be displayed on the TV.
+
+ Neither S3 ViRGE nor 3DFX Voodoo 1 and 2 graphics accelerator hardware performed row subsampling.
+
+ Refer to the Concepts folder for a program named *Triangle_Edge_AA.bas* to see a single pass implementation of row subsampling.
+
 ## Retrospective
+
 ### Introduction
  A lot of what I researched and discovered cannot be reflected in these program's source. But perhaps you would appreciate some brief random thoughts.
 ### Design Mindset
