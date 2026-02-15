@@ -16,7 +16,7 @@
 
  The books on 3D Graphics at the time felt condescending, always assuming the reader is starting from the beginning, wasting page after page with personal anecdotes, and when finally getting at the meat of the problem would say the most hurtful thing a technical author can say, which is "that is beyond the scope of this book". Me shocked in disbelief as the author then continued with their dated affine mapping and DOS 8086 palletized 256 color VGA. As a result with everything so secret and so poorly described, I basically didn't pursue 3D anything as a career. If I couldn't understand it at the core mathematical level, I didn't want to deal with it.
 
- If someone would have just said to me, the secret to perspective correct texturing is to interpolate 1/Z aross the face of the triangle instead of Z, that would have been enough for me to keep rolling along. I would have naturally figured out with things now expressed "per Z", to interpolate the (U, V) texel coordinates also as U/Z and V/Z.
+ If someone would have just said to me, the secret to perspective correct texturing is to interpolate 1/Z across the face of the triangle instead of Z, that would have been enough for me to keep rolling along. I would have naturally figured out with things now expressed "per Z", to interpolate the (U, V) texel coordinates also as U/Z and V/Z.
 
  Instead, it had to be decades later when a random Youtube video suggestion led me to javidx9 "Code-It-Yourself! 3D Graphics Engine" series. To him I am eternally grateful for cutting through the rubbish and explaining things in a straightforward manner. I was once again able to soar, getting to write performant realtime tri-linear mip-mapping, which was the darling technology of the time.
 
@@ -170,7 +170,7 @@ Next Y
 ### Overdraw
  In the Two Triangles example, the purpose of drawing up to but not including the rightmost pixel on a horizontal span has to do with overdraw. Two triangles sharing two vertexes will have the pixels of the shared edge redrawn, wasting cycles. This is in fact so commonly encountered when drawing meshes, it has the term "rounding rule".
 
- The rounding rule for this rasterizer is to skip the rightmost and bottom pixels. The Pinwheel Test is a simple way to check for overdraw. Eight triangles surrounding a central point join edges to form a square. During drawing of this shape, if a pixel is drawn more than once it is given a different color.
+ The rounding rule for this rasterizer is to skip the rightmost and upper-most pixels. The Pinwheel Test is a simple way to check for overdraw. Eight triangles surrounding a central point join edges to form a square. During drawing of this shape, if a pixel is drawn more than once it is given a different color.
 
  Please see *PinWheel.bas* in the Concepts folder. The goal is to see a solid green square without different colors within indicating overdraw.
 
@@ -181,13 +181,15 @@ Next Y
  It is also possible to miss pixels where they are expected to be drawn. These holes are sometimes called divots, named after the golf term. Extra unwanted pixels are called stray pixels.
 
 ### Mesh?
- When thinking of a mesh, think of a large quilt sewn from smaller squares. The idea of a mesh is a repeating pattern of consistently sized shapes sharing edges and vertexes.
+ When thinking of a mesh, think of a large quilt sewn from smaller squares. The idea of a mesh is a repeating pattern of consistently sized shapes (polygons) sharing edges and vertexes.
 
  For example, two right triangles that share the same hypotenuse creates a square. Consider the corners (vertexes) of a square-shaped repeating pattern labeled A, B, C, D in a clockwise order. The first triangle is A, B, C. And the second triangle is A, C, D. The line from A to C is shared.
 
  Now connect a series of these squares together aligning edges, making a grid or in other words a 2D mesh. Notice edges A to B, B to C, C to D, and D to A are shared. Without the "rounding rule" these edges would be drawn twice. A pixel at a vertex in the middle would be drawn 8 times.
 
- To take this to its conclusion-- When modeling a 3D object as a mesh, a way to think of it is like wrapping a quilt around the object. Triangles rarely stand alone and are more likely part of a mesh that represents an object.
+ The word mesh itself is derived from a fishnet, which is another way of thinking about this. However in this context mesh refers to the open areas of the net. I was trying to shy away from the "wireframe" mode of visualizing a 3D model. A wireframe involves showing only the lines defining the edges of the polygons and not the face texturing itself.
+
+ To take this to its conclusion-- When modeling a 3D object as a mesh, a way to think of it is like wrapping a quilt around the object or trapping it with a fishing net. Triangles rarely stand alone and are more likely part of a polygon mesh that represents an object.
 
 ### Why use DDA?
  DDA was used because not all math operations complete in the same amount of time. In this case we are comparing repeated additions to an accumulator, versus multiply then divide operations.
@@ -371,9 +373,19 @@ Affine      | Perspective
 
  With option 4, we are fortunate with front clipping because the near frustum plane is always parallel to the rendering screen surface (with traditional single-point projection). This reduces the required math down from a 3D vector intersecting a 3D plane, to a 2D line intersecting a 1D plane. Linear interpolation is used, once again.
 
+#### Near Clipping Example
+
+ The program *SkyboxLongTube.bas* should make it easy to visualize near frustum clipping. Since the tubes are set to be 100 units long, the camera can be easily positioned inside. Since near clipping also involves interpolating the vertex attributes (U and V texture coordinates and RGB vertex colors) to that "Z = near frustum" location, the stability of the texturing and coloring is retained as the camera passes by.
+
+ If an unconstrained camera is allowed to pass inside of what is supposed to be a solid object, this results in an unnatural looking "slicing" of the object. A concern for immersion is with the viewer seeing the hollowness inside or spoilers from seeing into hidden areas beyond the wall they shouldn't. 3D video games at first took great pains to disallow this slicing. But then the player's frustrations from fighting the camera positioning relaxed this design practice significantly.
+
+ ![Near Clip Slicing Example](/docs/NearPlaneSlicing.png)
+
+ Near plane is most often set to 1.0 length units or less. As the near plane approaches closer and closer to 0.0, this increases distortion and often unnecessary rendering. Experimentation is usually the best way to determine this value. Since length is relative, think in proportions. Start at one-hundredth of the size of a typical object. So if a typical object is 10 units wide, near frustum could be 0.1 as a start.
+
 #### Tesselation
 
- We are also in a sense unlucky in trying to just draw triangles. If one Z value (of 3) needs to be clipped, this creates a 4 point "quadrangle". We need to tesselate to create 2 triangles out of this quadrangle.
+ Now to get into the details of clipping triangles. If one Z value (of 3) needs to be clipped, this creates a 4 point "quadrangle". Since we only draw triangles, we need to tesselate to create 2 triangles out of this quadrangle.
 
 #### Winding Order
 
@@ -407,8 +419,7 @@ Affine      | Perspective
 
  The winding order of the triangle's vertexes determines which side is the front face. The sign (positive or negative) of the triangle's **surface normal** as compared to a normalized ray extending out from the viewer (using the dot product) can determine which side of the triangle is facing the viewer.
 
- If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling.
-
+ If the triangle were to be viewed perfectly edge-on to have a dot product value of 0, it is also invisible because it is infinitely thin. So then not drawing the triangle if this value is less than or equal to 0.0 accomplishes backface culling. With the opposite winding order, that would be greater than or equal to 0.0 to not draw the triangle. Either way, try to stay consistent.
 ## Texture Sampling
 
 ### Texture Magnification
