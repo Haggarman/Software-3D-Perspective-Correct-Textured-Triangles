@@ -274,36 +274,46 @@ Flat Shading | Gouraud Shading
 
  How about expressing this as Z = 1 / W, having previously calculated W = 1 / Z?
 
- So to regain the depth Z, the inverse of the depth W can be taken.
+ Now linearly interpolate W between two 2D projected screen points (SX, SY), for a given number of samples.
 
- But the point here is that W is linear when interpolating depth from vertex to vertex on the projected triangle.
+ The interesting discovery here is that W is linear when interpolating, which then allows for the use of DDA!
+
+ At each sample, to regain the depth Z, the inverse of the depth W can be taken.
+
+ Since Z can now be determined at a given screen point efficiently without slow and complicated division, realtime perspective correct texturing was made feasible and affordable using the available 1990's microchip technology.
+
+ Yes, long division by Z is still required at the three points of the triangle's vertexes. But in this era, textured triangles were composed from thousands, often tens of thousands, of screen pixels.
 
 ### Over Z
- At some point back in the 20th century, someone mathing around had a eureka moment to express the vertex attributes per units of Z. For example, divide the blueness of VertexA and VertexB both by Z, then linearly interpolate, and then undo the "over Z" to get the blue value back. This gets beyond the visually incorrect but very fast Gouraud shading.
+ At some point back in the 20th century, someone mathing around had a eureka moment to express the RGB vertex color attributes per units of Z. For example, divide the blueness of VertexA and VertexB both by Z, then linearly interpolate, and then undo the "over Z" to get the blue value back. This gives perspective correct color blending.
 
- Or more seriously, this insight led to dividing the U and V texel coordinates each by Z before starting the drawing loops. Then using linear interpolation of 1/Z across the triangle face. And then finally multiplying U * Z and V * Z at each pixel to recover the true texel coordinate pair to sample.
+ Or more seriously, this insight led to dividing the U and V texel coordinates at each vertex by Z. Then using linear interpolation of 1/Z, U/Z, and V/Z on the triangle face. And then in a tight DDA loop for each horizontal span, finally recovering Z from its inverse W and immediately multiplying (U/Z) * Z and (V/Z) * Z at each pixel to recover the true texel coordinate pair (U, V) to sample the texture.
 
 ```
  ' optimized
  OoZ = 1 / depth Z  ' One over Z, also known as W
- UoZ = U texel horizontal attribute * OoZ  ' sometimes called S
- VoZ = V texel vertical attribute * OoZ    ' sometimes called T
+ UoZ = U texel horizontal attribute * OoZ  ' U over Z, also known as S
+ VoZ = V texel vertical attribute * OoZ    ' V over Z. aka T, for Tall if that helps you recall
 ```
- Not shown here, but dividing the other vertex attributes (R, G, B, A, etc.) by Z makes it possible to then use DDA to achieve perspective correct color blending when stepping from one pixel to the next.
+
+ When sent over to the Graphics Accelerator, a whole number and fractional part is included for S and T.
+
+ W is generally normalized from 0.0 to 1.0, to simplify the circuitry. That is not necessary when using floating point.
 
  Converting W back to Z is performed per-pixel and thus requires a very fast approximate inverse calculation:
 ```
 For X = 1 to 10
   tex_z = 1 / tex_w  ' this must be fast!
-  U = tex_u * tex_z  ' U horizontal texture coordinate
-  V = tex_v * tex_z  ' V vertical texture coordinate
+  U = tex_s * tex_z  ' U horizontal texture coordinate
+  V = tex_t * tex_z  ' V vertical texture coordinate
   plot(X, Y, texture(U,V))
 
   tex_w = tex_w + tex_w_step
-  tex_u = tex_u + tex_u_step
-  tex_v = tex_v + tex_v_step
+  tex_s = tex_s + tex_s_step
+  tex_t = tex_t + tex_t_step
 Next X
 ```
+
 ### Reciprocal Hardware
  On the graphics accelerator cards, a dual lookup-table method is used to find the reciprocal.
 
