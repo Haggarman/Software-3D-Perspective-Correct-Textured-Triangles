@@ -268,32 +268,62 @@ Flat Shading | Gouraud Shading
  Two multiplications by an inverse are already swifter than two divisions.
 
 ### W Space
- This gets a little bit abstract at this point, but would you agree that Z = 1 / 1 / Z ?
+ This gets a little bit abstract at this point, but would you agree that Z = 1 / 1 / Z ? As in if we take the inverse of an inverse of a number, we get the same number back?
 
- As in if we take the inverse of an inverse of a number, we get the same number back?
+ Let's use an example. Let's linearly interpolate between two points (Y0, W0) and (Y1, W1).
 
- How about expressing this as Z = 1 / W, having previously calculated W = 1 / Z?
+ Interpolate from (2, 1/5) to (12, 1/24) by steps of 1. This means that Y starts at 2 and ends at 12, and that Z starts at 5 and ends at 24. To aid calculation, column n was added, ranging from 0.0 to 1.0 to allow using the slope-intercept form of a line.
 
- Now linearly interpolate W between two 2D projected screen points (SX, SY), for a given number of samples.
+Y	| n	| Delta n	| W	| Delta W	| Z = 1 / W	| Delta Z
+--- | --- | --- | --- | --- | --- | ---
+2	| 0.0	|  *		| 0.2 | * | 5 | *	
+3	| 0.1	| 0.1	| 0.184166667	| -0.015833333	| 5.429864253	| 0.429864253
+4	| 0.2	| 0.1	| 0.168333333	| -0.015833333	| 5.940594059	| 0.510729806
+5	| 0.3	| 0.1	| 0.1525	| -0.015833333	| 6.557377049	| 0.61678299
+6	| 0.4	| 0.1	| 0.136666667	| -0.015833333	| 7.317073171	| 0.759696122
+7	| 0.5	| 0.1	| 0.120833333	| -0.015833333	| 8.275862069	| 0.958788898
+8	| 0.6	| 0.1	| 0.105	| -0.015833333	| 9.523809524	| 1.247947455
+9	| 0.7	| 0.1	| 0.089166667	| -0.015833333	| 11.21495327	| 1.691143747
+10	| 0.8	| 0.1	| 0.073333333	| -0.015833333	| 13.63636364	| 2.421410365
+11	| 0.9	| 0.1	| 0.0575	| -0.015833333	| 17.39130435	| 3.754940711
+12	| 1.0	| 0.1	| 0.041666667	| -0.015833333	| 24	| 6.608695652
 
- The interesting discovery here is that W is linear when interpolating, which then allows for the use of DDA!
+ Focus on the somewhat ugly constant slope value of -0.015833333 in Delta W column. Delta is the amount of change from the previous row. The key discovery here is that W is linear when interpolating, which then allows for the use of DDA!
 
  At each sample, to regain the depth Z, the inverse of the depth W can be taken.
 
  Since Z can now be determined at a given screen point efficiently without slow and complicated division, realtime perspective correct texturing was made feasible and affordable using the available 1990's microchip technology.
 
- Yes, long division by Z is still required at the three points of the triangle's vertexes. But in this era, textured triangles were composed from thousands, often tens of thousands, of screen pixels.
+ Yes, long division by Z is still required at the three points of the triangle's vertexes. But in this era, textured triangles were composed from thousands, often tens of thousands, of screen pixels. Repeated addition by a step value is possible for the majority of those pixels, massively speeding up rendering. What remains is a way to quickly calculate the inverse of a number, or what is known more formally as taking the reciprocal of a number.
 
-### Over Z
- At some point back in the 20th century, someone mathing around had a eureka moment to express the RGB vertex color attributes per units of Z. For example, divide the blueness of VertexA and VertexB both by Z, then linearly interpolate, and then undo the "over Z" to get the blue value back. This gives perspective correct color blending.
+### Reciprocal Hardware
+ On the graphics accelerator cards, a dual lookup-table method is used to find the reciprocal.
+ 
+ if f(x) = 1 / x is used directly, this quickly becomes an issue. The function starts as undefined at x=0, and then rolls down from positive infinity as x increases. Not good. Especially in fixed-point binary, how would one even represent "undefined" and "infinity"?
 
- Or more seriously, this insight led to dividing the U and V texel coordinates at each vertex by Z. Then using linear interpolation of 1/Z, U/Z, and V/Z on the triangle face. And then in a tight DDA loop for each horizontal span, finally recovering Z from its inverse W and immediately multiplying (U/Z) * Z and (V/Z) * Z at each pixel to recover the true texel coordinate pair (U, V) to sample the texture.
+ Instead, consider the function f(x) = (1 - x) / (1 + x) in range from 0.0 to 1.0 and how well behaved the curve is. It is different, but still holds the same general rolloff shape as before. Mathematicians certainly do find clever ways to avoid the problem.
+
+ ![Reciprocal Method](/docs/ReciprocalMethodOneMinusX.png)
+
+ The primary lookup Table A holds the ability to calculate the reciprocal after some bit shifting of x, and the second Table B holds the derivative of Table A (as in difference between two adjacent values) to interpolate the gaps.
+
+ Thanks goes to Semplar on the Mister FPGA Discord for explaining with this Desmos graph.
+
+ ![Lookup Tables](/docs/ReciprocalMethodLUT.png)
+
+ Although pipelined, this operation had to be performed per pixel. This fast inverse algorithm is another secret sauce that made perspective correct texturing feasible.
+
+ Because this era's hardware used fixed-point math, it was necessary to express the depth as ranging from 0 to 1 equivalent when it reached the graphics chip line rasterizer. For example s1.14 format. This range limitation made clipping to the near and far planes of the view frustum critical. There was a lot of pop-in where distant objects suddenly appeared. Pop-in was not only because of limited computing resources and fill rates. Texturing simply could not exist further out than the far clipping plane as far as the hardware was concerned.
+
+### Ooze Over Z
+ Pardon the pun in the heading. At some point back in the 20th century, someone mathing around had a eureka moment to express the RGB vertex color attributes per units of Z. For example, divide the blueness of VertexA and VertexB both by Z, then linearly interpolate, and then undo the "over Z" to get the blue value back. This gives perspective correct color blending.
+
+ Or more seriously, this insight led to dividing the U and V texel coordinates at each vertex by Z. Then performing linear interpolation of 1/Z, U/Z, and V/Z along the triangle's edges.
 
 ```
- ' optimized
- OoZ = 1 / depth Z  ' One over Z, also known as W
- UoZ = U texel horizontal attribute * OoZ  ' U over Z, also known as S
- VoZ = V texel vertical attribute * OoZ    ' V over Z. aka T, for Tall if that helps you recall
+ W = OoZ = 1 / depth Z  ' One over Z, also known as W
+ S = UoZ = U texel horizontal attribute * OoZ  ' U over Z, also known as S
+ T = VoZ = V texel vertical attribute * OoZ    ' V over Z. aka T, for Tall if that helps you recall
 ```
 
  When sent over to the Graphics Accelerator, a whole number and fractional part is included for S and T.
@@ -314,28 +344,19 @@ For X = 1 to 10
 Next X
 ```
 
-### Reciprocal Hardware
- On the graphics accelerator cards, a dual lookup-table method is used to find the reciprocal.
-
- Consider the function f(x) = (1 - x) / (1 + x) in range from 0.0 to 1.0 and how well behaved the curve is. As opposed to if 1 / x was used directly instead, where the function starts as undefined at x=0, and then rolls down from positive infinity as x increases.
-
- ![Reciprocal Method](/docs/ReciprocalMethodOneMinusX.png)
-
- The primary lookup Table A holds the ability to calculate the reciprocal after some bit shifting of x, and the second Table B holds the derivative of Table A (as in difference between two adjacent values) to interpolate the gaps.
-
- Thanks goes to Semplar on Discord for explaining with this Desmos graph.
-
- ![Lookup Tables](/docs/ReciprocalMethodLUT.png)
-
- Although pipelined, this operation had to be performed per pixel. This fast inverse algorithm is another secret sauce that made perspective correct texturing feasible.
-
- Because this era's hardware used fixed-point math, it was necessary to express the depth as ranging from 0 to 1 equivalent when it reached the graphics chip line rasterizer. For example s1.14 format. This range limitation made clipping to the near and far planes of the view frustum critical. There was a lot of pop-in where distant objects suddenly appeared. Pop-in was not only because of limited computing resources and fill rates. Texturing simply could not exist further out than the far clipping plane as far as the hardware was concerned.
+ The above pseudocode simulates what's going on in the hardware in a tight DDA loop for each horizontal span. It recovers Z from its inverse W. It then recovers U by multiplying (U/Z) * Z, and also V the same way. With U and V the 2D texture map color is found and plotted. And then the DDA accumulators are stepped for the next pixel. Eventually the loop terminates by reaching the end of X.
 
 ### Demonstration
  The program called *ColorCubeAffine.bas* allows you to easily flip between Affine and Perspective Correct rendering. Please review the code comments in the two locations where the small difference is made depending on the value of **Affine_Only**. The first location is where the vertex attributes are loaded in the main triangle drawing loop. The second location is where the pixel color value is determined in subroutine **TexturedVertexColorAlphaTriangle()**.
-Affine      | Perspective
+
+Affine | Perspective
 --- | ---
  ![CubeAffine](/docs/CubeAffine.png) | ![CubePerspective](/docs/CubePerspective.png)
+
+#### Optimization
+ When writing code loops that execute millions of times a second, jumping to away to a function and then returning has significant cost. Inlining the plot function and the texture lookup is preferrable. The earlier examples I've provided do make the function calls away from this tight loop, but then the later examples have the inlining. It is again about first make it work, then make it work well by targeting the areas the program spends the most time.
+
+ Another x64 optimization seen in later examples was moving the first 1/w calculation to be before the X loop, and then starting the next 1/w calculation right after tex_w is stepped. The division (and reciprocal) floating point unit on these CPUs can run parallel to even other floating point move, multiply, or add operations. This was indeed determined to be faster by experimentation and direct observation.
 
 ### Bottom Line
  Being willing to dedicate huge amounts of silicon real estate to perform this 1 / 1 / Z algorithm is what separated true perspective projection graphics acceleration hardware from the more primitive affine transformation hardware.
