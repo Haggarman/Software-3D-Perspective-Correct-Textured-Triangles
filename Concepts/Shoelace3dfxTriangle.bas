@@ -3,25 +3,24 @@ _Title "Shoelace 3dfx Triangle - Press 1 2 3 or R-click to change vertex pin, L-
 ' 2026 Haggarman
 ' Update to version 4.2.0 in case of issues. This code uses builtin keywords that fail on older versions.
 '
-' Starting at around line 395, look for the 3dfx shoelace area formula.
-' Commented out and left code from MouseTriangle.bas so you can text compare the two approaches.
+' Starting at around line 380, look for the 3dfx shoelace area formula.
+' The rest of the code here is the same as MouseTriangle.bas so you can text compare the two approaches.
 '
 ' For 3dfx, the dX and dY gradients used in texture mapping and shading are calculated ahead of time by the system CPU.
-' This is opposed to the way we've been doing it here prior, where the dX steps are re-calculated every horizontal span.
+' This is opposed to the way we were doing it prior, where the dX steps are re-calculated every horizontal span.
 ' In speed testing, not significantly faster or slower, just different.
 '
-'  Note: the dy vars aren't being used here due to edge-walking both legs using slopes.
 '  As far as I understand, the real 3dfx Voodoo framebuffer chip hardware searches incrementally for the next edge.
 '  It is looking for a sign flip and/or a magnitude greater than 1.0 to indicate that it reached the exterior of the triangle.
 '
-'  Voodoo is directly given (X, Y) coordinates for vertexes A, B, and C. But not given the X slopes from A-B and from A-C.
-'  So starting at either vertex A and going down, or vertex C and going up, the Voodoo edge stepper search begins.
-'  One vertical step, and then the search spreads out from there to either side horizontally.
-'   While it is searching, the RGB and STW accumulators are adjusted by their own unique dX and dY steps.
+'  Voodoo is directly given (X, Y) coordinates for vertexes A, B, and C. But not given the dX per dY slopes from A-B and from A-C.
+'  So starting at vertex A and going down, the Voodoo edge stepper search begins.
+'  One vertical step, and then searches horizontal. If it is told the wrong direction towards B (sign bit of the area) it will "hang".
+'   While it is searching, the RGB and STW row accumulators are adjusted by their own unique dY steps.
 '  Vector math is used to find if the current test point is in the interior or exterior of the triangle.
 '  It's kind of crazy, requires multiplication, but no division. I think they get away with searching for the next span edges,
 '  while the current span is being clocked in from the texture mapper chip(s) on the external bus.
-'  Mentioned as an FYI, as this code isn't written to do that.
+'  Mentioned as an FYI, as this code isn't written to do that edge search.
 '
 ' Use the mouse cursor to freely set the vertexes of one triangle.
 ' It is maginfied to allow for fractional coordinates.
@@ -316,8 +315,9 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
     '  WORK_IMAGE, clip_min_y, clip_max_y, clip_min_x, clip_max_x, Size_Render_X,
     '  T1_mblock, T1_width, T1_width_MASK, T1_height, T1_height_MASK
 
-    Static delta2 As vertex5
-    Static delta1 As vertex5
+    Static delta_major_x As Single, delta_major_y As Single
+    Static delta_minor_x As Single, delta_minor_y As Single
+
     Static draw_min_y As Long, draw_max_y As Long
 
     ' Sort so that vertex A is on top and C is on bottom.
@@ -340,32 +340,23 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
     If (draw_max_y - draw_min_y) < 0 Then Exit Sub
 
     ' Determine the deltas (lengths)
-    ' delta 2 is from A to C (the full triangle height)
-    delta2.x = C.x - A.x
-    delta2.y = C.y - A.y
-    delta2.w = C.w - A.w
-    delta2.u = C.u - A.u
-    delta2.v = C.v - A.v
+    ' delta major is from A to C (the full triangle height)
+    delta_major_x = C.x - A.x
+    delta_major_y = C.y - A.y
 
     ' Avoiding div by 0
     ' Entire Y height less than 1/256 would not have meaningful pixel color change
-    If delta2.y < (1 / 256) Then Exit Sub
+    If delta_major_y < (1 / 256) Then Exit Sub
 
     ' Determine vertical Y steps for DDA style math
     ' DDA is Digital Differential Analyzer
     ' It is an accumulator that counts from a known start point to an end point, in equal increments defined by the number of steps in-between.
     ' Probably faster nowadays to do the one division at the start, instead of Bresenham, anyway.
-    Static legx1_step As Single
-    Static legw1_step As Single, legu1_step As Single, legv1_step As Single
-
-    Static legx2_step As Single
-    Static legw2_step As Single, legu2_step As Single, legv2_step As Single
+    Static legx1_step As Single ' minor
+    Static legx2_step As Single ' major
 
     ' Leg 2 steps from A to C (the full triangle height)
-    legx2_step = delta2.x / delta2.y
-    legw2_step = delta2.w / delta2.y
-    legu2_step = delta2.u / delta2.y
-    legv2_step = delta2.v / delta2.y
+    legx2_step = delta_major_x / delta_major_y
 
     ' Leg 1, Draw top to middle
     ' For most triangles, draw downward from the apex A to a knee B.
@@ -375,21 +366,15 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
     If draw_middle_y < clip_min_y Then draw_middle_y = clip_min_y
     ' Do not clip B to max_y. Let the y count expire before reaching the knee if it is past bottom of screen.
 
-    ' Leg 1 is from A to B (right now)
-    delta1.x = B.x - A.x
-    delta1.y = B.y - A.y
-    delta1.w = B.w - A.w
-    delta1.u = B.u - A.u
-    delta1.v = B.v - A.v
+    ' delta minor is from A to B (right now)
+    delta_minor_x = B.x - A.x
+    delta_minor_y = B.y - A.y
 
     ' If the triangle has no knee, this section gets skipped to avoid divide by 0.
-    ' That is okay, because the recalculate Leg 1 from B to C triggers before actually drawing.
-    If delta1.y > (1 / 256) Then
+    ' That is okay, because the recalculate legx1_step from B to C triggers before actually drawing.
+    If delta_minor_y > (1 / 256) Then
         ' Find Leg 1 steps in the y direction from A to B
-        legx1_step = delta1.x / delta1.y
-        legw1_step = delta1.w / delta1.y
-        legu1_step = delta1.u / delta1.y
-        legv1_step = delta1.v / delta1.y
+        legx1_step = delta_minor_x / delta_minor_y
     End If
 
     ' 3dfx shoelace area formula
@@ -404,10 +389,10 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
     If area = 0 Then Exit Sub
 
     ooa = 1.0 / area
-    'Static gradient_dxAB As Single, gradient_dxBC As Single
+    Static gradient_dxAB As Single, gradient_dxBC As Single
     Static gradient_dyAB As Single, gradient_dyBC As Single
-    'gradient_dxAB = dxAB * ooa
-    'gradient_dxBC = dxBC * ooa
+    gradient_dxAB = dxAB * ooa
+    gradient_dxBC = dxBC * ooa
     gradient_dyAB = dyAB * ooa
     gradient_dyBC = dyBC * ooa
 
@@ -415,54 +400,46 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
     'Static dGdx As Single, dGdy As Single
     'Static dBdx As Single, dBdy As Single
 
-    Static dSdx As Single ', dSdy As Single
-    Static dTdx As Single ', dTdy As Single
-    Static dWdx As Single ', dWdy As Single
+    ' Deltas when going one pixel to the right, and one pixel down.
+    Static dSdx As Single, dSdy As Single
+    Static dTdx As Single, dTdy As Single
+    Static dWdx As Single, dWdy As Single
 
     dSdx = (A.u - B.u) * gradient_dyBC - (B.u - C.u) * gradient_dyAB
-    'dSdy = (B.u - C.u) * gradient_dxAB - (A.u - B.u) * gradient_dxBC
+    dSdy = (B.u - C.u) * gradient_dxAB - (A.u - B.u) * gradient_dxBC
 
     dTdx = (A.v - B.v) * gradient_dyBC - (B.v - C.v) * gradient_dyAB
-    'dTdy = (B.v - C.v) * gradient_dxAB - (A.v - B.v) * gradient_dxBC
+    dTdy = (B.v - C.v) * gradient_dxAB - (A.v - B.v) * gradient_dxBC
 
     dWdx = (A.w - B.w) * gradient_dyBC - (B.w - C.w) * gradient_dyAB
-    'dWdy = (B.w - C.w) * gradient_dxAB - (A.w - B.w) * gradient_dxBC
+    dWdy = (B.w - C.w) * gradient_dxAB - (A.w - B.w) * gradient_dxBC
 
     ' Y Accumulators
     Static leg_x1 As Single
-    Static leg_w1 As Single, leg_u1 As Single, leg_v1 As Single
-
     Static leg_x2 As Single
-    Static leg_w2 As Single, leg_u2 As Single, leg_v2 As Single
-
-    ' 11-4-2022 Prestep Y
     Static prestep_y1 As Single
     ' Basically we are sampling pixels on integer exact rows.
     ' But we only are able to know the next row by way of forward interpolation. So always round up.
-    ' To get to that next row, we have to prestep by the fractional forward distance from A. _Ceil(A.y) - A.y
+    ' To get to that next row, we have to prestep by the fractional forward distance from Vertex A.
     prestep_y1 = draw_min_y - A.y
-
     leg_x1 = A.x + prestep_y1 * legx1_step
-    leg_w1 = A.w + prestep_y1 * legw1_step
-    leg_u1 = A.u + prestep_y1 * legu1_step
-    leg_v1 = A.v + prestep_y1 * legv1_step
-
     leg_x2 = A.x + prestep_y1 * legx2_step
-    leg_w2 = A.w + prestep_y1 * legw2_step
-    leg_u2 = A.u + prestep_y1 * legu2_step
-    leg_v2 = A.v + prestep_y1 * legv2_step
+
+    Static row_s As Single, row_t As Single, row_w As Single
+    row_s = A.u + prestep_y1 * dSdy
+    row_t = A.v + prestep_y1 * dTdy
+    row_w = A.w + prestep_y1 * dWdy
 
     ' Inner loop vars
+    Static x_offset_from_Ax As Single
     Static row As Long
     Static col As Long
     Static draw_max_x As Long
-    Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing each time)
+    Static tex_z As Single ' 1/w helper (multiply by inverse is faster than dividing)
     Static pixel_value As _Unsigned Long ' The ARGB value to write to screen
 
     ' Stepping along the X direction
     Static delta_x As Single
-    Static prestep_x As Single
-    'Static tex_w_step As Single, tex_u_step As Single, tex_v_step As Single
 
     ' X Accumulators
     Static tex_w As Single, tex_u As Single, tex_v As Single
@@ -483,56 +460,33 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
         If row = draw_middle_y Then
             ' Reached Leg 1 knee at B, recalculate Leg 1.
             ' This overwrites Leg 1 to be from B to C. Leg 2 just keeps continuing from A to C.
-            delta1.x = C.x - B.x
-            delta1.y = C.y - B.y
-            delta1.w = C.w - B.w
-            delta1.u = C.u - B.u
-            delta1.v = C.v - B.v
-
-            If delta1.y = 0.0 Then Exit Sub
+            delta_minor_x = C.x - B.x
+            delta_minor_y = C.y - B.y
+            If delta_minor_y = 0.0 Then Exit Sub
 
             ' Full steps in the y direction from B to C
-            legx1_step = delta1.x / delta1.y
-            legw1_step = delta1.w / delta1.y
-            legu1_step = delta1.u / delta1.y
-            legv1_step = delta1.v / delta1.y
+            legx1_step = delta_minor_x / delta_minor_y
 
             ' 11-4-2022 Prestep Y
             ' Most cases has B lower downscreen than A.
             ' B > A usually. Only one case where B = A.
             prestep_y1 = draw_middle_y - B.y
 
-            ' Re-Initialize DDA start values
+            ' Re-Initialize Leg 1 DDA start values
             leg_x1 = B.x + prestep_y1 * legx1_step
-            leg_w1 = B.w + prestep_y1 * legw1_step
-            leg_u1 = B.u + prestep_y1 * legu1_step
-            leg_v1 = B.v + prestep_y1 * legv1_step
-
         End If
 
         ' Horizontal Scanline
         delta_x = Abs(leg_x2 - leg_x1)
-        ' Avoid div/0, this gets tiring.
+        ' Avoid too tiny to see
         If delta_x >= (1 / 2048) Then
-            ' Calculate step, start, and end values.
+            ' Calculate column pixel starting and ending, adjusting for clipping.
             ' Drawing left to right, as in incrementing from a lower to higher memory address, is usually fastest.
             If leg_x1 < leg_x2 Then
                 ' leg 1 is on the left
-                ' commented out, kept for comparison.
-                'tex_w_step = (leg_w2 - leg_w1) / delta_x
-                'tex_u_step = (leg_u2 - leg_u1) / delta_x
-                'tex_v_step = (leg_v2 - leg_v1) / delta_x
-
                 ' Set the horizontal starting point to (1)
                 col = _Ceil(leg_x1)
                 If col < clip_min_x Then col = clip_min_x
-
-                ' Prestep to find pixel starting point
-                prestep_x = col - leg_x1
-                tex_w = leg_w1 + prestep_x * dWdx 'tex_w_step
-                tex_z = 1 / tex_w ' this can be absorbed
-                tex_u = leg_u1 + prestep_x * dSdx 'tex_u_step
-                tex_v = leg_v1 + prestep_x * dTdx 'tex_v_step
 
                 ' ending point is (2)
                 draw_max_x = _Ceil(leg_x2)
@@ -540,26 +494,23 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
 
             Else
                 ' Things are flipped. leg 1 is on the right.
-                'tex_w_step = (leg_w1 - leg_w2) / delta_x
-                'tex_u_step = (leg_u1 - leg_u2) / delta_x
-                'tex_v_step = (leg_v1 - leg_v2) / delta_x
-
                 ' Set the horizontal starting point to (2)
                 col = _Ceil(leg_x2)
                 If col < clip_min_x Then col = clip_min_x
-
-                ' Prestep to find pixel starting point
-                prestep_x = col - leg_x2
-                tex_w = leg_w2 + prestep_x * dWdx 'tex_w_step
-                tex_z = 1 / tex_w ' this can be absorbed
-                tex_u = leg_u2 + prestep_x * dSdx 'tex_u_step
-                tex_v = leg_v2 + prestep_x * dTdx 'tex_v_step
 
                 ' ending point is (1)
                 draw_max_x = _Ceil(leg_x1)
                 If draw_max_x > clip_max_x Then draw_max_x = clip_max_x
 
             End If
+
+            ' Start value of horizontal span texturing accumulators
+            ' Reference point is Vertex A
+            x_offset_from_Ax = col - A.x
+            tex_w = row_w + x_offset_from_Ax * dWdx
+            tex_z = 1 / tex_w ' this can be absorbed
+            tex_u = row_s + x_offset_from_Ax * dSdx
+            tex_v = row_t + x_offset_from_Ax * dTdx
 
             ' Draw the Horizontal Scanline
             ' Optimization: before entering this loop, must have done tex_z = 1 / tex_w
@@ -606,29 +557,26 @@ Sub TexturedNonlitTriangle (A As vertex5, B As vertex5, C As vertex5)
                 _MemPut screen_mem_info, screen_address, pixel_value
                 'PSet (col, row), pixel_value
 
-                tex_w = tex_w + dWdx 'tex_w_step
-                tex_z = 1 / tex_w ' execution time for this can be absorbed when result not required immediately
-                tex_u = tex_u + dSdx ' tex_u_step
-                tex_v = tex_v + dTdx 'tex_v_step
+                tex_w = tex_w + dWdx
+                tex_z = 1 / tex_w ' runs in parallel when result not required immediately
+                tex_u = tex_u + dSdx
+                tex_v = tex_v + dTdx
                 screen_address = screen_address + 4
                 col = col + 1
             Wend ' col
 
         End If ' end div/0 avoidance
 
-        ' DDA next step
+        ' DDA next row
         leg_x1 = leg_x1 + legx1_step
-        leg_w1 = leg_w1 + legw1_step
-        leg_u1 = leg_u1 + legu1_step
-        leg_v1 = leg_v1 + legv1_step
-
         leg_x2 = leg_x2 + legx2_step
-        leg_w2 = leg_w2 + legw2_step
-        leg_u2 = leg_u2 + legu2_step
-        leg_v2 = leg_v2 + legv2_step
 
+        row_s = row_s + dSdy
+        row_t = row_t + dTdy
+        row_w = row_w + dWdy
         screen_row_base = screen_row_base + screen_next_row_step
         row = row + 1
     Wend ' row
 
 End Sub
+
