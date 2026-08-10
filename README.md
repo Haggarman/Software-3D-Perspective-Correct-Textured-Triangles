@@ -202,7 +202,25 @@ Next Y
 ### Pre-stepping
  vertexAy is a floating point value but pixels are evenly spaced at integers. It is not okay to just round vertex coordinates to the nearest screen pixel integer, as in motion this causes vertex wobbling and unsightly seams between adjacent triangles.
 
- The start value of Y at vertex A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation. This also holds true for the start of each horizontal span. The starting X is also rounded up to the next integer. The span attribute's starting X values are also interpolated ahead using the amount by which X was rounded up.
+ The start value of Y at vertex A is pre-stepped ahead to the next highest integer pixel row using the ceiling (round up) function. This prestep of Y also factors in the clipping window so that the DDA accumulators are correctly advanced to the top row of the clipping region. To ensure that the sampling is visually correct, the X major, X minor, and vertex attributes (U, V, R, G, B, etc.) are also pre-stepped forward by the same Y delta using linear interpolation.
+
+ This also holds true for the start of each horizontal span. The starting X is also rounded up to the next integer. The span attribute's starting X values are also interpolated ahead using the amount by which X was rounded up.
+
+## Hardware implementation details
+ I hope this section doesn't derail the flow of learning. Each of the hardware implementations of these 3D accelerators have a twist or two from an idealized version of a software rasterizer. Feel free to skip and come back later.
+
+### Ultra 64 RDP
+ The RDP rasterizer should be told to draw from left to right for cache reasons, but it can and very often does draw from right to left. This is one of its many baffling optional settings. I swear its only reason for existing is if one wants the 3 point texture sampling (explained later) to slant the other direction.
+
+### S3 ViRGE
+ The ViRGE series always draws upward from screen bottom to top row, as in decreasing Y value. Flip the Vertexes A and C on the previously shown triangle diagram so that A has the highest Y value, and C the lowest. It does however walk the major edge leg in the way we are familiar with here.
+
+ But here is where it differs. If the major edge (Vertex A to Vertex C) is on the right side in comparison to Vertex B, horizontal spans must be drawn from right to left by setting a bit. S3 ViRGE has a unique and bizarre TXEND01 register, that in my opinion very lazily indicates the last X value for when to switch over to the second minor edge (Vertex B to C). It is directly given both of the X deltas required to walk the minor edges, as well as the Y row that the switch should occur, so its presence is rather baffling.
+
+### Voodoo Series
+ The 3DFX Voodoo series does not edge walk with two rays from VertexA. It uses what is termed the Pineda edge crossing function. In essence, Voodoo serpentine slithers down the triangle starting from vertexA. The texture mapper chip is capable of rasterizing both ways, from right-to-left and left-to-right on command. A state machine in the framebuffer chip makes pixel step decisions (start, down, left, right, save, recall, or done) based on whether it is in the interior or exterior of the triangle.
+
+ Pineda is more useful as a parallel algorithm where each pixel within a bounding box can be calculated on its own. On Voodoo, using Pineda was thought to produce more "watertight" triangle meshes. In reality it created the very real possibility of a hardware hang that had to be overcome by carefully rounding floating point vertex (X, Y) coordinates in the Glide driver to match the fixed-point internal representation.
 
 ## Lighting
  To make a scene look more realistic, for little additional cost the colors of the triangles can be changed based on distance and on how they face a light source. As far as renderer hardware is concerned, this is a matter of using the color attributes sent over to it. In other words the main CPU (or a coprocessor) is responsible for doing the lighting calculations as desired.
@@ -362,6 +380,17 @@ Affine | Perspective
  Being willing to dedicate huge amounts of silicon real estate to perform this 1 / 1 / Z algorithm is what separated true perspective projection graphics acceleration hardware from the more primitive affine transformation hardware.
 
  Division is expensive, but overdraw of a pixel is ever so more. Division by Z can be optimized by multiplying by the inverse of Z instead. The visual benefits outweigh the costs and this is why reverse projection won.
+
+## Z-Buffering
+ Not much to say on this topic since it's kind of obvious. When rendering triangles, the depth value at each pixel can be stored to memory. This memory should be cleared when drawing a new frame. Since this is a common function, there is usually BitBlt DMA hardware that assists with swiftly clearing this block of memory on command.
+
+### Z Comparison
+ Graphics Accelerators gave the entire gamut of 8 comparison possibilities to choose to either store the new pixel or discard. Although the usual setting was to store the pixel color and its depth if it is closer to the viewer than the previous one. Always store and never store are in the list along with the usual >, >=, ==, <=, <, and "not equal".
+
+### Z-Fighting
+ The depth value stored in the Z-buffer can be offset by a slight amount either in software or hardware. This is to reduce or eliminate the chaotic flicker from overlapping coplanar triangles.
+
+ The program *TextureZFightDonut.bas* should make it easy to visualize Z-fighting by pressing the + and - keys. The bias can be both positive or negative, which prefers either new or existing pixels.
 
 ## Clipping
  Point clipping in 3D is defined as constraining a point's location to one side of a plane. Line clipping can change the value of one of its points to the intersection of the plane.
